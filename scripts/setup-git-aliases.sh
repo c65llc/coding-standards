@@ -12,7 +12,41 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}⚙️  Setting up git aliases...${NC}"
+echo -e "${BLUE}⚙️  Setting up git aliases and configuration...${NC}"
+
+# Function to set git config if not already set
+set_config() {
+    local config_key=$1
+    local config_value=$2
+    
+    if git config --global --get "$config_key" >/dev/null 2>&1; then
+        local existing=$(git config --global --get "$config_key")
+        if [ "$existing" != "$config_value" ]; then
+            echo -e "${YELLOW}⚠️  Config '$config_key' already exists with different value:${NC}"
+            echo -e "   Current: $existing"
+            echo -e "   Would set: $config_value"
+            read -p "   Overwrite? (y/N) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo -e "   Skipping '$config_key'"
+                return
+            fi
+        else
+            echo -e "   ✓ '$config_key' already configured correctly"
+            return
+        fi
+    fi
+    
+    git config --global "$config_key" "$config_value"
+    echo -e "${GREEN}   ✓ Configured '$config_key' = '$config_value'${NC}"
+}
+
+# Configure git settings
+echo ""
+echo "Setting up git configuration..."
+set_config "push.autoSetupRemote" "true"
+set_config "push.default" "simple"
+set_config "init.defaultBranch" "main"
 
 # Function to set alias if not already set
 set_alias() {
@@ -140,7 +174,12 @@ set_alias "save" "!git add -A && git commit -m 'WIP'"
 set_alias "wip" "!git add -A && git commit -m 'WIP'"
 
 echo ""
-echo -e "${GREEN}✅ Git aliases configured successfully!${NC}"
+echo -e "${GREEN}✅ Git configuration and aliases set up successfully!${NC}"
+echo ""
+echo "Configuration applied:"
+echo "  ✓ push.autoSetupRemote = true (automatically set upstream when pushing new branches)"
+echo "  ✓ push.default = simple"
+echo "  ✓ init.defaultBranch = main"
 echo ""
 echo "You can now use shortcuts like:"
 echo "  git co <branch>          - Checkout a branch"
@@ -152,5 +191,6 @@ echo "  git st                   - Status"
 echo "  git lg                   - Pretty log graph"
 echo "  git aliases              - List all configured aliases"
 echo ""
-echo "For a complete list, run: git aliases"
+echo "Note: New branches will automatically set upstream when you push them."
+echo "For a complete list of aliases, run: git aliases"
 

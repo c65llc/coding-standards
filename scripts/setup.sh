@@ -110,12 +110,12 @@ if command -v git >/dev/null 2>&1; then
     
     if [ -n "$GIT_ALIASES_SCRIPT" ] && [ -f "$GIT_ALIASES_SCRIPT" ]; then
         echo ""
-        echo "🔧 Setting up git aliases..."
-        echo "   (This configures global git aliases for your system)"
+        echo "🔧 Setting up git aliases and configuration..."
+        echo "   (This configures global git settings and aliases for your system)"
         if bash "$GIT_ALIASES_SCRIPT"; then
-            echo "✅ Git aliases configured"
+            echo "✅ Git aliases and configuration set up"
         else
-            echo "⚠️  Git aliases setup had issues (non-fatal, continuing...)"
+            echo "⚠️  Git setup had issues (non-fatal, continuing...)"
         fi
     fi
 else
