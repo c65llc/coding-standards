@@ -83,20 +83,21 @@ else
     fi
 fi
 
-# Add sync-standards target to Makefile
-echo -e "${BLUE}📝 Adding sync-standards target to Makefile...${NC}"
+# Add sync-standards and setup-cursor targets to Makefile
+echo -e "${BLUE}📝 Adding standards targets to Makefile...${NC}"
 if [ -f "$PROJECT_ROOT/Makefile" ]; then
-    # Check if target already exists
+    # Check if targets already exist
     if grep -q "sync-standards:" "$PROJECT_ROOT/Makefile"; then
         echo -e "${YELLOW}⚠️  sync-standards target already exists in Makefile${NC}"
     else
-        # Add sync-standards target
+        # Add sync-standards target (automatically updates cursor rules)
         cat >> "$PROJECT_ROOT/Makefile" << 'MAKEFILE'
 
 .PHONY: sync-standards
 sync-standards: ## Sync project standards to latest version
 	@if [ -d ".standards" ]; then \
 		./.standards/scripts/sync-standards.sh; \
+		$(MAKE) setup-cursor; \
 	else \
 		echo "❌ .standards directory not found. Run install script first."; \
 		exit 1; \
@@ -104,10 +105,32 @@ sync-standards: ## Sync project standards to latest version
 MAKEFILE
         echo -e "${GREEN}✅ Added sync-standards target to Makefile${NC}"
     fi
+    
+    if grep -q "setup-cursor:" "$PROJECT_ROOT/Makefile"; then
+        echo -e "${YELLOW}⚠️  setup-cursor target already exists in Makefile${NC}"
+    else
+        # Add setup-cursor target
+        cat >> "$PROJECT_ROOT/Makefile" << 'MAKEFILE'
+
+.PHONY: setup-cursor
+setup-cursor: ## Install or update Cursor AI rules configuration
+	@if [ -d ".standards" ] && [ -f ".standards/.cursorrules" ]; then \
+		cp .standards/.cursorrules .cursorrules && \
+		echo "✅ .cursorrules updated from .standards"; \
+	elif [ -f ".standards/.cursorrules" ]; then \
+		cp .standards/.cursorrules .cursorrules && \
+		echo "✅ .cursorrules installed"; \
+	else \
+		echo "⚠️  Standards directory not found. Run setup script first."; \
+		exit 1; \
+	fi
+MAKEFILE
+        echo -e "${GREEN}✅ Added setup-cursor target to Makefile${NC}"
+    fi
 else
-    # Create new Makefile with sync-standards target
+    # Create new Makefile with sync-standards and setup-cursor targets
     cat > "$PROJECT_ROOT/Makefile" << 'MAKEFILE'
-.PHONY: help sync-standards
+.PHONY: help sync-standards setup-cursor
 
 help: ## Show this help message
 	@echo "Available targets:"
@@ -116,12 +139,25 @@ help: ## Show this help message
 sync-standards: ## Sync project standards to latest version
 	@if [ -d ".standards" ]; then \
 		./.standards/scripts/sync-standards.sh; \
+		$(MAKE) setup-cursor; \
 	else \
 		echo "❌ .standards directory not found. Run install script first."; \
 		exit 1; \
 	fi
+
+setup-cursor: ## Install or update Cursor AI rules configuration
+	@if [ -d ".standards" ] && [ -f ".standards/.cursorrules" ]; then \
+		cp .standards/.cursorrules .cursorrules && \
+		echo "✅ .cursorrules updated from .standards"; \
+	elif [ -f ".standards/.cursorrules" ]; then \
+		cp .standards/.cursorrules .cursorrules && \
+		echo "✅ .cursorrules installed"; \
+	else \
+		echo "⚠️  Standards directory not found. Run setup script first."; \
+		exit 1; \
+	fi
 MAKEFILE
-    echo -e "${GREEN}✅ Created Makefile with sync-standards target${NC}"
+    echo -e "${GREEN}✅ Created Makefile with standards targets${NC}"
 fi
 
 # Summary
@@ -132,6 +168,7 @@ echo "Next steps:"
 echo "  1. Restart Cursor to load .cursorrules"
 echo "  2. Review standards in: $STANDARDS_DIR"
 echo "  3. Sync standards later: make sync-standards"
+echo "  4. Update cursor rules: make setup-cursor"
 echo ""
 echo -e "${BLUE}📚 Documentation:${NC}"
 echo "  - Quick Start: $STANDARDS_DIR/docs/QUICK_START.md"
