@@ -57,8 +57,12 @@ else
     if [ -n "$CURSOR_COMMANDS_SOURCE" ] && [ -d "$CURSOR_COMMANDS_SOURCE" ]; then
         echo "📝 Setting up Cursor custom commands..."
         mkdir -p "$PROJECT_ROOT/.cursor/commands"
-        cp -r "$CURSOR_COMMANDS_SOURCE"/* "$PROJECT_ROOT/.cursor/commands/" 2>/dev/null || true
-        echo "✅ Cursor commands installed"
+        if cp -r "$CURSOR_COMMANDS_SOURCE"/* "$PROJECT_ROOT/.cursor/commands/" 2>/dev/null; then
+            echo "✅ Cursor commands installed"
+            echo "⚠️  Please fully quit and restart Cursor to load custom commands"
+        else
+            echo "⚠️  Failed to install Cursor commands (non-fatal, continuing...)"
+        fi
     fi
 fi
 
@@ -147,7 +151,8 @@ echo ""
 echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"
-echo "1. Restart Cursor to load .cursorrules"
+echo "1. Fully quit and restart Cursor to load .cursorrules and custom commands"
 echo "2. If using submodule, ensure it's initialized: git submodule update --init"
 echo "3. To sync standards later, run: ./sync-standards.sh (or cd .standards && git pull)"
+echo "   Note: After syncing, fully restart Cursor again to load updated commands"
 

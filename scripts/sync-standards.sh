@@ -75,8 +75,12 @@ fi
 if [ -n "$CURSOR_COMMANDS_SOURCE" ] && [ -d "$CURSOR_COMMANDS_SOURCE" ]; then
     echo "📝 Syncing Cursor custom commands..."
     mkdir -p "$PROJECT_ROOT/.cursor/commands"
-    cp -r "$CURSOR_COMMANDS_SOURCE"/* "$PROJECT_ROOT/.cursor/commands/" 2>/dev/null || true
-    echo "✅ Cursor commands synced"
+    if cp -r "$CURSOR_COMMANDS_SOURCE"/* "$PROJECT_ROOT/.cursor/commands/" 2>/dev/null; then
+        echo "✅ Cursor commands synced"
+        echo "⚠️  Please fully quit and restart Cursor to load new commands"
+    else
+        echo "⚠️  Failed to sync Cursor commands (non-fatal, continuing...)"
+    fi
 fi
 
 # Update git aliases if setup script exists
@@ -89,15 +93,15 @@ else
 fi
 
 if [ -n "$GIT_ALIASES_SCRIPT" ] && [ -f "$GIT_ALIASES_SCRIPT" ] && command -v git >/dev/null 2>&1; then
-    if [ "$UPDATED" = true ]; then
-        echo ""
-        echo "🔧 Updating git aliases and configuration..."
-        echo "   (New aliases may be available from updated standards)"
-        if bash "$GIT_ALIASES_SCRIPT" 2>/dev/null; then
-            echo "✅ Git aliases updated"
-        else
-            echo "⚠️  Git aliases update had issues (non-fatal, continuing...)"
-        fi
+    # Always check for new aliases, not just when updated
+    # The setup script will skip existing aliases, so it's safe to run
+    echo ""
+    echo "🔧 Checking git aliases and configuration..."
+    echo "   (Ensuring all aliases are up to date)"
+    if bash "$GIT_ALIASES_SCRIPT" 2>/dev/null; then
+        echo "✅ Git aliases checked/updated"
+    else
+        echo "⚠️  Git aliases update had issues (non-fatal, continuing...)"
     fi
 fi
 
