@@ -44,6 +44,22 @@ else
         cp "$CURSORRULES_SOURCE" "$PROJECT_ROOT/.cursorrules"
         echo "✅ .cursorrules created"
     fi
+    
+    # Copy Cursor custom commands if they exist
+    if [ -d "$STANDARDS_DIR/.cursor/commands" ]; then
+        CURSOR_COMMANDS_SOURCE="$STANDARDS_DIR/.cursor/commands"
+    elif [ -d "$SCRIPT_DIR/../.cursor/commands" ]; then
+        CURSOR_COMMANDS_SOURCE="$SCRIPT_DIR/../.cursor/commands"
+    else
+        CURSOR_COMMANDS_SOURCE=""
+    fi
+    
+    if [ -n "$CURSOR_COMMANDS_SOURCE" ] && [ -d "$CURSOR_COMMANDS_SOURCE" ]; then
+        echo "📝 Setting up Cursor custom commands..."
+        mkdir -p "$PROJECT_ROOT/.cursor/commands"
+        cp -r "$CURSOR_COMMANDS_SOURCE"/* "$PROJECT_ROOT/.cursor/commands/" 2>/dev/null || true
+        echo "✅ Cursor commands installed"
+    fi
 fi
 
 # Set up git hooks
@@ -94,23 +110,37 @@ if command -v git >/dev/null 2>&1; then
     
     if [ -n "$GIT_ALIASES_SCRIPT" ] && [ -f "$GIT_ALIASES_SCRIPT" ]; then
         echo ""
-        echo "🔧 Setting up git aliases..."
-        echo "   (This configures global git aliases for your system)"
+        echo "🔧 Setting up git aliases and configuration..."
+        echo "   (This configures global git settings and aliases for your system)"
         if bash "$GIT_ALIASES_SCRIPT"; then
-            echo "✅ Git aliases configured"
+            echo "✅ Git aliases and configuration set up"
         else
-            echo "⚠️  Git aliases setup had issues (non-fatal, continuing...)"
+            echo "⚠️  Git setup had issues (non-fatal, continuing...)"
         fi
     fi
 else
     echo "⚠️  Git not found. Skipping git aliases setup."
 fi
 
-# Create .gitignore entry if needed
+# Create .gitignore entries if needed
 if [ -f "$PROJECT_ROOT/.gitignore" ]; then
     if ! grep -q ".cursorrules.backup" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
         echo ".cursorrules.backup" >> "$PROJECT_ROOT/.gitignore"
     fi
+    if ! grep -q ".standards_tmp" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
+        echo "" >> "$PROJECT_ROOT/.gitignore"
+        echo "# Standards temporary files" >> "$PROJECT_ROOT/.gitignore"
+        echo ".standards_tmp/" >> "$PROJECT_ROOT/.gitignore"
+    fi
+elif [ "$SCRIPT_DIR" != "$PROJECT_ROOT" ]; then
+    # Create .gitignore if it doesn't exist (only for client projects, not standards repo itself)
+    cat > "$PROJECT_ROOT/.gitignore" << 'GITIGNORE'
+# Standards temporary files
+.standards_tmp/
+
+# Backup files
+.cursorrules.backup
+GITIGNORE
 fi
 
 echo ""

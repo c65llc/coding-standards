@@ -90,3 +90,84 @@ When reviewing code, automatically check for:
 
 If violations are detected, suggest fixes referencing the specific standards document.
 
+## Custom Commands
+
+### `\pr` - Create Pull Request with Cursor AI
+
+When the user types `\pr` in chat, you MUST:
+
+1. **Gather PR Information:**
+   - Run the PR content generation script: `./scripts/generate-pr-content.sh` (or `.standards/scripts/generate-pr-content.sh` if using submodule)
+   - Read the generated PR content file (path is output by the script)
+   - The file will be created in `.standards_tmp/` directory (which should be in `.gitignore`)
+   - Analyze the commits, changed files, and code diff from the file
+
+2. **Generate PR Content with AI:**
+   - Create a clear, descriptive PR title following Conventional Commits format (e.g., `feat(scope): description`)
+   - Write a comprehensive PR description that includes:
+     * **Summary:** Brief overview of what changed
+     * **Changes:** Detailed list of what was modified and why
+     * **Files:** Key files that were changed
+     * **Testing:** Testing approach or test coverage notes
+     * **Breaking Changes:** Any breaking changes (if applicable)
+   - Use the commit messages, file changes, and code context to create an intelligent description
+   - Follow PR standards from `standards/process/13_git_version_control_standards.md`
+
+3. **Display and Execute:**
+   - Show the generated title and body to the user for review
+   - After user confirmation (or if auto-confirmed), execute: `PR_TITLE="<generated title>" PR_BODY="<generated body>" make pr`
+   - Escape the PR_BODY properly for shell execution (handle newlines, quotes, etc.)
+
+4. **Provide Feedback:**
+   - Display the PR URL after creation
+   - Show any errors if PR creation fails
+   - Confirm successful PR creation
+
+### `\review` - Code Review
+
+When the user types `\review` in chat, you MUST:
+
+1. **Gather Branch Information:**
+   - Get current branch: `git branch --show-current`
+   - Get base branch (default: `main`)
+   - Collect changed files: `git diff --name-only main..HEAD`
+   - Get full diff: `git diff main..HEAD`
+   - Get commit messages: `git log main..HEAD --oneline`
+   - Save information to `.standards_tmp/review-info-<timestamp>.txt`
+
+2. **Review Focus Areas (prioritize maintainability and readability):**
+   - **Correctness:** Logic errors, edge cases, error handling, null safety, type safety, test coverage
+   - **Standards Compliance:** Architecture (Domain → Application → Infrastructure), SOLID principles, language-specific standards, naming conventions, code style
+   - **Documentation:** Code comments, README updates, API docs, CHANGELOG entries, commit messages
+   - **Maintainability & Readability:** Functions < 50 lines (prefer < 30), single responsibility, low complexity, clear naming, DRY principle, self-documenting code, minimal magic numbers/strings, consistent abstraction levels
+
+3. **Generate Review Report:**
+   - Summary of changes and overall assessment
+   - Correctness issues with file/line references
+   - Standards compliance violations with specific standards document references
+   - Documentation gaps
+   - Maintainability issues (large functions, high complexity, code duplication)
+   - Readability issues (unclear code, poor naming, difficult to follow logic)
+   - Actionable recommendations with priority (Must Fix, Should Fix, Nice to Have)
+   - Focus on issues that impact long-term code quality and maintainability
+
+4. **Provide Actionable Feedback:**
+   - For each issue: file/line, description, why it matters (especially for maintainability/readability), suggested fix, priority
+   - Reference specific standards documents when citing violations
+   - Use code examples when suggesting improvements
+   - Prioritize feedback that improves code maintainability and readability
+   - Focus on long-term code quality, not positive feedback
+   - Follow review expectations from `standards/process/14_code_review_expectations.md`
+
+## Temporary Files
+
+All temporary files created by Cursor AI commands or scripts from the standards repository MUST be placed in the `.standards_tmp/` directory at the project root. This ensures:
+- Easy cleanup (can be added to `.gitignore` as `.standards_tmp/`)
+- Clear separation of standards-related temp files
+- No pollution of project directories with temporary files
+
+When creating temporary files:
+- Use `.standards_tmp/` as the base directory
+- Create the directory if it doesn't exist: `mkdir -p .standards_tmp`
+- Use descriptive filenames with timestamps or process IDs to avoid conflicts
+

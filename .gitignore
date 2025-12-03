@@ -13,7 +13,26 @@ Thumbs.db
 *.swo
 *~
 
+# Cursor IDE files (but track .cursor/commands/)
+.cursor/*
+!.cursor/commands/
+!.cursor/commands/**
+
 # Temporary files
 *.tmp
+*.temp
 *.log
+
+# Standards temporary files directory (used by Cursor AI commands and scripts)
+.standards_tmp/
+
+# PR content generation temporary files (legacy - now in .standards_tmp/)
+pr-content-*.txt
+/tmp/pr-content-*.txt
+
+# Standards sync temporary files (for client projects using this as submodule)
+standards-sync-*.tmp
+
+# Git submodule tracking (when this repo is used as submodule in other projects)
+.gitmodules.local
 

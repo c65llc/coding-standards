@@ -223,6 +223,7 @@ Git aliases provide shortcuts for common operations. The project standards inclu
 #### Branch Management Aliases
 
 * **`git branches`** - List all branches (`branch -a`)
+* **`git ls`** - List most recently edited branches in reverse chronological order (`branch --sort=-committerdate`)
 * **`git brm`** - Delete branches that are gone from remote
 * **`git cleanup`** - Clean up remote-tracking branches
 
