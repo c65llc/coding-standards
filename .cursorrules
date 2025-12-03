@@ -123,6 +123,42 @@ When the user types `\pr` in chat, you MUST:
    - Show any errors if PR creation fails
    - Confirm successful PR creation
 
+### `\review` - Code Review
+
+When the user types `\review` in chat, you MUST:
+
+1. **Gather Branch Information:**
+   - Get current branch: `git branch --show-current`
+   - Get base branch (default: `main`)
+   - Collect changed files: `git diff --name-only main..HEAD`
+   - Get full diff: `git diff main..HEAD`
+   - Get commit messages: `git log main..HEAD --oneline`
+   - Save information to `.standards_tmp/review-info-<timestamp>.txt`
+
+2. **Review Focus Areas (prioritize maintainability and readability):**
+   - **Correctness:** Logic errors, edge cases, error handling, null safety, type safety, test coverage
+   - **Standards Compliance:** Architecture (Domain → Application → Infrastructure), SOLID principles, language-specific standards, naming conventions, code style
+   - **Documentation:** Code comments, README updates, API docs, CHANGELOG entries, commit messages
+   - **Maintainability & Readability:** Functions < 50 lines (prefer < 30), single responsibility, low complexity, clear naming, DRY principle, self-documenting code, minimal magic numbers/strings, consistent abstraction levels
+
+3. **Generate Review Report:**
+   - Summary of changes and overall assessment
+   - Correctness issues with file/line references
+   - Standards compliance violations with specific standards document references
+   - Documentation gaps
+   - Maintainability issues (large functions, high complexity, code duplication)
+   - Readability issues (unclear code, poor naming, difficult to follow logic)
+   - Actionable recommendations with priority (Must Fix, Should Fix, Nice to Have)
+   - Focus on issues that impact long-term code quality and maintainability
+
+4. **Provide Actionable Feedback:**
+   - For each issue: file/line, description, why it matters (especially for maintainability/readability), suggested fix, priority
+   - Reference specific standards documents when citing violations
+   - Use code examples when suggesting improvements
+   - Prioritize feedback that improves code maintainability and readability
+   - Focus on long-term code quality, not positive feedback
+   - Follow review expectations from `standards/process/14_code_review_expectations.md`
+
 ## Temporary Files
 
 All temporary files created by Cursor AI commands or scripts from the standards repository MUST be placed in the `.standards_tmp/` directory at the project root. This ensures:
