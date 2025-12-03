@@ -14,6 +14,11 @@
 ## 2. Required Make Targets
 Every project MUST include the following targets in the root `Makefile`:
 
+### `make bootstrap`
+* **Goal:** Get local machine ready for development
+* **Requirement** Must perform any tasks that can't be handled by `make dev`
+* **Post-condition:** Make Dev can run without errors
+
 ### `make dev`
 * **Goal:** Setup stable local development environment.
 * **Requirement:** Must provision containers (Docker Compose) or strict virtual environments.
