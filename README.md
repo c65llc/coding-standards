@@ -1,6 +1,6 @@
 # Project Standards Repository
 
-Comprehensive development standards and guidelines for software projects, designed to work seamlessly with Cursor AI and other development tools.
+Comprehensive development standards and guidelines for software projects, designed to work seamlessly with Cursor AI, GitHub Copilot, Claude Code (Aider), OpenAI Codex, and other AI coding assistants.
 
 ## 🚀 Quick Install
 
@@ -21,13 +21,17 @@ The installer will:
 
 - ✅ Add standards as a git submodule
 - ✅ Set up `.cursorrules` for Cursor AI
+- ✅ Set up `.github/copilot-instructions.md` for GitHub Copilot
+- ✅ Set up `.aiderrc` for Aider (Claude Code)
+- ✅ Set up `.codexrc` for OpenAI Codex
 - ✅ Add `make sync-standards` target to your Makefile
 - ✅ Configure git hooks for automatic updates
 
 **After installation:**
 
-1. Restart Cursor to load the rules
+1. Restart your IDE/editor to load AI agent configurations
 2. Sync standards later: `make sync-standards`
+3. See [Multi-Agent Guide](docs/MULTI_AGENT_GUIDE.md) for agent-specific setup
 
 ---
 
@@ -155,6 +159,7 @@ make check-standards
 - **[QUICK_START.md](docs/QUICK_START.md)** - Get started in 5 minutes
 - **[SETUP_GUIDE.md](docs/SETUP_GUIDE.md)** - Detailed setup instructions
 - **[INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md)** - Complete integration guide
+- **[MULTI_AGENT_GUIDE.md](docs/MULTI_AGENT_GUIDE.md)** - Multi-agent support (Copilot, Aider, Codex)
 
 ## 🔄 Maintenance
 

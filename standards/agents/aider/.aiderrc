@@ -1,0 +1,93 @@
+# Aider (Claude Code) Configuration
+# This file configures Aider to follow project standards
+
+# Model configuration
+model = claude-3-5-sonnet-20241022
+
+# File inclusion/exclusion
+exclude = [
+    "*.pyc",
+    "__pycache__",
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "dist",
+    "build",
+    ".standards_tmp",
+]
+
+# Code style and standards
+# Reference project standards in standards/ directory
+code_style = "Follow project standards in standards/ directory"
+
+# Architecture rules
+architecture_rules = """
+Follow Clean Architecture principles:
+- Domain layer: No external dependencies
+- Application layer: Depends only on Domain
+- Infrastructure layer: Depends on Application and Domain
+- Apps layer: Depends on all inner layers
+
+Reference: standards/architecture/00_project_standards_and_architecture.md
+"""
+
+# Language-specific standards
+language_standards = """
+Apply language-specific standards from:
+- Python: standards/languages/03_python_standards.md
+- Java: standards/languages/04_java_standards.md
+- Kotlin: standards/languages/05_kotlin_standards.md
+- Swift: standards/languages/06_swift_standards.md
+- Dart: standards/languages/07_dart_standards.md
+- TypeScript: standards/languages/08_typescript_standards.md
+- JavaScript: standards/languages/09_javascript_standards.md
+- Rust: standards/languages/10_rust_standards.md
+- Zig: standards/languages/11_zig_standards.md
+"""
+
+# Testing requirements
+testing_standards = """
+- Domain: 100% test coverage
+- Application: 90%+ test coverage
+- Infrastructure: 80%+ test coverage
+- Mirror source structure in tests
+- Use descriptive test names
+
+Reference: standards/shared/core-standards.md
+"""
+
+# Git commit format
+commit_format = "conventional"
+commit_types = ["feat", "fix", "refactor", "test", "docs", "chore", "perf", "ci"]
+
+# Documentation requirements
+documentation_standards = """
+- Update code documentation for public APIs
+- Create ADRs for architectural decisions
+- Update CHANGELOG.md for user-facing changes
+
+Reference: standards/process/12_documentation_standards.md
+"""
+
+# Error handling
+error_handling = """
+- Fail fast: Validate inputs at boundaries
+- Typed errors: Custom error classes in Domain layer
+- Error propagation: Let errors bubble up
+- Structured logging with context
+
+Reference: standards/shared/core-standards.md
+"""
+
+# Response style
+response_style = """
+- Tone: Terse, objective, professional
+- Code-focused: No conversational filler
+- Iterative: Output interface/structure first, confirm, then implement
+- Reference files: Always reference specific file paths
+"""
+
