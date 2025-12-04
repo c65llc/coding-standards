@@ -6,6 +6,54 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
+# Function to setup AI agent configurations
+setup_ai_agents() {
+    local STANDARDS_DIR="$1"
+    local SCRIPT_DIR="$2"
+    local PROJECT_ROOT="$3"
+    
+    local AGENTS_DIR=""
+    if [ -d "$STANDARDS_DIR/standards/agents" ]; then
+        AGENTS_DIR="$STANDARDS_DIR/standards/agents"
+    elif [ -d "$SCRIPT_DIR/../standards/agents" ]; then
+        AGENTS_DIR="$SCRIPT_DIR/../standards/agents"
+    else
+        echo "⚠️  No agent configurations found (standards/agents directory missing)"
+        return
+    fi
+    
+    # Setup GitHub Copilot
+    if [ -f "$AGENTS_DIR/copilot/.github/copilot-instructions.md" ]; then
+        echo "📝 Setting up GitHub Copilot..."
+        mkdir -p "$PROJECT_ROOT/.github"
+        if cp "$AGENTS_DIR/copilot/.github/copilot-instructions.md" "$PROJECT_ROOT/.github/copilot-instructions.md" 2>/dev/null; then
+            echo "✅ GitHub Copilot instructions installed at .github/copilot-instructions.md"
+        else
+            echo "⚠️  Failed to install Copilot instructions (non-fatal, continuing...)"
+        fi
+    fi
+    
+    # Setup Aider (Claude Code)
+    if [ -f "$AGENTS_DIR/aider/.aiderrc" ]; then
+        echo "📝 Setting up Aider (Claude Code)..."
+        if cp "$AGENTS_DIR/aider/.aiderrc" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+            echo "✅ Aider configuration installed at .aiderrc"
+        else
+            echo "⚠️  Failed to install Aider config (non-fatal, continuing...)"
+        fi
+    fi
+    
+    # Setup OpenAI Codex
+    if [ -f "$AGENTS_DIR/codex/.codexrc" ]; then
+        echo "📝 Setting up OpenAI Codex..."
+        if cp "$AGENTS_DIR/codex/.codexrc" "$PROJECT_ROOT/.codexrc" 2>/dev/null; then
+            echo "✅ Codex configuration installed at .codexrc"
+        else
+            echo "⚠️  Failed to install Codex config (non-fatal, continuing...)"
+        fi
+    fi
+}
+
 echo "🔧 Setting up project standards..."
 
 # Check if .cursorrules already exists
@@ -64,6 +112,11 @@ else
             echo "⚠️  Failed to install Cursor commands (non-fatal, continuing...)"
         fi
     fi
+    
+    # Setup multi-agent configurations
+    echo ""
+    echo "🤖 Setting up AI agent configurations..."
+    setup_ai_agents "$STANDARDS_DIR" "$SCRIPT_DIR" "$PROJECT_ROOT"
 fi
 
 # Set up git hooks
@@ -152,7 +205,10 @@ echo "✅ Setup complete!"
 echo ""
 echo "Next steps:"
 echo "1. Fully quit and restart Cursor to load .cursorrules and custom commands"
-echo "2. If using submodule, ensure it's initialized: git submodule update --init"
-echo "3. To sync standards later, run: ./sync-standards.sh (or cd .standards && git pull)"
-echo "   Note: After syncing, fully restart Cursor again to load updated commands"
+echo "2. If using GitHub Copilot, restart your IDE to load .github/copilot-instructions.md"
+echo "3. If using Aider, it will automatically use .aiderrc"
+echo "4. If using Codex, ensure your IDE reads .codexrc"
+echo "5. If using submodule, ensure it's initialized: git submodule update --init"
+echo "6. To sync standards later, run: ./sync-standards.sh (or cd .standards && git pull)"
+echo "   Note: After syncing, fully restart your IDE again to load updated configurations"
 

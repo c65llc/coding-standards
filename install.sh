@@ -70,11 +70,16 @@ if [ -f "$STANDARDS_DIR/.gitmodules" ] || [ -f "$PROJECT_ROOT/.gitmodules" ]; th
     git submodule update --init --recursive "$STANDARDS_DIR" 2>/dev/null || true
 fi
 
-# Run setup script (includes git aliases setup)
+# Run setup script (includes git aliases setup and multi-agent configuration)
 echo -e "${BLUE}🔧 Running setup script...${NC}"
 if [ -f "$STANDARDS_DIR/scripts/setup.sh" ]; then
     bash "$STANDARDS_DIR/scripts/setup.sh"
     echo -e "${GREEN}✅ Setup complete${NC}"
+    echo -e "${BLUE}📋 AI agent configurations installed:${NC}"
+    echo -e "   - Cursor AI: .cursorrules"
+    [ -f "$PROJECT_ROOT/.github/copilot-instructions.md" ] && echo -e "   - GitHub Copilot: .github/copilot-instructions.md"
+    [ -f "$PROJECT_ROOT/.aiderrc" ] && echo -e "   - Aider (Claude): .aiderrc"
+    [ -f "$PROJECT_ROOT/.codexrc" ] && echo -e "   - Codex: .codexrc"
 else
     echo -e "${YELLOW}⚠️  Setup script not found, creating .cursorrules manually...${NC}"
     if [ -f "$STANDARDS_DIR/.cursorrules" ]; then

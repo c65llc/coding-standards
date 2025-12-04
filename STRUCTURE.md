@@ -27,10 +27,22 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │   │   ├── 10_rust_standards.md
 │   │   └── 11_zig_standards.md
 │   │
-│   └── process/                   # Process & workflow standards
-│       ├── 12_documentation_standards.md
-│       ├── 13_git_version_control_standards.md
-│       └── 14_code_review_expectations.md
+│   ├── process/                   # Process & workflow standards
+│   │   ├── 12_documentation_standards.md
+│   │   ├── 13_git_version_control_standards.md
+│   │   └── 14_code_review_expectations.md
+│   │
+│   ├── shared/                   # Shared standards for all agents
+│   │   └── core-standards.md
+│   │
+│   └── agents/                    # AI agent-specific configurations
+│       ├── copilot/
+│       │   └── .github/
+│       │       └── copilot-instructions.md
+│       ├── aider/
+│       │   └── .aiderrc
+│       └── codex/
+│           └── .codexrc
 │
 ├── scripts/                        # 🔧 Automation scripts
 │   ├── setup.sh                   # Setup standards in a project

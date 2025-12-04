@@ -6,6 +6,77 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
+# Function to sync AI agent configurations
+sync_ai_agents() {
+    local STANDARDS_DIR="$1"
+    local SCRIPT_DIR="$2"
+    local PROJECT_ROOT="$3"
+    
+    local AGENTS_DIR=""
+    if [ -d "$STANDARDS_DIR/standards/agents" ]; then
+        AGENTS_DIR="$STANDARDS_DIR/standards/agents"
+    elif [ -d "$SCRIPT_DIR/../standards/agents" ]; then
+        AGENTS_DIR="$SCRIPT_DIR/../standards/agents"
+    else
+        return
+    fi
+    
+    # Sync GitHub Copilot
+    if [ -f "$AGENTS_DIR/copilot/.github/copilot-instructions.md" ]; then
+        if [ ! -f "$PROJECT_ROOT/.github/copilot-instructions.md" ]; then
+            # File doesn't exist, automatically apply it
+            echo "📝 Adding GitHub Copilot instructions (not yet configured)..."
+            mkdir -p "$PROJECT_ROOT/.github"
+            if cp "$AGENTS_DIR/copilot/.github/copilot-instructions.md" "$PROJECT_ROOT/.github/copilot-instructions.md" 2>/dev/null; then
+                echo "✅ GitHub Copilot instructions added at .github/copilot-instructions.md"
+                echo "💡 To enable Copilot code review: Settings > Copilot > Code review > 'Use custom instructions when reviewing pull requests'"
+            fi
+        elif [ "$UPDATED" = true ] || ! cmp -s "$AGENTS_DIR/copilot/.github/copilot-instructions.md" "$PROJECT_ROOT/.github/copilot-instructions.md" 2>/dev/null; then
+            # File exists but is different or standards were updated
+            echo "📝 Updating GitHub Copilot instructions..."
+            mkdir -p "$PROJECT_ROOT/.github"
+            if cp "$AGENTS_DIR/copilot/.github/copilot-instructions.md" "$PROJECT_ROOT/.github/copilot-instructions.md" 2>/dev/null; then
+                echo "✅ GitHub Copilot instructions updated"
+                echo "⚠️  Please restart your IDE to load updated instructions"
+            fi
+        fi
+    fi
+    
+    # Sync Aider (Claude Code)
+    if [ -f "$AGENTS_DIR/aider/.aiderrc" ]; then
+        if [ ! -f "$PROJECT_ROOT/.aiderrc" ]; then
+            # File doesn't exist, automatically apply it
+            echo "📝 Adding Aider (Claude Code) configuration (not yet configured)..."
+            if cp "$AGENTS_DIR/aider/.aiderrc" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+                echo "✅ Aider configuration added at .aiderrc"
+            fi
+        elif [ "$UPDATED" = true ] || ! cmp -s "$AGENTS_DIR/aider/.aiderrc" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+            # File exists but is different or standards were updated
+            echo "📝 Updating Aider configuration..."
+            if cp "$AGENTS_DIR/aider/.aiderrc" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+                echo "✅ Aider configuration updated"
+            fi
+        fi
+    fi
+    
+    # Sync OpenAI Codex
+    if [ -f "$AGENTS_DIR/codex/.codexrc" ]; then
+        if [ ! -f "$PROJECT_ROOT/.codexrc" ]; then
+            # File doesn't exist, automatically apply it
+            echo "📝 Adding OpenAI Codex configuration (not yet configured)..."
+            if cp "$AGENTS_DIR/codex/.codexrc" "$PROJECT_ROOT/.codexrc" 2>/dev/null; then
+                echo "✅ Codex configuration added at .codexrc"
+            fi
+        elif [ "$UPDATED" = true ] || ! cmp -s "$AGENTS_DIR/codex/.codexrc" "$PROJECT_ROOT/.codexrc" 2>/dev/null; then
+            # File exists but is different or standards were updated
+            echo "📝 Updating Codex configuration..."
+            if cp "$AGENTS_DIR/codex/.codexrc" "$PROJECT_ROOT/.codexrc" 2>/dev/null; then
+                echo "✅ Codex configuration updated"
+            fi
+        fi
+    fi
+}
+
 echo "🔄 Syncing project standards..."
 
 # Determine standards location
@@ -83,6 +154,11 @@ if [ -n "$CURSOR_COMMANDS_SOURCE" ] && [ -d "$CURSOR_COMMANDS_SOURCE" ]; then
     fi
 fi
 
+# Sync multi-agent configurations
+echo ""
+echo "🤖 Syncing AI agent configurations..."
+sync_ai_agents "$STANDARDS_DIR" "$SCRIPT_DIR" "$PROJECT_ROOT"
+
 # Update git aliases if setup script exists
 if [ -d "$STANDARDS_DIR" ]; then
     GIT_ALIASES_SCRIPT="$STANDARDS_DIR/scripts/setup-git-aliases.sh"
@@ -119,4 +195,6 @@ fi
 
 echo ""
 echo "✅ Sync complete!"
+echo ""
+echo "Note: Restart your IDE/editor to load updated AI agent configurations"
 
