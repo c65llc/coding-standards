@@ -61,7 +61,7 @@ make sync-standards
 .standards/scripts/sync-standards.sh
 ```
 
-This updates all agent configuration files to match the latest standards.
+This updates all agent configuration files to match the latest standards. **If any agent configurations haven't been applied yet, they will be automatically added** (e.g., `.github/copilot-instructions.md` will be created if it doesn't exist).
 
 ### Manual Setup
 

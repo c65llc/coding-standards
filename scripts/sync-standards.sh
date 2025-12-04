@@ -23,7 +23,16 @@ sync_ai_agents() {
     
     # Sync GitHub Copilot
     if [ -f "$AGENTS_DIR/copilot/.github/copilot-instructions.md" ]; then
-        if [ "$UPDATED" = true ] || ! cmp -s "$AGENTS_DIR/copilot/.github/copilot-instructions.md" "$PROJECT_ROOT/.github/copilot-instructions.md" 2>/dev/null; then
+        if [ ! -f "$PROJECT_ROOT/.github/copilot-instructions.md" ]; then
+            # File doesn't exist, automatically apply it
+            echo "📝 Adding GitHub Copilot instructions (not yet configured)..."
+            mkdir -p "$PROJECT_ROOT/.github"
+            if cp "$AGENTS_DIR/copilot/.github/copilot-instructions.md" "$PROJECT_ROOT/.github/copilot-instructions.md" 2>/dev/null; then
+                echo "✅ GitHub Copilot instructions added at .github/copilot-instructions.md"
+                echo "💡 To enable Copilot code review: Settings > Copilot > Code review > 'Use custom instructions when reviewing pull requests'"
+            fi
+        elif [ "$UPDATED" = true ] || ! cmp -s "$AGENTS_DIR/copilot/.github/copilot-instructions.md" "$PROJECT_ROOT/.github/copilot-instructions.md" 2>/dev/null; then
+            # File exists but is different or standards were updated
             echo "📝 Updating GitHub Copilot instructions..."
             mkdir -p "$PROJECT_ROOT/.github"
             if cp "$AGENTS_DIR/copilot/.github/copilot-instructions.md" "$PROJECT_ROOT/.github/copilot-instructions.md" 2>/dev/null; then
@@ -35,7 +44,14 @@ sync_ai_agents() {
     
     # Sync Aider (Claude Code)
     if [ -f "$AGENTS_DIR/aider/.aiderrc" ]; then
-        if [ "$UPDATED" = true ] || ! cmp -s "$AGENTS_DIR/aider/.aiderrc" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+        if [ ! -f "$PROJECT_ROOT/.aiderrc" ]; then
+            # File doesn't exist, automatically apply it
+            echo "📝 Adding Aider (Claude Code) configuration (not yet configured)..."
+            if cp "$AGENTS_DIR/aider/.aiderrc" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+                echo "✅ Aider configuration added at .aiderrc"
+            fi
+        elif [ "$UPDATED" = true ] || ! cmp -s "$AGENTS_DIR/aider/.aiderrc" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+            # File exists but is different or standards were updated
             echo "📝 Updating Aider configuration..."
             if cp "$AGENTS_DIR/aider/.aiderrc" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
                 echo "✅ Aider configuration updated"
@@ -45,7 +61,14 @@ sync_ai_agents() {
     
     # Sync OpenAI Codex
     if [ -f "$AGENTS_DIR/codex/.codexrc" ]; then
-        if [ "$UPDATED" = true ] || ! cmp -s "$AGENTS_DIR/codex/.codexrc" "$PROJECT_ROOT/.codexrc" 2>/dev/null; then
+        if [ ! -f "$PROJECT_ROOT/.codexrc" ]; then
+            # File doesn't exist, automatically apply it
+            echo "📝 Adding OpenAI Codex configuration (not yet configured)..."
+            if cp "$AGENTS_DIR/codex/.codexrc" "$PROJECT_ROOT/.codexrc" 2>/dev/null; then
+                echo "✅ Codex configuration added at .codexrc"
+            fi
+        elif [ "$UPDATED" = true ] || ! cmp -s "$AGENTS_DIR/codex/.codexrc" "$PROJECT_ROOT/.codexrc" 2>/dev/null; then
+            # File exists but is different or standards were updated
             echo "📝 Updating Codex configuration..."
             if cp "$AGENTS_DIR/codex/.codexrc" "$PROJECT_ROOT/.codexrc" 2>/dev/null; then
                 echo "✅ Codex configuration updated"
