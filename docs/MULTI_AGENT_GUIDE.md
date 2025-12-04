@@ -73,6 +73,25 @@ make setup-agents
 .standards/scripts/setup.sh
 ```
 
+### Adding Copilot Instructions to Existing Repository
+
+To add GitHub Copilot custom instructions to an existing repository via PR:
+
+```bash
+make add-copilot-instructions
+# or
+.standards/scripts/add-copilot-instructions-pr.sh
+```
+
+This will:
+1. Create a feature branch
+2. Add `.github/copilot-instructions.md` to your repository
+3. Create a PR with instructions for enabling Copilot code review
+
+After the PR is merged, enable Copilot code review in repository settings:
+- Settings > Copilot > Code review
+- Toggle "Use custom instructions when reviewing pull requests" to on
+
 ## Agent-Specific Details
 
 ### GitHub Copilot
@@ -84,16 +103,36 @@ GitHub Copilot uses `.github/copilot-instructions.md` to understand your project
 - References all standards documents
 - Provides behavior rules for Copilot
 - Ensures consistency with Cursor AI behavior
+- **Enables Copilot code review** to follow project standards automatically
 
 **After Setup:**
 1. Restart your IDE (VS Code, JetBrains, etc.)
 2. Copilot will automatically use the instructions
 3. You'll see suggestions that follow project standards
 
+**Enabling Code Review:**
+1. Navigate to repository Settings > Copilot > Code review
+2. Toggle "Use custom instructions when reviewing pull requests" to on
+3. Copilot will now review PRs using your project standards
+
+**Adding to Existing Repository:**
+Use the automated PR creation:
+```bash
+make add-copilot-instructions
+```
+
+This creates a PR that adds `.github/copilot-instructions.md` with instructions for enabling code review.
+
 **Verification:**
 - Check that `.github/copilot-instructions.md` exists
 - Ask Copilot to generate code and verify it follows standards
 - Check that naming conventions match your language standards
+- Create a test PR and verify Copilot code review uses custom instructions
+- Confirm review comments reference project standards
+
+**References:**
+- [GitHub Docs: Add repository instructions](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions)
+- [GitHub Docs: Configure code review](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions#enabling-or-disabling-custom-instructions-for-copilot-code-review)
 
 ### Aider (Claude Code)
 

@@ -1,4 +1,4 @@
-.PHONY: help ls setup sync-standards check-standards update-standards setup-agents
+.PHONY: help ls setup sync-standards check-standards update-standards setup-agents add-copilot-instructions
 
 help: ## Show this help message
 	@echo "Standards Repository Management"
@@ -66,6 +66,16 @@ setup-agents: ## Setup AI agent configurations (Copilot, Aider, Codex)
 		./scripts/setup.sh; \
 	else \
 		echo "❌ Standards directory not found. Run install script first."; \
+		exit 1; \
+	fi
+
+add-copilot-instructions: ## Create PR to add GitHub Copilot custom instructions for code review
+	@if [ -d ".standards" ] && [ -f ".standards/scripts/add-copilot-instructions-pr.sh" ]; then \
+		./.standards/scripts/add-copilot-instructions-pr.sh; \
+	elif [ -f "scripts/add-copilot-instructions-pr.sh" ]; then \
+		./scripts/add-copilot-instructions-pr.sh; \
+	else \
+		echo "❌ add-copilot-instructions-pr.sh script not found"; \
 		exit 1; \
 	fi
 
