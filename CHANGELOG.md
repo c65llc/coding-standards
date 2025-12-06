@@ -31,7 +31,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Consistent standards across all AI coding assistants
 - Enhanced documentation for multi-agent workflows
 
-
-
-
-

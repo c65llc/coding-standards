@@ -41,7 +41,19 @@ Guide the user through resolving all unresolved comments on the current GitHub P
 4. **Option Implementations:**
 
    **a) Ignore:**
-   - Mark the comment/thread as resolved: `gh pr review <PR_NUMBER> --resolve-thread <THREAD_ID>` (if applicable)
+   - Mark the comment/thread as resolved (if applicable):
+     * **Via GitHub Web UI:** Open the PR in your browser and mark the thread as resolved
+     * **Via CLI (advanced):** Use the GitHub GraphQL API:
+       ```bash
+       gh api graphql -f query='mutation($threadId: ID!) {
+         resolveReviewThread(input: {threadId: $threadId}) {
+           thread {
+             isResolved
+           }
+         }
+       }' -f threadId="<THREAD_ID>"
+       ```
+     * Note: The `gh pr review` command does **not** support resolving threads directly
    - Or acknowledge and move on
    - Track in progress file: `.standards_tmp/addressed-comments-<timestamp>.txt`
 
@@ -81,8 +93,23 @@ Guide the user through resolving all unresolved comments on the current GitHub P
      * Reference relevant standards or documentation
    - Show the response to the user for review
    - After confirmation, post the response:
-     * For review comments: `gh pr comment <PR_NUMBER> --body "<response>" --reply-to <COMMENT_ID>`
-     * For general comments: `gh pr comment <PR_NUMBER> --body "<response>"`
+     * For review comments (replies to specific code review comments):
+       - Use the GitHub GraphQL API:
+         ```bash
+         gh api graphql -f query='mutation($pullRequestId: ID!, $body: String!, $inReplyTo: ID!) {
+           addPullRequestReviewComment(input: {
+             pullRequestId: $pullRequestId,
+             body: $body,
+             inReplyTo: $inReplyTo
+           }) {
+             comment {
+               id
+             }
+           }
+         }' -f pullRequestId="<PR_NODE_ID>" -f body="<response>" -f inReplyTo="<COMMENT_NODE_ID>"
+         ```
+     * For general PR comments: `gh pr comment <PR_NUMBER> --body "<response>"`
+     * Note: The `gh pr comment` command does **not** support a `--reply-to` flag
    - Mark thread as resolved if appropriate (ask user)
 
    **e) Skip:**

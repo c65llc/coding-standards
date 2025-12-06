@@ -196,7 +196,3 @@ Reference detailed process standards in:
 - `standards/process/13_git_version_control_standards.md`
 - `standards/process/14_code_review_expectations.md`
 
-
-
-
-

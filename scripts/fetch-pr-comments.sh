@@ -16,6 +16,12 @@ if ! gh auth status >/dev/null 2>&1; then
     exit 1
 fi
 
+# Check for jq
+if ! command -v jq >/dev/null 2>&1; then
+    echo "❌ jq not found. Install from: https://jqlang.github.io/jq/" >&2
+    exit 1
+fi
+
 # Get PR number (from argument or current branch)
 PR_NUMBER="${1:-}"
 

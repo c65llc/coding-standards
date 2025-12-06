@@ -103,7 +103,3 @@ When helping with pull requests:
 - Ensure documentation is updated
 - Validate architecture layer dependencies
 
-
-
-
-
