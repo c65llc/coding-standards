@@ -55,4 +55,3 @@ echo "" >> "$PR_CONTENT_FILE"
 
 # Output the file path for Cursor to read
 echo "$PR_CONTENT_FILE"
-
