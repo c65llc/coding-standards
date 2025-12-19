@@ -58,6 +58,11 @@ test-scripts: ## Test setup and sync scripts
 	@bash -n scripts/setup.sh && echo "✅ setup.sh syntax valid"
 	@echo "Testing sync-standards.sh..."
 	@bash -n scripts/sync-standards.sh && echo "✅ sync-standards.sh syntax valid"
+	@echo "Testing gh-task..."
+	@bash -n bin/gh-task && echo "✅ gh-task syntax valid"
+
+test-gh-task: ## Run comprehensive tests on gh-task CLI
+	@./scripts/test-gh-task.sh
 
 setup-agents: ## Setup AI agent configurations (Copilot, Aider, Codex)
 	@if [ -d ".standards" ]; then \
