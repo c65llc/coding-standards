@@ -70,9 +70,33 @@ load_config() {
         fi
     fi
     
-    # Fall back to .gh-task.conf
+    # Fall back to .gh-task.conf (safely parse only PROJECT_ID and STATUS_FIELD_ID)
     if [ -f "$CONFIG_FILE" ]; then
-        source "$CONFIG_FILE"
+        # Safely extract PROJECT_ID and STATUS_FIELD_ID without executing arbitrary code
+        while IFS='=' read -r key value; do
+            # Skip comments and empty lines
+            [[ "$key" =~ ^[[:space:]]*# ]] && continue
+            [[ -z "$key" ]] && continue
+            
+            # Remove leading/trailing whitespace and quotes
+            key=$(echo "$key" | xargs)
+            value=$(echo "$value" | xargs | sed 's/^["'\'']//' | sed 's/["'\'']$//')
+            
+            case "$key" in
+                PROJECT_ID)
+                    PROJECT_ID="$value"
+                    ;;
+                STATUS_FIELD_ID)
+                    STATUS_FIELD_ID="$value"
+                    ;;
+                REPO_OWNER)
+                    REPO_OWNER="$value"
+                    ;;
+                REPO_NAME)
+                    REPO_NAME="$value"
+                    ;;
+            esac
+        done < "$CONFIG_FILE"
     fi
     
     # Get repository info
@@ -574,24 +598,28 @@ cmd_submit() {
     # Run validation if test command exists
     info "Running validation checks..."
     
+    # Create temporary file for test output
+    local test_output=$(mktemp)
+    trap "rm -f $test_output" EXIT
+    
     # Check for common test commands
     if [ -f "package.json" ] && grep -q "\"test\"" package.json 2>/dev/null; then
         info "Running npm test..."
-        if ! npm test 2>&1 | tee /tmp/test-output.log; then
-            error "Tests failed. Please fix before submitting.\n$(tail -20 /tmp/test-output.log)"
+        if ! npm test 2>&1 | tee "$test_output"; then
+            error "Tests failed. Please fix before submitting.\n$(tail -20 "$test_output")"
         fi
         success "Tests passed"
     elif [ -f "Makefile" ] && grep -q "^test:" Makefile 2>/dev/null; then
         info "Running make test..."
-        if ! make test 2>&1 | tee /tmp/test-output.log; then
-            error "Tests failed. Please fix before submitting.\n$(tail -20 /tmp/test-output.log)"
+        if ! make test 2>&1 | tee "$test_output"; then
+            error "Tests failed. Please fix before submitting.\n$(tail -20 "$test_output")"
         fi
         success "Tests passed"
     elif [ -f "pytest.ini" ] || [ -f "setup.py" ]; then
         info "Running pytest..."
         if command -v pytest >/dev/null 2>&1; then
-            if ! pytest 2>&1 | tee /tmp/test-output.log; then
-                error "Tests failed. Please fix before submitting.\n$(tail -20 /tmp/test-output.log)"
+            if ! pytest 2>&1 | tee "$test_output"; then
+                error "Tests failed. Please fix before submitting.\n$(tail -20 "$test_output")"
             fi
             success "Tests passed"
         fi

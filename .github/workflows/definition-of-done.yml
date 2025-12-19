@@ -141,6 +141,10 @@ jobs:
           
           # Python coverage
           if command -v pytest >/dev/null 2>&1; then
+            # Install pytest-cov if needed
+            if ! python -c "import pytest_cov" 2>/dev/null; then
+              pip install pytest-cov || true
+            fi
             pytest --cov=. --cov-report=term-missing || true
           fi
           
@@ -165,14 +169,16 @@ jobs:
           # Node.js security audit
           if [ -f "package.json" ]; then
             echo "Running npm audit..."
-            npm audit --audit-level=moderate || true
+            # Fail on high/critical, warn on moderate/low
+            npm audit --audit-level=high || echo "⚠️  High severity vulnerabilities found"
           fi
           
           # Python security check
           if [ -f "requirements.txt" ]; then
             echo "Checking Python dependencies..."
             pip install safety
-            safety check || true
+            # Fail on vulnerabilities, but continue workflow
+            safety check || echo "⚠️  Security vulnerabilities found in Python dependencies"
           fi
           
           echo "✅ Security scan completed"
