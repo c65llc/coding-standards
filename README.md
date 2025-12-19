@@ -59,6 +59,7 @@ gh-task submit
 - ✅ AI agent and human developer support
 
 **Documentation:**
+- [Quick Start Guide](docs/GH_TASK_QUICKSTART.md) - Get started in 5 minutes
 - [gh-task CLI Guide](docs/GH_TASK_GUIDE.md) - Complete command reference
 - [Tooling Guide](docs/TOOLING.md) - Architecture and AI agent instructions
 - [Reusable GitHub Actions Workflows](.github/workflows/) - CI/CD automation
@@ -203,10 +204,16 @@ make check-standards
 
 ## 📖 Documentation
 
+### Standards & Setup
 - **[QUICK_START.md](docs/QUICK_START.md)** - Get started in 5 minutes
 - **[SETUP_GUIDE.md](docs/SETUP_GUIDE.md)** - Detailed setup instructions
 - **[INTEGRATION_GUIDE.md](docs/INTEGRATION_GUIDE.md)** - Complete integration guide
 - **[MULTI_AGENT_GUIDE.md](docs/MULTI_AGENT_GUIDE.md)** - Multi-agent support (Copilot, Aider, Codex)
+
+### GitHub Project Lifecycle Automation
+- **[GH_TASK_QUICKSTART.md](docs/GH_TASK_QUICKSTART.md)** - gh-task quick start (5 minutes)
+- **[GH_TASK_GUIDE.md](docs/GH_TASK_GUIDE.md)** - Complete gh-task CLI reference
+- **[TOOLING.md](docs/TOOLING.md)** - Architecture and AI agent instructions
 
 ## 🔄 Maintenance
 

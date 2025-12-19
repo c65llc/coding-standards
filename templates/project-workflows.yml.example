@@ -1,0 +1,85 @@
+# Example GitHub Actions workflows for using gh-task lifecycle automation
+# Copy these workflows to your project's .github/workflows/ directory
+
+# ==========================================
+# 1. PR Lifecycle Management
+# File: .github/workflows/pr-lifecycle.yml
+# ==========================================
+#
+# name: PR Lifecycle Management
+# 
+# on:
+#   pull_request:
+#     types: [opened, closed, converted_to_draft, ready_for_review]
+# 
+# jobs:
+#   sync-project:
+#     uses: c65llc/coding_standards/.github/workflows/lifecycle-sync.yml@main
+#     with:
+#       project_id: ${{ vars.PROJECT_ID }}
+#     secrets:
+#       gh_token: ${{ secrets.GITHUB_TOKEN }}
+
+# ==========================================
+# 2. Definition of Done Checks
+# File: .github/workflows/pr-checks.yml
+# ==========================================
+#
+# name: Definition of Done
+# 
+# on:
+#   pull_request:
+#     types: [opened, synchronize, ready_for_review]
+# 
+# jobs:
+#   quality-checks:
+#     uses: c65llc/coding_standards/.github/workflows/definition-of-done.yml@main
+#     with:
+#       node_version: '18'           # Adjust to your Node.js version
+#       python_version: '3.11'       # Adjust to your Python version
+#       run_linting: true
+#       run_tests: true
+#       run_security_scan: true
+#     secrets:
+#       gh_token: ${{ secrets.GITHUB_TOKEN }}
+
+# ==========================================
+# Setup Instructions:
+# ==========================================
+#
+# 1. Create .github/workflows directory in your project:
+#    mkdir -p .github/workflows
+#
+# 2. Copy the workflow sections above (uncommented) to separate files:
+#    - .github/workflows/pr-lifecycle.yml
+#    - .github/workflows/pr-checks.yml
+#
+# 3. Set PROJECT_ID as a repository variable:
+#    a. Go to Settings → Secrets and variables → Actions
+#    b. Click "Variables" tab
+#    c. Add new variable: PROJECT_ID = "PVT_kwDOABCDEF"
+#
+# 4. Commit and push:
+#    git add .github/workflows/
+#    git commit -m "feat: add GitHub Project lifecycle workflows"
+#    git push
+#
+# 5. Test the workflows:
+#    - Create an issue: gh-task create "Test workflow"
+#    - Start work: gh-task start <issue_number>
+#    - Make changes and submit: gh-task submit
+#    - Check that the PR was created and project status updated
+
+# ==========================================
+# Advanced Configuration:
+# ==========================================
+#
+# To customize the Definition of Done checks, modify the inputs:
+#
+# - node_version: '16' | '18' | '20'
+# - python_version: '3.9' | '3.10' | '3.11' | '3.12'
+# - run_linting: true | false
+# - run_tests: true | false
+# - run_security_scan: true | false
+#
+# You can also add additional jobs to the workflows as needed.
