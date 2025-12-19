@@ -73,10 +73,30 @@ setup_ai_agents() {
             fi
         fi
         if [ -f "$GEMINI_SOURCE/settings.json" ]; then
-            if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
-                echo "✅ Gemini CLI settings installed at .gemini/settings.json"
+            # Validate JSON syntax before copying
+            if command -v python3 >/dev/null 2>&1; then
+                if ! python3 -m json.tool "$GEMINI_SOURCE/settings.json" >/dev/null 2>&1; then
+                    echo "⚠️  Invalid JSON in Gemini settings.json, skipping..."
+                elif cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
+                    echo "✅ Gemini CLI settings installed at .gemini/settings.json"
+                else
+                    echo "⚠️  Failed to install Gemini settings (non-fatal, continuing...)"
+                fi
+            elif command -v jq >/dev/null 2>&1; then
+                if ! jq empty "$GEMINI_SOURCE/settings.json" >/dev/null 2>&1; then
+                    echo "⚠️  Invalid JSON in Gemini settings.json, skipping..."
+                elif cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
+                    echo "✅ Gemini CLI settings installed at .gemini/settings.json"
+                else
+                    echo "⚠️  Failed to install Gemini settings (non-fatal, continuing...)"
+                fi
             else
-                echo "⚠️  Failed to install Gemini settings (non-fatal, continuing...)"
+                # No JSON validator available, copy without validation
+                if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
+                    echo "✅ Gemini CLI settings installed at .gemini/settings.json"
+                else
+                    echo "⚠️  Failed to install Gemini settings (non-fatal, continuing...)"
+                fi
             fi
         fi
     fi

@@ -105,15 +105,31 @@ sync_ai_agents() {
         
         # Sync settings.json
         if [ -f "$GEMINI_SOURCE/settings.json" ]; then
-            if [ ! -f "$PROJECT_ROOT/.gemini/settings.json" ]; then
-                echo "📝 Adding Gemini CLI settings (not yet configured)..."
-                if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
-                    echo "✅ Gemini CLI settings added at .gemini/settings.json"
+            # Validate JSON syntax before copying
+            JSON_VALID=true
+            if command -v python3 >/dev/null 2>&1; then
+                if ! python3 -m json.tool "$GEMINI_SOURCE/settings.json" >/dev/null 2>&1; then
+                    echo "⚠️  Invalid JSON in Gemini settings.json, skipping update..."
+                    JSON_VALID=false
                 fi
-            elif [ "$UPDATED" = true ] || ! cmp -s "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
-                echo "📝 Updating Gemini CLI settings..."
-                if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
-                    echo "✅ Gemini CLI settings updated"
+            elif command -v jq >/dev/null 2>&1; then
+                if ! jq empty "$GEMINI_SOURCE/settings.json" >/dev/null 2>&1; then
+                    echo "⚠️  Invalid JSON in Gemini settings.json, skipping update..."
+                    JSON_VALID=false
+                fi
+            fi
+            
+            if [ "$JSON_VALID" = true ]; then
+                if [ ! -f "$PROJECT_ROOT/.gemini/settings.json" ]; then
+                    echo "📝 Adding Gemini CLI settings (not yet configured)..."
+                    if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
+                        echo "✅ Gemini CLI settings added at .gemini/settings.json"
+                    fi
+                elif [ "$UPDATED" = true ] || ! cmp -s "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
+                    echo "📝 Updating Gemini CLI settings..."
+                    if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
+                        echo "✅ Gemini CLI settings updated"
+                    fi
                 fi
             fi
         fi

@@ -7,6 +7,9 @@ This document explains the reorganized file hierarchy for easier navigation and 
 ```
 .
 ├── .cursorrules                    # Cursor AI configuration (root level for easy access)
+├── .gemini/                        # Gemini CLI & Antigravity configuration
+│   ├── GEMINI.md                   # Repository intelligence for AI agents
+│   └── settings.json              # Gemini CLI settings
 ├── Makefile                        # Automation targets
 ├── README.md                       # Main entry point and overview
 │
@@ -41,8 +44,10 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │       │       └── copilot-instructions.md
 │       ├── aider/
 │       │   └── .aiderrc
-│       └── codex/
-│           └── .codexrc
+│       ├── codex/
+│       │   └── .codexrc
+│       └── gemini/                # Note: Gemini CLI uses .gemini/ at root (Gemini CLI convention)
+│           └── (configs in .gemini/ at project root)
 │
 ├── scripts/                        # 🔧 Automation scripts
 │   ├── setup.sh                   # Setup standards in a project

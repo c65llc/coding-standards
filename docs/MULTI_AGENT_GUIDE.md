@@ -184,6 +184,9 @@ Gemini CLI and Google Antigravity use `.gemini/GEMINI.md` as the primary source 
 - `.gemini/settings.json` - Gemini CLI settings (checkpointing, model, MCP servers)
 - `.gemini/active_mission.log` - Active Antigravity mission URL (gitignored, for cross-agent sync)
 
+**Note on Configuration Location:**
+Unlike other agents (Copilot, Aider, Codex) which store their configurations in `standards/agents/<agent>/`, Gemini CLI uses `.gemini/` at the project root. This follows the official Gemini CLI convention where the `.gemini/` directory is the standard location for Gemini-specific configuration files. The Gemini CLI automatically looks for `.gemini/GEMINI.md` and `.gemini/settings.json` in the project root, making this location consistent with Gemini CLI's expected behavior.
+
 **Gemini CLI Workflow:**
 Agents using Gemini CLI should follow the A-P-E (Analyze, Plan, Execute) cycle:
 

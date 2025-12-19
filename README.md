@@ -41,6 +41,9 @@ The installer will:
 ```text
 .
 ├── .cursorrules                    # Cursor AI configuration (references all standards)
+├── .gemini/                        # Gemini CLI & Antigravity configuration
+│   ├── GEMINI.md                   # Repository intelligence for AI agents
+│   └── settings.json              # Gemini CLI settings
 ├── Makefile                        # Automation targets
 │
 ├── standards/                      # All standards documents
