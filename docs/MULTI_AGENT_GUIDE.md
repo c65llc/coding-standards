@@ -30,6 +30,13 @@ This repository supports multiple AI coding assistants to ensure all team member
 - **Setup**: Automatically configured by `make setup` or `./scripts/setup.sh`
 - **Usage**: Depends on your IDE's Codex integration
 
+### 5. Claude Code
+- **Configuration Files**: `CLAUDE.md` (project root) + `.claude/settings.json`
+- **Location**: Project root and `.claude/` directory
+- **Setup**: Automatically configured by `make setup` or `./scripts/setup.sh`
+- **Usage**: Claude Code automatically reads `CLAUDE.md` when you open the project. Settings in `.claude/settings.json` control agent permissions.
+- **Key Feature**: Supports git worktree isolation for safe agent-driven development
+
 ## Setup
 
 ### Initial Setup
@@ -152,6 +159,33 @@ Aider uses `.aiderrc` for configuration. This file:
 - Check that `.aiderrc` exists
 - Run `aider --help` to verify installation
 - Ask Aider to make changes and verify it follows standards
+
+### Claude Code
+
+Claude Code uses two configuration files:
+
+1. **`CLAUDE.md`** (project root) — Project-specific AI guide with architecture, commands, invariants, and anti-patterns. Unlike other agent configs, this file is **project-specific and should not be overwritten by sync**. The template provides a starting structure; you customize it for your project.
+
+2. **`.claude/settings.json`** — Permission configuration defining what the agent can do autonomously vs. what requires human confirmation.
+
+**After Setup:**
+1. Customize `CLAUDE.md` with your project's specific details (architecture, key files, invariants)
+2. Review `.claude/settings.json` permissions and adjust for your project's needs
+3. Claude Code will automatically read both files when opened in the project
+
+**Worktree Workflow:**
+Claude Code agents should work in isolated git worktrees to avoid interfering with your IDE:
+
+```bash
+git worktree add .claude/worktrees/my-feature -b my-feature
+cd .claude/worktrees/my-feature
+# Agent works here. Root checkout remains clean.
+```
+
+**Verification:**
+- Check that `CLAUDE.md` exists and contains project-specific content
+- Check that `.claude/settings.json` has appropriate permissions
+- Ask Claude Code to describe the project architecture — it should reference CLAUDE.md content
 
 ### OpenAI Codex
 

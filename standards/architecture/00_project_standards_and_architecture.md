@@ -61,6 +61,13 @@ Strict adherence required. Violations must be justified in code comments.
 * Boolean variables use `is_`, `has_`, `should_`, `can_` prefixes.
 * Functions are verbs. Classes are nouns.
 
+**Architectural Naming:**
+
+* Use distinct naming prefixes for library crates/packages vs. app crates/packages. This makes it immediately clear which architectural layer a module belongs to.
+* Library/framework packages use a framework prefix (e.g., `lattice-core`, `lattice-layout`).
+* App/product packages use a product prefix (e.g., `trellis-cli`, `trellis-desktop`).
+* Document the naming convention in the project's AI guide (`CLAUDE.md`) or `README.md`.
+
 ### Code Style
 
 * **Comments:** Only "Why", never "What". Self-documenting code preferred.
@@ -100,6 +107,12 @@ Strict adherence required. Violations must be justified in code comments.
 * Mirror source structure: `src/domain/user.py` → `tests/domain/test_user.py`
 * Use descriptive test names: `test_should_raise_error_when_email_is_invalid`
 * One assertion per test when possible.
+
+### Pure Logic Separation
+
+* View model transformations and business logic SHOULD be pure functions testable without framework dependencies.
+* UI rendering layers should consume view models (plain data structures) rather than computing state inline.
+* This enables testing complex UI behavior (sidebar trees, drag-drop logic, navigation) without spinning up a framework runtime.
 
 ## 5. Dependency Management
 

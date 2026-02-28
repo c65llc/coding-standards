@@ -52,6 +52,31 @@ setup_ai_agents() {
             echo "⚠️  Failed to install Codex config (non-fatal, continuing...)"
         fi
     fi
+
+    # Setup Claude Code
+    if [ -f "$AGENTS_DIR/claude-code/CLAUDE.md.template" ]; then
+        echo "📝 Setting up Claude Code..."
+        if [ ! -f "$PROJECT_ROOT/CLAUDE.md" ]; then
+            if cp "$AGENTS_DIR/claude-code/CLAUDE.md.template" "$PROJECT_ROOT/CLAUDE.md" 2>/dev/null; then
+                echo "✅ CLAUDE.md template installed at project root"
+                echo "💡 Customize CLAUDE.md with your project-specific details"
+            else
+                echo "⚠️  Failed to install CLAUDE.md (non-fatal, continuing...)"
+            fi
+        else
+            echo "ℹ️  CLAUDE.md already exists, skipping (won't overwrite project-specific guide)"
+        fi
+        if [ ! -f "$PROJECT_ROOT/.claude/settings.json" ]; then
+            mkdir -p "$PROJECT_ROOT/.claude"
+            if cp "$AGENTS_DIR/claude-code/settings.json.example" "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null; then
+                echo "✅ Claude Code settings installed at .claude/settings.json"
+            else
+                echo "⚠️  Failed to install Claude Code settings (non-fatal, continuing...)"
+            fi
+        else
+            echo "ℹ️  .claude/settings.json already exists, skipping"
+        fi
+    fi
 }
 
 echo "🔧 Setting up project standards..."
@@ -221,6 +246,7 @@ echo "1. Fully quit and restart Cursor to load .cursorrules and custom commands"
 echo "2. If using GitHub Copilot, restart your IDE to load .github/copilot-instructions.md"
 echo "3. If using Aider, it will automatically use .aiderrc"
 echo "4. If using Codex, ensure your IDE reads .codexrc"
+echo "5. If using Claude Code, customize CLAUDE.md with your project details"
 echo "5. If using submodule, ensure it's initialized: git submodule update --init"
 echo "6. To sync standards later, run: ./sync-standards.sh (or cd .standards && git pull)"
 echo "   Note: After syncing, fully restart your IDE again to load updated configurations"

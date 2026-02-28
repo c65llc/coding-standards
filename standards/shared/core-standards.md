@@ -196,5 +196,16 @@ Reference detailed process standards in:
 - `standards/process/13_git_version_control_standards.md`
 - `standards/process/14_code_review_expectations.md`
 
+## Architecture Patterns
+
+Reference architecture pattern standards in:
+- `standards/architecture/16_data_versioning_and_migration_standards.md`
+- `standards/architecture/17_resilient_architecture_patterns.md`
+
+## Agent Workflow
+
+Reference agent workflow standards in:
+- `standards/process/15_agent_workflow_standards.md`
+
 
 

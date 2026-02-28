@@ -204,3 +204,93 @@ pub fn create_user(email: Email, name: String) -> User {
 * **Workspaces:** Use workspaces for monorepo structure.
 * **Publishing:** Follow semantic versioning. Use `cargo publish` for crates.io.
 
+## 14. Inline Test Modules
+
+* **Convention:** Tests live in `#[cfg(test)] mod tests { use super::*; ... }` within each source file.
+* **Rationale:** Inline tests have access to private helpers without polluting the public API. Refactoring code and tests together is easier when they're in the same file.
+* **Exception:** Integration tests that need compiled binaries or external processes belong in `tests/` at the crate root.
+
+```rust
+// In src/document.rs
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insert_at_boundary_extends_document() {
+        let mut doc = Document::new("hello");
+        doc.insert(5, " world").unwrap();
+        assert_eq!(doc.text(), "hello world");
+    }
+}
+```
+
+## 15. Workspace Member Tooling
+
+* **Convention:** Data generators, seed tools, and scaffolding belong as workspace members, not external scripts.
+* **Rationale:** Ensures version consistency with the main crate. CI can build and test them alongside the app. They're easy to iterate on during development.
+* **Example:** A `tools/my-seed/` crate that generates test fixtures is a workspace member in the root `Cargo.toml`:
+
+```toml
+[workspace]
+members = [
+    "packages/*",
+    "apps/*",
+    "tools/my-seed",
+]
+```
+
+## 16. Feature Flag Conventions
+
+* **Named flags** for optional capabilities: `cosmic-shaping = ["dep:cosmic-text"]`.
+* **Reserved flags** for documented future work: `experimental-sync = []` with a comment explaining intent.
+* **Documentation:** Always add a comment in `Cargo.toml` explaining what a feature flag enables.
+
+```toml
+[features]
+# Enable advanced text shaping via cosmic-text
+cosmic-shaping = ["dep:cosmic-text"]
+# Reserved for future CRDT-based collaboration (automerge-rs)
+experimental-sync = []
+```
+
+## 17. Enforcing Documentation
+
+* **Library crates:** Add `#![deny(missing_docs)]` to `lib.rs`. Every public item requires a `///` doc comment.
+* **App crates:** Documentation is recommended but not enforced. App entry points change frequently and internal APIs are less stable.
+* **Compiler warnings as errors:** Add `#![deny(warnings)]` to all library crate roots. This catches dead code, unused imports, and other issues early.
+
+## 18. Error Handling Layering (Rust-Specific)
+
+* **Library crates:** Use `thiserror` with typed error enums. Each error variant includes context fields.
+* **App crates:** Use `anyhow` for context-rich error chaining. Wrap library errors with `.context("what was happening")`.
+* **GUI event handlers:** Handlers that return `()` (common in frameworks like Makepad, egui, iced) should `eprintln!` errors, never `panic!` or `unwrap()`.
+
+```rust
+// Library crate
+#[derive(Debug, thiserror::Error)]
+pub enum DocumentError {
+    #[error("offset {offset} is out of bounds for document length {len}")]
+    OffsetOutOfBounds { offset: usize, len: usize },
+}
+
+// App crate
+use anyhow::Context;
+fn load_project(path: &Path) -> anyhow::Result<Project> {
+    let data = std::fs::read_to_string(path)
+        .context("failed to read project file")?;
+    // ...
+}
+```
+
+## 19. Workspace Cargo Configuration
+
+* **`.cargo/config.toml`:** Use for workspace-wide settings (target-specific flags, custom runners, env vars).
+* **`RUSTC_WRAPPER`:** When external build tools hard-code `RUSTFLAGS` (e.g., `cargo-makepad wasm build`), use a wrapper script to inject required flags without conflicting.
+* **Target-specific config:** Platform-specific compilation flags belong in `.cargo/config.toml`, not scattered across Makefiles.
+
+```toml
+# .cargo/config.toml
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="custom"']
+```
