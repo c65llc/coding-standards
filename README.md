@@ -24,6 +24,8 @@ The installer will:
 - ✅ Set up `.github/copilot-instructions.md` for GitHub Copilot
 - ✅ Set up `.aiderrc` for Aider (Claude Code)
 - ✅ Set up `.codexrc` for OpenAI Codex
+- ✅ Set up `CLAUDE.md` template for Claude Code
+- ✅ Set up `.claude/settings.json` for Claude Code permissions
 - ✅ Add `make sync-standards` target to your Makefile
 - ✅ Configure git hooks for automatic updates
 
@@ -87,7 +89,9 @@ gh-task submit
 │   ├── architecture/              # Core architecture & automation
 │   │   ├── 00_project_standards_and_architecture.md
 │   │   ├── 01_automation_standards.md
-│   │   └── 02_cursor_automation_standards.md
+│   │   ├── 02_cursor_automation_standards.md
+│   │   ├── 16_data_versioning_and_migration_standards.md
+│   │   └── 17_resilient_architecture_patterns.md
 │   ├── languages/                 # Language-specific standards
 │   │   ├── 03_python_standards.md
 │   │   ├── 04_java_standards.md
@@ -98,10 +102,16 @@ gh-task submit
 │   │   ├── 09_javascript_standards.md
 │   │   ├── 10_rust_standards.md
 │   │   └── 11_zig_standards.md
-│   └── process/                   # Process & workflow standards
-│       ├── 12_documentation_standards.md
-│       ├── 13_git_version_control_standards.md
-│       └── 14_code_review_expectations.md
+│   ├── process/                   # Process & workflow standards
+│   │   ├── 12_documentation_standards.md
+│   │   ├── 13_git_version_control_standards.md
+│   │   ├── 14_code_review_expectations.md
+│   │   └── 15_agent_workflow_standards.md
+│   └── agents/                    # AI agent configurations
+│       ├── copilot/               # GitHub Copilot
+│       ├── aider/                 # Aider
+│       ├── codex/                 # OpenAI Codex
+│       └── claude-code/           # Claude Code (CLAUDE.md template, settings)
 │
 ├── scripts/                       # Automation scripts
 │   ├── setup.sh                  # Setup standards in a project
@@ -162,6 +172,8 @@ sync-standards: ## Sync project standards to latest version
 - **Project Standards & Architecture** - Core architecture, SOLID principles, naming conventions
 - **Automation Standards** - Makefile targets and automation requirements
 - **Cursor Automation Standards** - Cursor-specific interaction modes
+- **Data Versioning & Migration** - Schema versioning, migration strategies, backward compatibility
+- **Resilient Architecture Patterns** - Per-module coverage gates, pure render logic, responsive design, error layering
 
 ### Language Standards
 
@@ -177,6 +189,7 @@ Each includes: package management, code style, naming conventions, testing, erro
 - **Documentation Standards** - ADR, code docs, changelog, user docs
 - **Git & Version Control** - Workflow, commits, branching
 - **Code Review Expectations** - Review process and best practices
+- **Agent Workflow Standards** - Worktree isolation, AI guide templates, permission models, devloop pattern
 
 ## 🛠️ Usage
 
