@@ -178,3 +178,74 @@ This implementation:
 * When user types `\pr` in Cursor chat, Cursor reads the PR information file
 * Cursor generates an improved title and body based on code changes
 * Cursor then calls: `PR_TITLE="<generated>" PR_BODY="<generated>" make pr`
+
+## 4. Self-Documenting Make Targets
+
+Every Makefile phony target MUST include a `## description` comment on the same line as the target declaration. This enables `make ls` to auto-list all targets with descriptions.
+
+### Convention
+
+```makefile
+my-target: ## Short description of what this target does
+	@echo "Running my-target"
+```
+
+### Required `ls` Target
+
+```makefile
+.PHONY: ls
+ls: ## List all available make targets with descriptions
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+```
+
+Targets without `## description` will not appear in `make ls`. This is intentional — internal helper targets can be hidden by omitting the description.
+
+## 5. Per-Module Coverage Gates
+
+Coverage baselines should be configurable per-module via Make variables, not a single global threshold:
+
+```makefile
+CORE_COV_MIN  ?= 95
+APP_COV_MIN   ?= 90
+INFRA_COV_MIN ?= 80
+
+coverage-check: ## Enforce per-module coverage baselines
+	@echo "Checking coverage baselines..."
+	# Run coverage tool per module and compare against threshold
+```
+
+This allows projects to set tighter constraints on core/domain code (where bugs are most expensive) and lower thresholds on infrastructure (where testing is harder and less valuable).
+
+## 6. Seed Data Targets
+
+Projects with UI or data models SHOULD include targets for generating test/demo data:
+
+### `make seed`
+* **Goal:** Generate realistic development seed data.
+* **Action:** Runs a seed generator that produces sample data for local development.
+* **Post-condition:** Seed data is written to a well-known directory (e.g., `.dev/seed-realistic/`).
+
+### `make seed-stress`
+* **Goal:** Generate stress-test data for performance validation.
+* **Action:** Produces large datasets for benchmarking and load testing.
+* **Post-condition:** Stress data is written to a separate directory (e.g., `.dev/seed-stress/`).
+
+### Guidelines
+
+* Seed generators should be **idempotent** — running twice produces the same result (or supports a `--force` flag for regeneration).
+* Seed generators should be **workspace members** (e.g., a `tools/my-seed/` crate), not standalone scripts, to ensure version consistency.
+* The app should support loading seed data via an environment variable (e.g., `SEED_PATH`).
+
+## 7. Devloop Target (UI Projects)
+
+Projects with a graphical interface SHOULD include an agent-friendly development loop:
+
+### `make setup-devloop`
+* **Goal:** Install devloop dependencies (e.g., Node.js server, Playwright, etc.).
+* **Action:** One-time setup for the devloop infrastructure.
+
+### `make devloop`
+* **Goal:** Start an HTTP server for autonomous UI iteration.
+* **Action:** Launches a build/inspect cycle API (see `15_agent_workflow_standards.md` for endpoint specification).
+* **Post-condition:** Server is running and accessible at a documented port (e.g., `localhost:9010`).
