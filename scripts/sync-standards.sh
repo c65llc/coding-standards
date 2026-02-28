@@ -75,6 +75,30 @@ sync_ai_agents() {
             fi
         fi
     fi
+
+    # Sync Claude Code
+    if [ -d "$AGENTS_DIR/claude-code" ]; then
+        if [ ! -f "$PROJECT_ROOT/CLAUDE.md" ]; then
+            if [ -f "$AGENTS_DIR/claude-code/CLAUDE.md.template" ]; then
+                echo "📝 Adding Claude Code guide (CLAUDE.md not yet configured)..."
+                if cp "$AGENTS_DIR/claude-code/CLAUDE.md.template" "$PROJECT_ROOT/CLAUDE.md" 2>/dev/null; then
+                    echo "✅ CLAUDE.md template added at project root"
+                    echo "💡 Customize CLAUDE.md with your project-specific details"
+                fi
+            fi
+        else
+            echo "ℹ️  CLAUDE.md exists (project-specific, not overwritten by sync)"
+        fi
+        if [ ! -f "$PROJECT_ROOT/.claude/settings.json" ]; then
+            if [ -f "$AGENTS_DIR/claude-code/settings.json.example" ]; then
+                echo "📝 Adding Claude Code settings..."
+                mkdir -p "$PROJECT_ROOT/.claude"
+                if cp "$AGENTS_DIR/claude-code/settings.json.example" "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null; then
+                    echo "✅ Claude Code settings added at .claude/settings.json"
+                fi
+            fi
+        fi
+    fi
 }
 
 echo "🔄 Syncing project standards..."
