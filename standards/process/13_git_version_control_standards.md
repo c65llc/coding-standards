@@ -398,13 +398,63 @@ git lfs track "*.psd"
 git lfs track "*.zip"
 ```
 
-## 10. Repository Maintenance
+## 10. Branch Lifecycle
 
-### Housekeeping
+### Cleanup After Merge
 
-* **Regular Cleanup:** Remove merged branches monthly
-* **Archive Old Branches:** Archive instead of delete for historical reference
-* **Garbage Collection:** Run `git gc` periodically (usually automatic)
+Branches MUST be deleted — both local and remote — immediately after their PR is merged or closed. Do not accumulate stale branches.
+
+* **PR merge:** Enable "Automatically delete head branches" in GitHub repo settings. This handles the remote branch. Delete the local branch manually after merge.
+* **Squash merges:** Squash-merged branches are not detected by `git branch --merged`. Use `git branch -d <branch>` (lowercase `-d`) which checks if the branch is fully merged; if it refuses, verify the work landed via PR, then use `git branch -D <branch>`.
+* **Worktrees:** Remove the worktree before deleting its branch: `git worktree remove <path>` then `git branch -D <branch>`.
+
+### Naming Branches for Traceability
+
+Include enough context in the branch name to identify the work without checking the log:
+
+```
+feat/preview-scroll-optimization    ✓ clear purpose
+fix/sidebar-drag-crash              ✓ clear purpose
+worktree-agent-a0939472             ✗ opaque, impossible to triage later
+tmp                                 ✗ no context
+copilot/sub-pr-7                    ✗ meaningless without the PR
+```
+
+Agent-generated branches MUST follow the same `type/description` convention as human branches. Opaque IDs or numeric suffixes alone are not acceptable names.
+
+### Periodic Audit
+
+Run a branch audit at least every two weeks (or before starting a new feature):
+
+```bash
+# List local branches not on main, sorted by last commit date
+git branch --no-merged main --format='%(committerdate:short) %(refname:short)' | sort
+
+# List remote branches with no recent activity (>14 days)
+git for-each-ref --sort=committerdate --format='%(committerdate:short) %(refname:short)' refs/remotes/origin | head -20
+
+# Delete local branches whose remote is gone
+git fetch --prune
+git branch -vv | grep ': gone]' | awk '{print $1}' | xargs -r git branch -D
+```
+
+Projects using `make` SHOULD include a cleanup target:
+
+```makefile
+branch-cleanup: ## Delete local branches whose remote tracking branch is gone
+	@git fetch --prune
+	@git branch -vv | grep ': gone]' | awk '{print $$1}' | xargs -r git branch -D
+	@echo "Remaining branches:" && git branch
+```
+
+### Branch Limits
+
+As a guideline, a repository should have fewer than **10 active branches** at any time. If you have more, audit and clean up before creating new ones. This applies to both local and remote branches (excluding `main`).
+
+### Garbage Collection
+
+* Run `git gc` periodically (usually automatic).
+* After large cleanups, run `git gc --prune=now` to reclaim space immediately.
 
 ### Security
 

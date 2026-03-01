@@ -18,7 +18,32 @@ cd .claude/worktrees/<branch-name>
 * Never modify files in the root checkout from an automated agent session.
 * Create a new worktree at the start of each feature/fix branch.
 * Run `make ci` within the worktree before considering work complete.
-* Clean up worktrees after merging: `git worktree remove .claude/worktrees/<branch-name>`.
+* **Clean up immediately after merge.** Remove worktree, delete local branch, delete remote branch:
+  ```bash
+  git worktree remove .claude/worktrees/<branch-name>
+  git branch -D <branch-name>
+  git push origin --delete <branch-name>  # if pushed to remote
+  ```
+
+### Branch Naming
+
+Agent branches MUST use the same `type/description` convention as human branches. Opaque IDs or numeric suffixes alone are not acceptable:
+
+```
+feat/preview-scroll-optimization    ✓ descriptive
+fix/sidebar-drag-crash              ✓ descriptive
+worktree-agent-a0939472             ✗ opaque, impossible to triage
+copilot/sub-pr-7                    ✗ meaningless without the PR
+```
+
+### Pre-Work Hygiene
+
+Before starting new work, verify no stale agent worktrees or branches remain:
+
+```bash
+git worktree list            # should only show root checkout + active work
+git branch --no-merged main  # audit for abandoned branches
+```
 
 ## 2. Project-Level AI Guide
 
