@@ -1,0 +1,323 @@
+---
+const title = 'Coding Standards — One Standards Framework. Every AI Agent.';
+const description = 'Unified coding standards for every AI coding assistant. Keep Cursor, Copilot, Claude Code, Codex, and Gemini CLI all writing consistent, clean code.';
+const githubUrl = 'https://github.com/c65llc/coding_standards';
+const docsUrl = '/getting-started/quick-start/';
+const installCmd = 'curl -fsSL https://raw.githubusercontent.com/c65llc/coding_standards/main/install.sh | bash';
+
+const agents = [
+  { name: 'Cursor AI', config: '.cursorrules', icon: '{}' },
+  { name: 'GitHub Copilot', config: 'copilot-instructions.md', icon: '<>' },
+  { name: 'Claude Code', config: 'CLAUDE.md', icon: '>>'},
+  { name: 'OpenAI Codex', config: '.codexrc', icon: '()' },
+  { name: 'Gemini CLI', config: 'GEMINI.md', icon: '//' },
+];
+
+const languages = [
+  { name: 'Python', ext: '.py' },
+  { name: 'Java', ext: '.java' },
+  { name: 'Kotlin', ext: '.kt' },
+  { name: 'Swift', ext: '.swift' },
+  { name: 'Dart', ext: '.dart' },
+  { name: 'TypeScript', ext: '.ts' },
+  { name: 'JavaScript', ext: '.js' },
+  { name: 'Rust', ext: '.rs' },
+  { name: 'Zig', ext: '.zig' },
+];
+
+const features = [
+  {
+    title: 'Multi-Agent Sync',
+    desc: 'One source of truth, every agent stays consistent. No more conflicting styles across tools.',
+    icon: '\u21C4',
+  },
+  {
+    title: 'Clean Architecture',
+    desc: 'Domain-driven design principles applied consistently across all supported languages.',
+    icon: '\u25B3',
+  },
+  {
+    title: 'One-Command Setup',
+    desc: 'Install everything with a single command. Standards land where each agent expects them.',
+    icon: '\u26A1',
+  },
+  {
+    title: 'Auto-Updating',
+    desc: 'Git hooks keep standards in sync. Pull once, every agent gets the latest rules.',
+    icon: '\u21BB',
+  },
+];
+
+const steps = [
+  { num: '1', title: 'Install', desc: 'Run a single install command in your repo.' },
+  { num: '2', title: 'Standards sync to all agents', desc: 'Config files are generated for Cursor, Copilot, Claude Code, Codex, and Gemini CLI.' },
+  { num: '3', title: 'Consistent code', desc: 'Every AI assistant follows the same architecture and style rules.' },
+];
+---
+
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="https://coding_standards.c65llc.com/og-image.png" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+
+  <body>
+    <!-- NAV -->
+    <nav class="nav">
+      <div class="nav-inner">
+        <a href="/" class="nav-brand">Coding Standards</a>
+        <div class="nav-links">
+          <a href={docsUrl}>Docs</a>
+          <a href={githubUrl} target="_blank" rel="noopener noreferrer">GitHub</a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- HERO -->
+    <section class="hero">
+      <div class="container">
+        <h1 class="hero-title">One Standards Framework.<br/>Every AI Agent.</h1>
+        <p class="hero-sub">Unified coding standards that keep every AI coding assistant writing consistent, clean&nbsp;code.</p>
+        <div class="hero-code">
+          <pre><code>{installCmd}</code></pre>
+        </div>
+        <div class="hero-actions">
+          <a href={docsUrl} class="btn btn-primary">Get Started</a>
+          <a href={githubUrl} class="btn btn-outline" target="_blank" rel="noopener noreferrer">View on GitHub</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROBLEM / SOLUTION -->
+    <section class="problem-solution">
+      <div class="container ps-grid">
+        <div class="ps-card problem">
+          <h2>The Problem</h2>
+          <p>AI coding agents each follow their own conventions. One uses tabs, another spaces. One favors inheritance, another composition. Without shared rules, your codebase becomes a patchwork of conflicting styles&mdash;harder to review, harder to maintain.</p>
+        </div>
+        <div class="ps-card solution">
+          <h2>The Solution</h2>
+          <p>A single standards framework that compiles into every agent's native config format. Write your rules once&mdash;Cursor, Copilot, Claude&nbsp;Code, Codex, and Gemini&nbsp;CLI all receive the same architecture, style, and process&nbsp;guidelines.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- AGENT SHOWCASE -->
+    <section class="agents">
+      <div class="container">
+        <h2 class="section-title">Supported Agents</h2>
+        <p class="section-sub">First-class support for the five leading AI coding assistants.</p>
+        <div class="agent-grid">
+          {agents.map((a) => (
+            <div class="agent-card">
+              <span class="agent-icon">{a.icon}</span>
+              <h3>{a.name}</h3>
+              <code class="agent-config">{a.config}</code>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- LANGUAGE GRID -->
+    <section class="languages">
+      <div class="container">
+        <h2 class="section-title">9 Languages. One Standard.</h2>
+        <p class="section-sub">Consistent architecture and idioms across every language your team uses.</p>
+        <div class="lang-grid">
+          {languages.map((l) => (
+            <div class="lang-card">
+              <span class="lang-name">{l.name}</span>
+              <span class="lang-ext">{l.ext}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURE HIGHLIGHTS -->
+    <section class="features">
+      <div class="container">
+        <h2 class="section-title">Why Coding Standards?</h2>
+        <div class="feature-grid">
+          {features.map((f) => (
+            <div class="feature-card">
+              <span class="feature-icon">{f.icon}</span>
+              <h3>{f.title}</h3>
+              <p>{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section class="how">
+      <div class="container">
+        <h2 class="section-title">How It Works</h2>
+        <div class="steps">
+          {steps.map((s, i) => (
+            <div class="step">
+              <span class="step-num">{s.num}</span>
+              <h3>{s.title}</h3>
+              <p>{s.desc}</p>
+              {i < steps.length - 1 && <span class="step-arrow" aria-hidden="true">&rarr;</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta">
+      <div class="container">
+        <h2>Get started in 5 minutes</h2>
+        <div class="hero-code">
+          <pre><code>{installCmd}</code></pre>
+        </div>
+        <a href={docsUrl} class="btn btn-primary">Read the Docs</a>
+      </div>
+    </section>
+
+    <!-- FOOTER -->
+    <footer class="footer">
+      <div class="container footer-inner">
+        <span>&copy; {new Date().getFullYear()} C65 LLC</span>
+        <div class="footer-links">
+          <a href={docsUrl}>Docs</a>
+          <a href={githubUrl} target="_blank" rel="noopener noreferrer">GitHub</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
+
+<style>
+  /* ---- Reset & Base ---- */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --sl-color-white: #fff;
+    --sl-color-gray-1: #f0f0f0;
+    --sl-color-gray-2: #c2c2c2;
+    --sl-color-gray-3: #8b8b8b;
+    --sl-color-gray-5: #2a2a2a;
+    --sl-color-gray-6: #1a1a1a;
+    --sl-color-gray-7: #111;
+    --sl-color-accent: #6d5dfc;
+    --sl-color-accent-light: #8b7dff;
+    --sl-color-bg: #0d0d0d;
+    --sl-font-system: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    --sl-font-mono: ui-monospace, 'Cascadia Code', 'Fira Code', Menlo, monospace;
+    --radius: 8px;
+    --max-w: 1120px;
+  }
+
+  html { background: var(--sl-color-bg); color: var(--sl-color-gray-1); }
+  body { font-family: var(--sl-font-system); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+
+  .container { max-width: var(--max-w); margin: 0 auto; padding: 0 1.5rem; }
+  a { color: var(--sl-color-accent-light); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ---- Nav ---- */
+  .nav { position: sticky; top: 0; z-index: 100; background: rgba(13, 13, 13, 0.85); backdrop-filter: blur(12px); border-bottom: 1px solid var(--sl-color-gray-5); }
+  .nav-inner { max-width: var(--max-w); margin: 0 auto; padding: 0.75rem 1.5rem; display: flex; align-items: center; justify-content: space-between; }
+  .nav-brand { font-weight: 700; font-size: 1.1rem; color: var(--sl-color-white); }
+  .nav-brand:hover { text-decoration: none; }
+  .nav-links { display: flex; gap: 1.5rem; }
+  .nav-links a { color: var(--sl-color-gray-2); font-size: 0.95rem; }
+  .nav-links a:hover { color: var(--sl-color-white); text-decoration: none; }
+
+  /* ---- Buttons ---- */
+  .btn { display: inline-block; padding: 0.75rem 1.5rem; border-radius: var(--radius); font-weight: 600; font-size: 1rem; transition: background 0.2s, color 0.2s, border-color 0.2s; }
+  .btn:hover { text-decoration: none; }
+  .btn-primary { background: var(--sl-color-accent); color: var(--sl-color-white); }
+  .btn-primary:hover { background: var(--sl-color-accent-light); }
+  .btn-outline { border: 1px solid var(--sl-color-gray-3); color: var(--sl-color-gray-1); }
+  .btn-outline:hover { border-color: var(--sl-color-white); color: var(--sl-color-white); }
+
+  /* ---- Hero ---- */
+  .hero { padding: 6rem 0 4rem; text-align: center; }
+  .hero-title { font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
+  .hero-sub { margin-top: 1rem; font-size: 1.2rem; color: var(--sl-color-gray-2); max-width: 600px; margin-left: auto; margin-right: auto; }
+  .hero-code { margin: 2rem auto; max-width: 700px; background: var(--sl-color-gray-7); border: 1px solid var(--sl-color-gray-5); border-radius: var(--radius); overflow-x: auto; }
+  .hero-code pre { padding: 1rem 1.25rem; margin: 0; }
+  .hero-code code { font-family: var(--sl-font-mono); font-size: 0.9rem; color: var(--sl-color-gray-1); white-space: pre; }
+  .hero-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+
+  /* ---- Section shared ---- */
+  .section-title { text-align: center; font-size: 1.8rem; font-weight: 700; margin-bottom: 0.5rem; }
+  .section-sub { text-align: center; color: var(--sl-color-gray-3); margin-bottom: 2.5rem; font-size: 1.05rem; }
+
+  /* ---- Problem / Solution ---- */
+  .problem-solution { padding: 5rem 0; }
+  .ps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+  .ps-card { padding: 2rem; border-radius: var(--radius); border: 1px solid var(--sl-color-gray-5); }
+  .ps-card h2 { font-size: 1.3rem; margin-bottom: 0.75rem; }
+  .ps-card p { color: var(--sl-color-gray-2); }
+  .problem { background: rgba(255, 80, 80, 0.05); border-color: rgba(255, 80, 80, 0.2); }
+  .problem h2 { color: #ff6b6b; }
+  .solution { background: rgba(80, 255, 120, 0.05); border-color: rgba(80, 255, 120, 0.2); }
+  .solution h2 { color: #6bffb8; }
+
+  /* ---- Agent Showcase ---- */
+  .agents { padding: 5rem 0; }
+  .agent-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.25rem; }
+  .agent-card { text-align: center; padding: 1.75rem 1rem; border: 1px solid var(--sl-color-gray-5); border-radius: var(--radius); background: var(--sl-color-gray-7); transition: border-color 0.2s; }
+  .agent-card:hover { border-color: var(--sl-color-accent); }
+  .agent-icon { font-family: var(--sl-font-mono); font-size: 1.6rem; display: block; margin-bottom: 0.75rem; color: var(--sl-color-accent-light); }
+  .agent-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; }
+  .agent-config { font-family: var(--sl-font-mono); font-size: 0.8rem; color: var(--sl-color-gray-3); background: var(--sl-color-gray-6); padding: 0.2rem 0.5rem; border-radius: 4px; }
+
+  /* ---- Language Grid ---- */
+  .languages { padding: 5rem 0; }
+  .lang-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 1rem; }
+  .lang-card { text-align: center; padding: 1.25rem 0.75rem; border: 1px solid var(--sl-color-gray-5); border-radius: var(--radius); background: var(--sl-color-gray-7); transition: border-color 0.2s; }
+  .lang-card:hover { border-color: var(--sl-color-accent); }
+  .lang-name { display: block; font-weight: 600; font-size: 0.95rem; }
+  .lang-ext { display: block; font-family: var(--sl-font-mono); font-size: 0.8rem; color: var(--sl-color-gray-3); margin-top: 0.25rem; }
+
+  /* ---- Features ---- */
+  .features { padding: 5rem 0; }
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; }
+  .feature-card { padding: 1.75rem; border: 1px solid var(--sl-color-gray-5); border-radius: var(--radius); background: var(--sl-color-gray-7); }
+  .feature-icon { font-size: 1.6rem; display: block; margin-bottom: 0.75rem; }
+  .feature-card h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; }
+  .feature-card p { color: var(--sl-color-gray-2); font-size: 0.95rem; }
+
+  /* ---- How It Works ---- */
+  .how { padding: 5rem 0; }
+  .steps { display: flex; gap: 2rem; justify-content: center; flex-wrap: wrap; }
+  .step { position: relative; flex: 1 1 220px; max-width: 300px; text-align: center; padding: 2rem 1.25rem; border: 1px solid var(--sl-color-gray-5); border-radius: var(--radius); background: var(--sl-color-gray-7); }
+  .step-num { display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; border-radius: 50%; background: var(--sl-color-accent); color: var(--sl-color-white); font-weight: 700; font-size: 1.1rem; margin-bottom: 0.75rem; }
+  .step h3 { font-size: 1.05rem; margin-bottom: 0.5rem; }
+  .step p { color: var(--sl-color-gray-2); font-size: 0.9rem; }
+  .step-arrow { display: none; }
+
+  /* ---- CTA ---- */
+  .cta { padding: 5rem 0; text-align: center; }
+  .cta h2 { font-size: 2rem; font-weight: 700; margin-bottom: 1rem; }
+  .cta .btn { margin-top: 1rem; }
+
+  /* ---- Footer ---- */
+  .footer { padding: 2rem 0; border-top: 1px solid var(--sl-color-gray-5); margin-top: 2rem; }
+  .footer-inner { display: flex; align-items: center; justify-content: space-between; font-size: 0.9rem; color: var(--sl-color-gray-3); }
+  .footer-links { display: flex; gap: 1.25rem; }
+  .footer-links a { color: var(--sl-color-gray-3); }
+  .footer-links a:hover { color: var(--sl-color-white); }
+
+  /* ---- Responsive ---- */
+  @media (max-width: 700px) {
+    .ps-grid { grid-template-columns: 1fr; }
+    .steps { flex-direction: column; align-items: center; }
+    .hero { padding: 4rem 0 3rem; }
+  }
+</style>
