@@ -100,7 +100,7 @@ class Failure<T> extends Result<T> {
 
 * **Framework:** `test` package. Use `expect()` for assertions.
 * **Mocking:** `mockito` with code generation. Use `@GenerateMocks` annotation.
-* **Coverage:** `test_coverage`. Target 90%+ for application, 100% for domain.
+* **Coverage:** `test_coverage`. **95% is the absolute minimum for any module.** Target 100% for domain, 95%+ for application and infrastructure.
 
 ### Test Structure
 

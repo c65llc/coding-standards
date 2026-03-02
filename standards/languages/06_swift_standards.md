@@ -104,7 +104,7 @@ enum DomainError: Error {
 
 * **Framework:** `XCTest`. Use `XCTAssert*` functions.
 * **Mocking:** Use protocols for testability. Create test doubles manually or use `Mockingbird`.
-* **Coverage:** Enable code coverage in Xcode. Target 90%+ for application, 100% for domain.
+* **Coverage:** Enable code coverage in Xcode. **95% is the absolute minimum for any module.** Target 100% for domain, 95%+ for application and infrastructure.
 
 ### Test Structure
 

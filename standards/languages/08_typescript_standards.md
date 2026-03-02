@@ -115,7 +115,7 @@ class InvalidEmailError extends DomainError {
 
 * **Framework:** `vitest` or `jest`. Use `@testing-library` for component tests.
 * **Mocking:** `vitest` built-in mocking or `jest.mock()`. Mock external dependencies.
-* **Coverage:** Target 90%+ for application, 100% for domain.
+* **Coverage:** **95% is the absolute minimum for any module.** Target 100% for domain, 95%+ for application and infrastructure.
 
 ### Test Structure
 

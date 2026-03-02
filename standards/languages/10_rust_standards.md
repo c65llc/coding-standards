@@ -102,7 +102,7 @@ pub enum DomainError {
 
 * **Framework:** Built-in `#[test]` and `#[cfg(test)]`. Use `cargo test`.
 * **Mocking:** Use `mockall` for trait mocking. Use test doubles for integration tests.
-* **Coverage:** Use `cargo-tarpaulin` or `grcov`. Target 90%+ for application, 100% for domain.
+* **Coverage:** Use `cargo-tarpaulin` or `grcov`. **95% is the absolute minimum for any module.** Target 100% for domain, 95%+ for application and infrastructure.
 
 ### Test Structure
 

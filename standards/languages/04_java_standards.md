@@ -87,7 +87,7 @@ public sealed interface Result<T> permits Success, Failure {
 
 * **Framework:** `JUnit 5` with `AssertJ` for assertions.
 * **Mocking:** `Mockito` for mocks. Use `@Mock` and `@InjectMocks`.
-* **Coverage:** `JaCoCo`. Target 90%+ for application, 100% for domain.
+* **Coverage:** `JaCoCo`. **95% is the absolute minimum for any module.** Target 100% for domain, 95%+ for application and infrastructure.
 
 ### Test Structure
 
