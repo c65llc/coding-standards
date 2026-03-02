@@ -165,7 +165,7 @@ MAKEFILE
     echo -e "${GREEN}✅ Created Makefile with standards targets${NC}"
 fi
 
-# Add .standards_tmp/ to .gitignore if needed
+# Add .standards_tmp/ and coverage/ to .gitignore if needed
 echo -e "${BLUE}📝 Updating .gitignore...${NC}"
 if [ -f "$PROJECT_ROOT/.gitignore" ]; then
     if ! grep -q ".standards_tmp" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
@@ -176,13 +176,24 @@ if [ -f "$PROJECT_ROOT/.gitignore" ]; then
     else
         echo -e "${YELLOW}⚠️  .standards_tmp/ already in .gitignore${NC}"
     fi
+    if ! grep -q "coverage/" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
+        echo "" >> "$PROJECT_ROOT/.gitignore"
+        echo "# Test coverage output" >> "$PROJECT_ROOT/.gitignore"
+        echo "coverage/" >> "$PROJECT_ROOT/.gitignore"
+        echo -e "${GREEN}✅ Added coverage/ to .gitignore${NC}"
+    else
+        echo -e "${YELLOW}⚠️  coverage/ already in .gitignore${NC}"
+    fi
 else
-    # Create .gitignore with .standards_tmp/
+    # Create .gitignore with .standards_tmp/ and coverage/
     cat > "$PROJECT_ROOT/.gitignore" << 'GITIGNORE'
+# Test coverage output
+coverage/
+
 # Standards temporary files
 .standards_tmp/
 GITIGNORE
-    echo -e "${GREEN}✅ Created .gitignore with .standards_tmp/${NC}"
+    echo -e "${GREEN}✅ Created .gitignore with .standards_tmp/ and coverage/${NC}"
 fi
 
 # Summary

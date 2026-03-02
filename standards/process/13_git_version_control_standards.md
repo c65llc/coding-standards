@@ -356,6 +356,16 @@ Cargo.lock  # For libraries, not applications
 build/
 ```
 
+### Test / coverage output
+
+Ignore generated coverage reports so they are never committed:
+
+```
+coverage/
+```
+
+Common tools that write here: Vitest, Jest, pytest, Istanbul/c8, lcov. Projects using the standards setup or install scripts get this pattern added automatically.
+
 ### General
 
 ```

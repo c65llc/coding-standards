@@ -23,6 +23,9 @@ Thumbs.db
 *.temp
 *.log
 
+# Test coverage output (vitest, jest, pytest, etc.)
+coverage/
+
 # Standards temporary files directory (used by Cursor AI commands and scripts)
 .standards_tmp/
 
