@@ -14,7 +14,7 @@
 # 
 # jobs:
 #   sync-project:
-#     uses: c65llc/coding_standards/.github/workflows/lifecycle-sync.yml@main
+#     uses: c65llc/coding-standards/.github/workflows/lifecycle-sync.yml@main
 #     with:
 #       project_id: ${{ vars.PROJECT_ID }}
 #     secrets:
@@ -33,7 +33,7 @@
 # 
 # jobs:
 #   quality-checks:
-#     uses: c65llc/coding_standards/.github/workflows/definition-of-done.yml@main
+#     uses: c65llc/coding-standards/.github/workflows/definition-of-done.yml@main
 #     with:
 #       node_version: '18'           # Adjust to your Node.js version
 #       python_version: '3.11'       # Adjust to your Python version

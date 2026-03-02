@@ -4,7 +4,7 @@
 
 If you discover a security vulnerability in this project, please report it through GitHub's private security advisory feature:
 
-1. Go to [github.com/c65llc/coding_standards](https://github.com/c65llc/coding_standards)
+1. Go to [github.com/c65llc/coding-standards](https://github.com/c65llc/coding-standards)
 2. Navigate to **Settings > Security > Advisories**
 3. Click **New draft security advisory**
 4. Provide a clear description of the vulnerability, steps to reproduce, and any potential impact
@@ -33,4 +33,4 @@ The following do not qualify as security vulnerabilities:
 - Documentation typos or formatting issues
 - Feature requests or general feedback
 
-For these, please open a regular [GitHub issue](https://github.com/c65llc/coding_standards/issues).
+For these, please open a regular [GitHub issue](https://github.com/c65llc/coding-standards/issues).

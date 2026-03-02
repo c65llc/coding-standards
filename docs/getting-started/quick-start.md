@@ -12,19 +12,19 @@ Get up and running with project standards in 5 minutes.
 **Option A: One-line installer**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/c65llc/coding_standards/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/c65llc/coding-standards/main/install.sh | bash
 ```
 
 **Option B: Git submodule (recommended for teams)**
 
 ```bash
-git submodule add https://github.com/c65llc/coding_standards.git .standards
+git submodule add https://github.com/c65llc/coding-standards.git .standards
 ```
 
 **Option C: Clone directly**
 
 ```bash
-git clone https://github.com/c65llc/coding_standards.git .standards
+git clone https://github.com/c65llc/coding-standards.git .standards
 ```
 
 ## Step 2: Run Setup

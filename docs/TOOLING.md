@@ -103,7 +103,7 @@ on:
 
 jobs:
   sync-project:
-    uses: c65llc/coding_standards/.github/workflows/lifecycle-sync.yml@main
+    uses: c65llc/coding-standards/.github/workflows/lifecycle-sync.yml@main
     with:
       project_id: ${{ vars.PROJECT_ID }}
     secrets:
@@ -135,7 +135,7 @@ on:
 
 jobs:
   quality-checks:
-    uses: c65llc/coding_standards/.github/workflows/definition-of-done.yml@main
+    uses: c65llc/coding-standards/.github/workflows/definition-of-done.yml@main
     with:
       node_version: '18'
       python_version: '3.11'
@@ -384,10 +384,10 @@ echo "✅ Workspace initialized"
 
 ## Setup Guide for Projects
 
-### 1. Add coding_standards Submodule
+### 1. Add coding-standards Submodule
 
 ```bash
-git submodule add https://github.com/c65llc/coding_standards.git .standards
+git submodule add https://github.com/c65llc/coding-standards.git .standards
 git submodule update --init --recursive
 ```
 
@@ -425,7 +425,7 @@ on:
 
 jobs:
   sync-project:
-    uses: c65llc/coding_standards/.github/workflows/lifecycle-sync.yml@main
+    uses: c65llc/coding-standards/.github/workflows/lifecycle-sync.yml@main
     with:
       project_id: ${{ vars.PROJECT_ID }}
     secrets:
@@ -442,7 +442,7 @@ on:
 
 jobs:
   quality-checks:
-    uses: c65llc/coding_standards/.github/workflows/definition-of-done.yml@main
+    uses: c65llc/coding-standards/.github/workflows/definition-of-done.yml@main
     with:
       run_linting: true
       run_tests: true

@@ -16,7 +16,7 @@ Best when multiple projects share the same standards.
 #### Add the submodule
 
 ```bash
-git submodule add https://github.com/c65llc/coding_standards.git .standards
+git submodule add https://github.com/c65llc/coding-standards.git .standards
 git submodule update --init --recursive
 ```
 
@@ -45,7 +45,7 @@ git commit -m "chore: add project standards submodule"
 Best for individual projects or full local control.
 
 ```bash
-git clone https://github.com/c65llc/coding_standards.git .standards
+git clone https://github.com/c65llc/coding-standards.git .standards
 .standards/scripts/setup.sh
 ```
 

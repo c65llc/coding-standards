@@ -1,7 +1,7 @@
 # Coding Standards
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/c65llc/coding_standards/actions/workflows/ci.yml/badge.svg)](https://github.com/c65llc/coding_standards/actions/workflows/ci.yml)
+[![CI](https://github.com/c65llc/coding-standards/actions/workflows/ci.yml/badge.svg)](https://github.com/c65llc/coding-standards/actions/workflows/ci.yml)
 
 Unified coding standards for every AI coding assistant.
 
@@ -10,7 +10,7 @@ Modern teams use multiple AI coding tools -- Cursor, Copilot, Claude Code, Codex
 ## Quick Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/c65llc/coding_standards/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/c65llc/coding-standards/main/install.sh | bash
 ```
 
 ## What You Get

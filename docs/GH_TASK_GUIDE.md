@@ -39,10 +39,10 @@ choco install gh
 
 ### Setup in Your Project
 
-1. **Add coding_standards as a submodule** (if not already added):
+1. **Add coding-standards as a submodule** (if not already added):
 
 ```bash
-git submodule add https://github.com/c65llc/coding_standards.git .standards
+git submodule add https://github.com/c65llc/coding-standards.git .standards
 git submodule update --init --recursive
 ```
 
@@ -551,7 +551,7 @@ head -n 10 $(which gh-task)
 ### Report Issues
 
 If you encounter bugs or have feature requests, please open an issue at:
-<https://github.com/c65llc/coding_standards/issues>
+<https://github.com/c65llc/coding-standards/issues>
 
 Include:
 

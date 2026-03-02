@@ -13,14 +13,14 @@ This repository is designed to be forked and tailored to your team's needs. This
 2. Clone your fork locally:
 
 ```bash
-git clone https://github.com/<your-org>/coding_standards.git
-cd coding_standards
+git clone https://github.com/<your-org>/coding-standards.git
+cd coding-standards
 ```
 
 1. Add the upstream remote so you can pull future updates:
 
 ```bash
-git remote add upstream https://github.com/c65llc/coding_standards.git
+git remote add upstream https://github.com/c65llc/coding-standards.git
 ```
 
 ## What to Customize
@@ -100,7 +100,7 @@ Conflicts typically occur in files you have customized. When resolving:
 Point your projects at your fork instead of the upstream:
 
 ```bash
-git submodule add https://github.com/<your-org>/coding_standards.git .standards
+git submodule add https://github.com/<your-org>/coding-standards.git .standards
 .standards/scripts/setup.sh
 ```
 
@@ -113,7 +113,7 @@ Mark your fork as a GitHub template repository. New projects created from the te
 Modify `install.sh` to point at your fork's URL, then share the one-liner with your team:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/<your-org>/coding_standards/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/<your-org>/coding-standards/main/install.sh | bash
 ```
 
 ## Adding Project-Specific Standards

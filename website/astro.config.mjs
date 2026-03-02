@@ -10,7 +10,7 @@ export default defineConfig({
       title: 'Coding Standards',
       description: 'Unified coding standards for every AI coding assistant.',
       social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/c65llc/coding_standards' },
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/c65llc/coding-standards' },
       ],
       defaultLocale: 'root',
       locales: {

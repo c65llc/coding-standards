@@ -8,7 +8,7 @@ feedback helps make these standards better for everyone.
 ## Reporting Issues
 
 Found a bug, typo, or something that does not work as expected? Please open a
-[GitHub Issue](https://github.com/c65llc/coding_standards/issues).
+[GitHub Issue](https://github.com/c65llc/coding-standards/issues).
 
 When filing an issue, include:
 
@@ -20,7 +20,7 @@ When filing an issue, include:
 ## Requesting New Languages or Agents
 
 Want standards for a language or AI agent we do not cover yet? Open a
-[feature request issue](https://github.com/c65llc/coding_standards/issues/new) with:
+[feature request issue](https://github.com/c65llc/coding-standards/issues/new) with:
 
 - The language or agent name
 - A brief description of why it would be valuable
@@ -34,12 +34,12 @@ requests with a thumbs-up reaction.
 This project is designed to be forked and tailored to your organization. Here is how:
 
 1. **Fork the repository** -- Click "Fork" on
-   [github.com/c65llc/coding_standards](https://github.com/c65llc/coding_standards).
+   [github.com/c65llc/coding-standards](https://github.com/c65llc/coding-standards).
 
 2. **Clone your fork**
    ```bash
-   git clone https://github.com/YOUR_ORG/coding_standards.git
-   cd coding_standards
+   git clone https://github.com/YOUR_ORG/coding-standards.git
+   cd coding-standards
    ```
 
 3. **Customize standards for your team** -- Edit files under `standards/` to match
@@ -48,13 +48,13 @@ This project is designed to be forked and tailored to your organization. Here is
 4. **Point the installer at your fork** -- When installing in projects, use your
    fork URL:
    ```bash
-   STANDARDS_REPO_URL="https://github.com/YOUR_ORG/coding_standards" \
-     curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/coding_standards/main/install.sh | bash
+   STANDARDS_REPO_URL="https://github.com/YOUR_ORG/coding-standards" \
+     curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/coding-standards/main/install.sh | bash
    ```
 
 5. **Keep your fork updated from upstream**
    ```bash
-   git remote add upstream https://github.com/c65llc/coding_standards.git
+   git remote add upstream https://github.com/c65llc/coding-standards.git
    git fetch upstream
    git merge upstream/main
    ```
@@ -75,7 +75,7 @@ valuable way to shape the project.
 ## Questions and Discussion
 
 For questions, ideas, or general discussion, please open a
-[GitHub Issue](https://github.com/c65llc/coding_standards/issues). There is no
+[GitHub Issue](https://github.com/c65llc/coding-standards/issues). There is no
 separate forum or chat channel -- Issues are the central place for all community
 conversation.
 

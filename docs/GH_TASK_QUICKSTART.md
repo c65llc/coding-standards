@@ -11,8 +11,8 @@ Get started with GitHub Project Lifecycle Automation in 5 minutes.
 ## Step 1: Install gh-task (1 minute)
 
 ```bash
-# Add coding_standards as submodule (if not already added)
-git submodule add https://github.com/c65llc/coding_standards.git .standards
+# Add coding-standards as submodule (if not already added)
+git submodule add https://github.com/c65llc/coding-standards.git .standards
 
 # Create bin directory and symlink
 mkdir -p bin
@@ -212,4 +212,4 @@ Fix the issues, then try `gh-task submit` again.
 
 ---
 
-**Need help?** Open an issue at [github.com/c65llc/coding_standards/issues](https://github.com/c65llc/coding_standards/issues)
+**Need help?** Open an issue at [github.com/c65llc/coding-standards/issues](https://github.com/c65llc/coding-standards/issues)

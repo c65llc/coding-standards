@@ -48,7 +48,7 @@ an individual is officially representing the community in public spaces.
 ## Enforcement
 
 Instances of unacceptable behavior may be reported by opening an issue at
-https://github.com/c65llc/coding_standards/issues or by contacting the project
+https://github.com/c65llc/coding-standards/issues or by contacting the project
 team directly.
 
 All complaints will be reviewed and investigated promptly and fairly.

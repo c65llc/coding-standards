@@ -69,7 +69,7 @@ gh project create --owner my-org --title "My Project Board"
 
 ```bash
 # Add submodule
-git submodule add https://github.com/c65llc/coding_standards.git .standards
+git submodule add https://github.com/c65llc/coding-standards.git .standards
 git submodule update --init --recursive
 
 # Run setup script
@@ -120,7 +120,7 @@ on:
 
 jobs:
   sync-project:
-    uses: c65llc/coding_standards/.github/workflows/lifecycle-sync.yml@main
+    uses: c65llc/coding-standards/.github/workflows/lifecycle-sync.yml@main
     with:
       project_id: ${{ vars.PROJECT_ID }}
     secrets:
@@ -137,7 +137,7 @@ on:
 
 jobs:
   quality-checks:
-    uses: c65llc/coding_standards/.github/workflows/definition-of-done.yml@main
+    uses: c65llc/coding-standards/.github/workflows/definition-of-done.yml@main
     with:
       node_version: '18'
       run_linting: true
@@ -520,4 +520,4 @@ gh variable set PROJECT_ID --body "PVT_kwDOABCDEF"
 
 ---
 
-**Questions?** Open an issue at [github.com/c65llc/coding_standards/issues](https://github.com/c65llc/coding_standards/issues)
+**Questions?** Open an issue at [github.com/c65llc/coding-standards/issues](https://github.com/c65llc/coding-standards/issues)

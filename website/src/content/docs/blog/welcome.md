@@ -18,7 +18,7 @@ Coding Standards provides a single repository of standards — covering 9 progra
 Install it in seconds:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/c65llc/coding_standards/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/c65llc/coding-standards/main/install.sh | bash
 ```
 
 ## What's Included
@@ -33,4 +33,4 @@ curl -fsSL https://raw.githubusercontent.com/c65llc/coding_standards/main/instal
 
 Check out the [Quick Start guide](/getting-started/quick-start/) to get up and running in 5 minutes, or browse the [full documentation](/getting-started/installation/) for all installation options.
 
-We welcome feedback via [GitHub Issues](https://github.com/c65llc/coding_standards/issues). If these standards don't fit your team perfectly, [fork the repo](/guides/customization/) and customize them.
+We welcome feedback via [GitHub Issues](https://github.com/c65llc/coding-standards/issues). If these standards don't fit your team perfectly, [fork the repo](/guides/customization/) and customize them.

@@ -2,11 +2,11 @@
 # One-line installer for project standards
 # 
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/c65llc/coding_standards/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/c65llc/coding-standards/main/install.sh | bash
 #
 # Or with custom repository URL:
-#   STANDARDS_REPO_URL="https://github.com/c65llc/coding_standards" \
-#     curl -fsSL https://raw.githubusercontent.com/c65llc/coding_standards/main/install.sh | bash
+#   STANDARDS_REPO_URL="https://github.com/c65llc/coding-standards" \
+#     curl -fsSL https://raw.githubusercontent.com/c65llc/coding-standards/main/install.sh | bash
 
 set -e
 
@@ -45,7 +45,7 @@ fi
 
 # Get repository URL if not provided
 if [ -z "$STANDARDS_REPO_URL" ]; then
-    STANDARDS_REPO_URL="https://github.com/c65llc/coding_standards"
+    STANDARDS_REPO_URL="https://github.com/c65llc/coding-standards"
     echo -e "${BLUE}📋 Using default repository: ${STANDARDS_REPO_URL}${NC}"
     echo -e "${YELLOW}   (Set STANDARDS_REPO_URL env var to use a different repository)${NC}"
 fi
