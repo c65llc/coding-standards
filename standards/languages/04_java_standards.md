@@ -36,7 +36,7 @@ tasks.withType(JavaCompile) {
 
 ## 4. Project Structure
 
-```
+```text
 src/
 ├── main/
 │   ├── java/
@@ -172,4 +172,3 @@ public User createUser(String email, String name) {
     // Implementation
 }
 ```
-

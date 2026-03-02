@@ -86,13 +86,15 @@
 ### Example Feedback
 
 **Good:**
-```
+
+```text
 This function could throw an exception if `user` is null. Consider adding a null check 
 or using optional chaining: `user?.email ?? 'unknown'`
 ```
 
 **Bad:**
-```
+
+```text
 This is wrong.
 ```
 
@@ -279,4 +281,3 @@ How was this tested?
 * **Mentoring:** Use reviews as mentoring opportunities
 * **Knowledge Sharing:** Share learnings from reviews in team meetings
 * **Tools:** Continuously evaluate and improve review tools and processes
-

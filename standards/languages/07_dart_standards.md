@@ -41,7 +41,7 @@ analyzer:
 
 ## 4. Project Structure
 
-```
+```text
 lib/
 ├── domain/
 │   ├── entities/
@@ -202,4 +202,3 @@ User createUser(Email email, String name) {
 * **Framework:** Use `shelf` or `dart_frog` for HTTP servers.
 * **Isolates:** Leverage isolates for concurrent request handling.
 * **Database:** Use `postgres` or `mongo_dart` packages.
-

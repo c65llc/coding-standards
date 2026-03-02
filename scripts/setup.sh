@@ -258,14 +258,18 @@ if [ -f "$PROJECT_ROOT/.gitignore" ]; then
         echo ".cursorrules.backup" >> "$PROJECT_ROOT/.gitignore"
     fi
     if ! grep -q ".standards_tmp" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
-        echo "" >> "$PROJECT_ROOT/.gitignore"
-        echo "# Standards temporary files" >> "$PROJECT_ROOT/.gitignore"
-        echo ".standards_tmp/" >> "$PROJECT_ROOT/.gitignore"
+        {
+            echo ""
+            echo "# Standards temporary files"
+            echo ".standards_tmp/"
+        } >> "$PROJECT_ROOT/.gitignore"
     fi
     if ! grep -q "coverage/" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
-        echo "" >> "$PROJECT_ROOT/.gitignore"
-        echo "# Test coverage output" >> "$PROJECT_ROOT/.gitignore"
-        echo "coverage/" >> "$PROJECT_ROOT/.gitignore"
+        {
+            echo ""
+            echo "# Test coverage output"
+            echo "coverage/"
+        } >> "$PROJECT_ROOT/.gitignore"
     fi
 elif [ "$SCRIPT_DIR" != "$PROJECT_ROOT" ]; then
     # Create .gitignore if it doesn't exist (only for client projects, not standards repo itself)

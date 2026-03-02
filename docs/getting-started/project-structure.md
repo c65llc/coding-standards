@@ -9,7 +9,7 @@ This document explains the repository layout so you can find what you need quick
 
 ## Directory Overview
 
-```
+```text
 .
 ├── .cursorrules                    # Cursor AI configuration
 ├── .cursor/
@@ -90,7 +90,7 @@ This document explains the repository layout so you can find what you need quick
 Standards are organized by category so you only look at what applies:
 
 | Category | Path | Content |
-|----------|------|---------|
+| -------- | ---- | ------- |
 | Architecture | `standards/architecture/` | Clean Architecture, automation, Cursor integration |
 | Languages | `standards/languages/` | Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig |
 | Process | `standards/process/` | Documentation, git workflow, code review |

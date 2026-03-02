@@ -11,22 +11,29 @@ Every discrete piece of agent work follows the same end-to-end lifecycle: isolat
 Every agent task MUST follow these steps in order:
 
 1. **Create worktree + branch.**
+
    ```bash
    git worktree add .claude/worktrees/<branch-name> -b <branch-name>
    cd .claude/worktrees/<branch-name>
    ```
+
 2. **Write tests first (TDD).** Red → Green → Refactor. No implementation code before a failing test.
 3. **Implement.** Write the minimum code to pass tests. Maintain ≥ 95% coverage in all modified modules. Python code must pass `mypy --strict`.
 4. **Run `make ci`.** The full pipeline must pass before proceeding.
 5. **Push the branch.**
+
    ```bash
    git push -u origin <branch-name>
    ```
+
 6. **Create a pull request.** Link to the relevant issue. Include `🤖 Generated with [Agent Name]` in the PR body.
+
    ```bash
    gh pr create --title "type(scope): description" --body "..."
    ```
+
 7. **Clean up after merge.** Remove worktree, delete local branch, delete remote branch:
+
    ```bash
    git worktree remove .claude/worktrees/<branch-name>
    git branch -D <branch-name>
@@ -45,7 +52,7 @@ Every agent task MUST follow these steps in order:
 
 Agent branches MUST use the same `type/description` convention as human branches. Opaque IDs or numeric suffixes alone are not acceptable:
 
-```
+```text
 feat/preview-scroll-optimization    ✓ descriptive
 fix/sidebar-drag-crash              ✓ descriptive
 worktree-agent-a0939472             ✗ opaque, impossible to triage
@@ -109,6 +116,7 @@ Define what agents can do autonomously vs. what requires human confirmation.
 ### Configuration
 
 Permission models should be defined in agent-specific configuration files:
+
 * Claude Code: `.claude/settings.json`
 * Cursor: `.cursorrules`
 * Copilot: `.github/copilot-instructions.md`
@@ -128,6 +136,7 @@ For projects with a graphical interface, expose an HTTP API that enables agents 
 ### Widget Tree JSON
 
 The snapshot response should include a structured representation of the UI hierarchy:
+
 * Element ID, type/kind, bounding rectangle, visibility
 * Style properties (background color, font size, etc.)
 * Interactive state (focused, hovered, selected)
@@ -147,7 +156,7 @@ devloop:       ## Start devloop HTTP server for agent-driven UI iteration
 
 Agent-authored commits MUST include a `Co-Authored-By` trailer identifying the agent:
 
-```
+```text
 feat(core): add validation for email addresses
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
@@ -158,6 +167,7 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 **Agents MUST open a pull request for every discrete piece of completed work.** Work is not considered done until a PR exists.
 
 Agent-created PRs MUST:
+
 * Include `🤖 Generated with [Agent Name]` in the PR description.
 * Follow the same title/body format as human-authored PRs.
 * Link to the relevant issue or design document (`Closes #N`, `Fixes #N`, or `Part of #N`).
@@ -165,6 +175,7 @@ Agent-created PRs MUST:
 ### Work Tracking
 
 Agents MUST create GitHub Issues (or the project's configured tracker) when they:
+
 * Discover bugs or failing edge cases during implementation.
 * Identify tech debt or shortcuts taken to meet scope.
 * Encounter out-of-scope work that should be addressed later.

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - Multi-agent support for GitHub Copilot, Aider (Claude Code), OpenAI Codex, Gemini CLI, and Google Antigravity
 - `.github/copilot-instructions.md` for GitHub Copilot configuration
 - `.aiderrc` for Aider (Claude Code) configuration
@@ -27,11 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated setup and sync scripts to automatically configure all supported agents
 
 ### Changed
+
 - Updated `scripts/setup.sh` to detect and configure multiple AI agents (including Gemini CLI and Antigravity)
 - Updated `scripts/sync-standards.sh` to sync all agent configurations (including Gemini CLI and Antigravity)
 - Updated `install.sh` to show which agent configurations were installed
 
 ### Improved
+
 - Better collaboration support for non-Cursor users
 - Consistent standards across all AI coding assistants
 - Enhanced documentation for multi-agent workflows

@@ -1,0 +1,18 @@
+{
+  // Disable line length - impractical for docs with URLs, tables, code
+  "MD013": false,
+  // Allow multiple top-level headings (frontmatter title + doc heading)
+  "MD025": false,
+  // Allow emphasis as heading (used for install options)
+  "MD036": false,
+  // Allow hard tabs in code blocks (Makefile examples use tabs)
+  "MD010": { "code_blocks": false },
+  // Allow both asterisks and dashes for unordered lists
+  "MD004": false,
+  // Allow heading level increments > 1 (h1 -> h3 in structured docs)
+  "MD001": false,
+  // Allow compact table separator style (|---|---|)
+  "MD060": false,
+  // Allow duplicate headings under different parents (Pattern/Rules sections)
+  "MD024": { "siblings_only": true }
+}

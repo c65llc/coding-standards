@@ -86,7 +86,7 @@ Called automatically by `setup.sh` and `sync-standards.sh`.
 Git settings:
 
 | Setting | Value | Purpose |
-|---------|-------|---------|
+| ------- | ----- | ------- |
 | `push.autoSetupRemote` | `true` | Auto-set upstream when pushing new branches |
 | `push.default` | `simple` | Push only the current branch |
 | `init.defaultBranch` | `main` | Default branch name for new repos |
@@ -94,7 +94,7 @@ Git settings:
 Key aliases:
 
 | Alias | Command | Description |
-|-------|---------|-------------|
+| ----- | ------- | ----------- |
 | `git co` | `checkout` | Switch branches |
 | `git cob` | `checkout -b` | Create and switch to a new branch |
 | `git st` | `status` | Show working tree status |
@@ -140,8 +140,8 @@ make add-copilot-instructions
 
 **Arguments:**
 
-| Argument | Default | Description |
-|----------|---------|-------------|
+| Argument     | Default | Description                   |
+| ------------ | ------- | ----------------------------- |
 | `base-branch` | `main` | Branch to target with the PR |
 
 ---

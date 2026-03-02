@@ -10,7 +10,7 @@ This repository supports five AI coding assistants out of the box. Every agent r
 ## Supported Agents
 
 | Agent | Config File | Location |
-|-------|-------------|----------|
+| ----- | ----------- | -------- |
 | Cursor AI | `.cursorrules` | Project root |
 | GitHub Copilot | `.github/copilot-instructions.md` | `.github/` directory |
 | Aider / Claude Code | `.aiderrc` | Project root |

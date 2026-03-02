@@ -8,7 +8,7 @@ This file contains the core standards that apply across all AI coding assistants
 
 **Dependency Rule:** Source code dependencies point inward only.
 
-```
+```text
 /
 ├── apps/                  # (Outer Layer) Entry points & Frameworks
 ├── packages/              # (Inner Layers) Shared Business Logic
@@ -35,12 +35,14 @@ Strict adherence required. Violations must be justified in code comments.
 ### Naming Conventions
 
 **Python:**
+
 - `snake_case` for variables, functions, modules, files
 - `PascalCase` for classes
 - `UPPER_SNAKE_CASE` for constants
 - `_leading_underscore` for private/internal
 
 **JavaScript/TypeScript:**
+
 - `camelCase` for variables, functions
 - `PascalCase` for classes, components, types, interfaces
 - `kebab-case` for files, directories
@@ -48,6 +50,7 @@ Strict adherence required. Violations must be justified in code comments.
 - `_leading_underscore` for private/internal
 
 **General:**
+
 - Verbose and descriptive names. Avoid abbreviations.
 - Boolean variables use `is_`, `has_`, `should_`, `can_` prefixes.
 - Functions are verbs. Classes are nouns.
@@ -83,6 +86,7 @@ Strict adherence required. Violations must be justified in code comments.
 3. **Refactor:** Clean up the implementation while keeping tests green.
 
 TDD applies to all layers — domain logic, application services, infrastructure adapters, and API endpoints. The only acceptable exceptions are:
+
 - Thin UI rendering layers that consume view models (the view model logic itself must be TDD).
 - Generated code (e.g., ORM migrations, protobuf stubs).
 - One-off scripts that will not be maintained.
@@ -211,6 +215,7 @@ Example: `feat(domain): add user email validation`
 ## Language-Specific Standards
 
 Reference detailed standards in:
+
 - `standards/languages/03_python_standards.md`
 - `standards/languages/04_java_standards.md`
 - `standards/languages/05_kotlin_standards.md`
@@ -255,6 +260,7 @@ When an alternative is specified, all references to "GitHub Issues" in these sta
 #### Agent Responsibility
 
 AI agents MUST create GitHub Issues (or the project's configured tracker items) when they:
+
 - Discover bugs or failing edge cases during implementation.
 - Identify tech debt or shortcuts taken to meet scope.
 - Encounter out-of-scope work that should be addressed later.
@@ -265,6 +271,7 @@ Agents must NOT silently defer work. If something needs to be done, it needs to 
 ## Process Standards
 
 Reference detailed process standards in:
+
 - `standards/process/12_documentation_standards.md`
 - `standards/process/13_git_version_control_standards.md`
 - `standards/process/14_code_review_expectations.md`
@@ -272,13 +279,12 @@ Reference detailed process standards in:
 ## Architecture Patterns
 
 Reference architecture pattern standards in:
+
 - `standards/architecture/16_data_versioning_and_migration_standards.md`
 - `standards/architecture/17_resilient_architecture_patterns.md`
 
 ## Agent Workflow
 
 Reference agent workflow standards in:
+
 - `standards/process/15_agent_workflow_standards.md`
-
-
-

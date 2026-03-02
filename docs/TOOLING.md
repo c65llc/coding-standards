@@ -6,7 +6,7 @@ This document describes the GitHub Project Lifecycle Automation tooling suite, d
 
 ## Architecture
 
-```
+```text
 ┌─────────────────┐
 │  GitHub Issue   │
 │   (Created)     │
@@ -62,14 +62,15 @@ The core command-line interface for managing the workflow.
 **Commands**:
 
 | Command | Purpose | Project V2 Impact |
-|---------|---------|-------------------|
+| ------- | ------- | ----------------- |
 | `gh-task create "Title"` | Create new issue | Adds to "Todo" column |
 | `gh-task start <id>` | Start working on issue | Moves to "In Progress", creates branch |
 | `gh-task status` | Show current task info | Read-only status check |
 | `gh-task update "msg"` | Add progress comment | No direct impact (informational) |
 | `gh-task submit` | Submit for review | Creates Draft PR, moves to "In Review" |
 
-**State Management**: 
+**State Management**:
+
 - Tracks current task in `.gh-task-state` file
 - Persists issue number and branch name
 - Cleared after successful submission
@@ -85,6 +86,7 @@ Reusable workflows for automation and validation.
 **Triggers**: PR opened, closed, merged, converted to/from draft
 
 **Logic**:
+
 - PR merged or closed → "Done"
 - PR in draft → "In Review"
 - PR ready for review → "In Review"
@@ -113,6 +115,7 @@ jobs:
 **Purpose**: Enforce quality checks on PRs before marking ready
 
 **Checks**:
+
 - Code linting
 - Test suite execution
 - Code coverage
@@ -176,6 +179,7 @@ gh project list --owner <org-name>
 **Location**: `.github/PULL_REQUEST_TEMPLATE/default.md`
 
 **Key Features**:
+
 - Includes `Closes #<issue_number>` for automatic issue linking
 - Structured checklist for PR quality
 - Sections for description, testing, documentation
@@ -205,6 +209,7 @@ gh-task start 42
 ```
 
 This will:
+
 1. Create branch `task/42-<title>`
 2. Check out the branch
 3. Move project card to "In Progress"
@@ -239,6 +244,7 @@ gh-task submit
 ```
 
 This will:
+
 1. Run validation checks (tests must pass)
 2. Prompt to commit any uncommitted changes
 3. Push branch to remote
@@ -256,7 +262,8 @@ $ gh-task submit
 ❌ Error: Tests failed. Please fix before submitting.
 ```
 
-**Action**: 
+**Action**:
+
 1. Review test output
 2. Fix the issues
 3. Run tests again: `npm test`
@@ -270,6 +277,7 @@ $ gh-task start 42
 ```
 
 **Action**:
+
 ```bash
 gh auth login
 # Follow authentication flow
@@ -296,6 +304,7 @@ EOF
 ### AI Agent Best Practices
 
 1. **Always check status before starting new work**:
+
    ```bash
    gh-task status
    ```
@@ -303,17 +312,20 @@ EOF
 2. **One task at a time**: Complete and submit current task before starting another
 
 3. **Run tests frequently**: Don't wait until submit time
+
    ```bash
    npm test  # or make test, or pytest
    ```
 
 4. **Commit logically**: Make small, focused commits with clear messages
+
    ```bash
    git add src/feature.js
    git commit -m "feat: implement user authentication"
    ```
 
 5. **Use update command**: Keep stakeholders informed
+
    ```bash
    gh-task update "Completed implementation, all tests passing"
    ```
@@ -321,6 +333,7 @@ EOF
 6. **Never force push**: The workflow doesn't support force push operations
 
 7. **Handle merge conflicts**: If remote has changed, pull and resolve:
+
    ```bash
    git pull origin main
    # Resolve conflicts
@@ -469,6 +482,7 @@ The tool interacts with Projects V2 via GraphQL. Key concepts:
 ### GraphQL Queries Used
 
 #### Get Project Fields
+
 ```graphql
 query($projectId: ID!) {
   node(id: $projectId) {
@@ -491,6 +505,7 @@ query($projectId: ID!) {
 ```
 
 #### Update Project Item Status
+
 ```graphql
 mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
   updateProjectV2ItemFieldValue(
@@ -517,11 +532,13 @@ mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
 **Symptom**: `gh-task create` succeeds but issue isn't in project
 
 **Causes**:
+
 - PROJECT_ID not configured
 - GitHub token lacks project permissions
 - Project is archived
 
 **Solutions**:
+
 1. Verify PROJECT_ID in configuration
 2. Check GitHub token scopes: `gh auth status`
 3. Ensure project is active
@@ -531,6 +548,7 @@ mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $optionId: String!) {
 **Symptom**: `gh-task start` fails because branch exists
 
 **Solution**:
+
 ```bash
 # Delete local branch
 git branch -d task/42-old-title
@@ -547,6 +565,7 @@ gh-task start 42
 **Symptom**: `gh-task submit` fails with test errors
 
 **Solution**:
+
 ```bash
 # Run tests manually to see full output
 npm test
@@ -579,6 +598,7 @@ cat .gemini/settings.json
 ### Token Permissions
 
 The GitHub token needs:
+
 - `repo` - For creating issues, PRs, and pushing branches
 - `project` - For updating Projects V2 status
 
@@ -592,6 +612,7 @@ The GitHub token needs:
 ### Branch Protection
 
 Recommended branch protection rules:
+
 - Require pull request reviews
 - Require status checks (Definition of Done workflow)
 - Require branches to be up to date

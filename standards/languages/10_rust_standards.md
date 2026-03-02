@@ -31,7 +31,7 @@ tab_spaces = 4
 
 ## 4. Project Structure
 
-```
+```text
 src/
 ├── domain/
 │   ├── entities.rs

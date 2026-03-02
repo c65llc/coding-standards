@@ -88,6 +88,7 @@ ls: ## List all available make targets
 ```
 
 This implementation:
+
 * Extracts targets that have descriptions (matches the pattern used by `help` target)
 * Removes the colon and everything after it
 * Sorts the list alphabetically
@@ -113,6 +114,7 @@ setup-cursor: ## Install or update Cursor AI rules configuration
 ```
 
 This implementation:
+
 * Checks for standards submodule at `.standards`
 * Copies `.cursorrules` from standards to project root
 * Provides clear feedback on success or failure
@@ -165,6 +167,7 @@ pr: ## Create and populate a GitHub Pull Request from current branch to main
 ```
 
 This implementation:
+
 * Checks for GitHub CLI (`gh`) installation
 * Validates current branch is not the base branch
 * Pushes current branch to remote if not already pushed
@@ -175,6 +178,7 @@ This implementation:
 * Handles case where PR already exists gracefully
 
 **Cursor AI Integration:**
+
 * When user types `\pr` in Cursor chat, Cursor reads the PR information file
 * Cursor generates an improved title and body based on code changes
 * Cursor then calls: `PR_TITLE="<generated>" PR_BODY="<generated>" make pr`
@@ -222,11 +226,13 @@ coverage-check: ## Enforce per-module coverage baselines
 Projects with UI or data models SHOULD include targets for generating test/demo data:
 
 ### `make seed`
+
 * **Goal:** Generate realistic development seed data.
 * **Action:** Runs a seed generator that produces sample data for local development.
 * **Post-condition:** Seed data is written to a well-known directory (e.g., `.dev/seed-realistic/`).
 
 ### `make seed-stress`
+
 * **Goal:** Generate stress-test data for performance validation.
 * **Action:** Produces large datasets for benchmarking and load testing.
 * **Post-condition:** Stress data is written to a separate directory (e.g., `.dev/seed-stress/`).
@@ -242,10 +248,12 @@ Projects with UI or data models SHOULD include targets for generating test/demo 
 Projects with a graphical interface SHOULD include an agent-friendly development loop:
 
 ### `make setup-devloop`
+
 * **Goal:** Install devloop dependencies (e.g., Node.js server, Playwright, etc.).
 * **Action:** One-time setup for the devloop infrastructure.
 
 ### `make devloop`
+
 * **Goal:** Start an HTTP server for autonomous UI iteration.
 * **Action:** Launches a build/inspect cycle API (see `15_agent_workflow_standards.md` for endpoint specification).
 * **Post-condition:** Server is running and accessible at a documented port (e.g., `localhost:9010`).

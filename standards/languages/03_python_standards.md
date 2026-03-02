@@ -47,6 +47,7 @@ warn_unused_configs = true
 * **All functions and methods:** Parameter types and return types are mandatory — no exceptions. This includes private/internal functions.
 * **Variables:** Annotate variables when the type is not obvious from assignment. Always annotate empty collections, `None`-initialized variables, and class attributes.
 * **mypy strict mode:** Must pass with zero errors. The following `pyproject.toml` configuration is mandatory:
+
   ```toml
   [tool.mypy]
   strict = true
@@ -60,6 +61,7 @@ warn_unused_configs = true
   warn_redundant_casts = true
   warn_unused_ignores = true
   ```
+
 * **No `# type: ignore`** without an accompanying comment explaining why and a linked issue for resolution.
 * **No `Any`** without explicit justification in a comment. Prefer `object` or `Unknown` patterns.
 * **Style:** Prefer `list[str]` over `List[str]` (Python 3.9+). Use `|` union syntax over `Union` (Python 3.10+).
@@ -90,7 +92,7 @@ class UserService:
 
 ## 5. Project Structure
 
-```
+```text
 package_name/
 ├── __init__.py
 ├── domain/
@@ -185,4 +187,3 @@ def create_user(email: str, name: str) -> User:
     """
     # Implementation
 ```
-

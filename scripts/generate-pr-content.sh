@@ -21,15 +21,17 @@ mkdir -p "$STANDARDS_TMP_DIR"
 
 # Create temporary file for PR content in .standards_tmp
 PR_CONTENT_FILE="$STANDARDS_TMP_DIR/pr-content-$(date +%s)-$$.txt"
-trap "rm -f $PR_CONTENT_FILE" EXIT
+trap 'rm -f "$PR_CONTENT_FILE"' EXIT
 
 # Gather commit information
-echo "# PR Information for Cursor AI" > "$PR_CONTENT_FILE"
-echo "" >> "$PR_CONTENT_FILE"
-echo "## Branch Information" >> "$PR_CONTENT_FILE"
-echo "- Current Branch: $CURRENT_BRANCH" >> "$PR_CONTENT_FILE"
-echo "- Base Branch: $BASE_BRANCH" >> "$PR_CONTENT_FILE"
-echo "" >> "$PR_CONTENT_FILE"
+{
+echo "# PR Information for Cursor AI"
+echo ""
+echo "## Branch Information"
+echo "- Current Branch: $CURRENT_BRANCH"
+echo "- Base Branch: $BASE_BRANCH"
+echo ""
+} > "$PR_CONTENT_FILE"
 
 # Get commit messages
 echo "## Commits" >> "$PR_CONTENT_FILE"

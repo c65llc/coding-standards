@@ -42,7 +42,7 @@ pub fn build(b: *std.Build) void {
 
 ## 4. Project Structure
 
-```
+```text
 src/
 ├── domain/
 │   ├── entities.zig
@@ -224,4 +224,3 @@ pub fn createUser(
 * **ReleaseSafe:** `-O ReleaseSafe` - Safety checks enabled, optimized.
 * **ReleaseFast:** `-O ReleaseFast` - No safety checks, maximum optimization.
 * **ReleaseSmall:** `-O ReleaseSmall` - Optimized for size.
-

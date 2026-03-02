@@ -61,6 +61,7 @@ Date: YYYY-MM-DD
 ### Example Standards
 
 **TypeScript/JavaScript:**
+
 ```typescript
 /**
  * Creates a new user with validated email address.
@@ -73,6 +74,7 @@ Date: YYYY-MM-DD
 ```
 
 **Python:**
+
 ```python
 def create_user(email: str, name: str) -> User:
     """Create a new user with validated email address.
@@ -221,7 +223,7 @@ Use [Keep a Changelog](https://keepachangelog.com/) format in `CHANGELOG.md` at 
 
 ### Blog Structure
 
-```
+```text
 docs/blog/
 ├── 2024/
 │   ├── 01-15-release-1.0.0.md
@@ -277,7 +279,7 @@ docs/blog/
 
 * **Markdown Editors:** VS Code, Typora, or any Markdown-capable editor
 * **Diagram Tools:** Mermaid (text-based), PlantUML, or draw.io
-* **Documentation Generators:** 
+* **Documentation Generators:**
   * Python: Sphinx
   * TypeScript/JavaScript: TypeDoc, JSDoc
   * Rust: rustdoc
@@ -290,4 +292,3 @@ docs/blog/
 * **Link Checking:** Validate internal and external links
 * **Spell Checking:** Use automated spell checkers
 * **Format Validation:** Ensure consistent formatting across documentation
-

@@ -42,7 +42,7 @@ module.exports = {
 
 ## 4. Project Structure
 
-```
+```text
 src/
 ├── domain/
 │   ├── entities/
@@ -214,4 +214,3 @@ function createUser(email, name) {
 * **Pure Functions:** Write pure functions when possible. Avoid side effects.
 * **Single Responsibility:** Functions should do one thing. Keep functions small.
 * **Early Returns:** Use early returns to reduce nesting.
-

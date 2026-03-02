@@ -21,7 +21,7 @@
 
 ### Conventional Commits Format
 
-```
+```text
 <type>(<scope>): <subject>
 
 <body>
@@ -51,7 +51,7 @@
 
 ### Examples
 
-```
+```text
 feat(domain): add user email validation
 
 Implement RFC 5322 compliant email validation in Email value object.
@@ -60,7 +60,7 @@ Rejects invalid formats at domain boundary to fail fast.
 Closes #123
 ```
 
-```
+```text
 fix(api): handle null response in user endpoint
 
 Return 404 instead of 500 when user not found. Prevents server
@@ -265,6 +265,7 @@ To automatically configure all aliases, run:
 ```
 
 The setup script will:
+
 * Check for existing aliases and prompt before overwriting
 * Configure all recommended aliases
 * Provide feedback on what was configured
@@ -308,6 +309,7 @@ git config --global --get-regexp alias
 ### Implementation
 
 Use tools like:
+
 * **Husky** (Node.js)
 * **pre-commit** (Python)
 * **git-hooks** (Rust)
@@ -318,7 +320,8 @@ Use tools like:
 ### Language-Specific
 
 **Python:**
-```
+
+```gitignore
 __pycache__/
 *.py[cod]
 *$py.class
@@ -330,7 +333,8 @@ env/
 ```
 
 **Node.js:**
-```
+
+```gitignore
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -341,13 +345,15 @@ build/
 ```
 
 **Rust:**
-```
+
+```gitignore
 target/
 Cargo.lock  # For libraries, not applications
 ```
 
 **Java:**
-```
+
+```gitignore
 *.class
 *.jar
 *.war
@@ -360,7 +366,7 @@ build/
 
 Ignore generated coverage reports so they are never committed:
 
-```
+```gitignore
 coverage/
 ```
 
@@ -368,7 +374,7 @@ Common tools that write here: Vitest, Jest, pytest, Istanbul/c8, lcov. Projects 
 
 ### General
 
-```
+```gitignore
 # Environment
 .env
 .env.local
@@ -395,6 +401,7 @@ logs/
 ### Git LFS
 
 Use Git LFS for:
+
 * Binary files > 100MB
 * Media files (images, videos)
 * Compiled binaries
@@ -422,7 +429,7 @@ Branches MUST be deleted — both local and remote — immediately after their P
 
 Include enough context in the branch name to identify the work without checking the log:
 
-```
+```text
 feat/preview-scroll-optimization    ✓ clear purpose
 fix/sidebar-drag-crash              ✓ clear purpose
 worktree-agent-a0939472             ✗ opaque, impossible to triage later
@@ -477,4 +484,3 @@ As a guideline, a repository should have fewer than **10 active branches** at an
 * **Remote Repository:** Always push to remote (GitHub, GitLab, etc.)
 * **Multiple Remotes:** Consider backup remote for critical projects
 * **Regular Pushes:** Push at least daily during active development
-

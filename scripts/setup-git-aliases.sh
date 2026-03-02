@@ -20,7 +20,8 @@ set_config() {
     local config_value=$2
     
     if git config --global --get "$config_key" >/dev/null 2>&1; then
-        local existing=$(git config --global --get "$config_key")
+        local existing
+        existing=$(git config --global --get "$config_key")
         if [ "$existing" != "$config_value" ]; then
             echo -e "${YELLOW}⚠️  Config '$config_key' already exists with different value:${NC}"
             echo -e "   Current: $existing"
@@ -54,7 +55,8 @@ set_alias() {
     local alias_command=$2
     
     if git config --global --get "alias.$alias_name" >/dev/null 2>&1; then
-        local existing=$(git config --global --get "alias.$alias_name")
+        local existing
+        existing=$(git config --global --get "alias.$alias_name")
         if [ "$existing" != "$alias_command" ]; then
             echo -e "${YELLOW}⚠️  Alias '$alias_name' already exists with different value:${NC}"
             echo -e "   Current: $existing"

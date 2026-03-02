@@ -35,7 +35,7 @@ Separate **data→view model** transformations from **view model→pixels** rend
 
 ### Pattern
 
-```
+```text
 Source Data  →  pure function  →  View Model (Vec<RenderEntry>)  →  UI framework renders it
 ```
 
@@ -57,7 +57,7 @@ Use a **semantic enum** computed from window dimensions instead of platform dete
 
 ### Pattern
 
-```
+```text
 Window dimensions  →  LayoutMode enum  →  Layout decisions
 ```
 
@@ -101,7 +101,7 @@ All storage and configuration path resolution should live in a single module.
 
 ### Pattern
 
-```
+```text
 platform_paths module
   ├── data_dir()      → platform-specific app data directory
   ├── config_dir()    → platform-specific config directory

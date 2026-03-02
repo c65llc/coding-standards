@@ -33,7 +33,7 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
 
 ## 4. Project Structure
 
-```
+```text
 src/
 ├── main/
 │   ├── kotlin/
@@ -167,4 +167,3 @@ fun createUser(email: String, name: String): User {
     // Implementation
 }
 ```
-

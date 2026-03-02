@@ -37,7 +37,7 @@ let package = Package(
 
 ## 4. Project Structure
 
-```
+```text
 Sources/
 ├── Domain/
 │   ├── Entities/
@@ -182,4 +182,3 @@ func createUser(email: String, name: String) throws -> User {
 * **iOS/macOS:** Follow Apple's Human Interface Guidelines.
 * **Server-Side:** Use Vapor or SwiftNIO for HTTP servers.
 * **Cross-Platform:** Use `#if os()` for platform-specific code.
-

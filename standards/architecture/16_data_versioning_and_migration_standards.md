@@ -25,7 +25,7 @@ Use **side-by-side migration**: read the old format, convert to the new format i
 
 ### Load Flow
 
-```
+```text
 1. Read version field from persisted data
 2. If version < CURRENT_VERSION → run migration chain (v1→v2→...→vN)
 3. If version == CURRENT_VERSION → deserialize directly
@@ -36,7 +36,7 @@ Use **side-by-side migration**: read the old format, convert to the new format i
 
 Each version transition is an isolated function:
 
-```
+```text
 migrate_v1_to_v2(data_v1) → data_v2
 migrate_v2_to_v3(data_v2) → data_v3
 ```

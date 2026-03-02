@@ -17,7 +17,7 @@ git clone https://github.com/<your-org>/coding_standards.git
 cd coding_standards
 ```
 
-3. Add the upstream remote so you can pull future updates:
+1. Add the upstream remote so you can pull future updates:
 
 ```bash
 git remote add upstream https://github.com/c65llc/coding_standards.git
@@ -30,7 +30,7 @@ git remote add upstream https://github.com/c65llc/coding_standards.git
 The files under `standards/` are the core of what AI agents reference:
 
 | Path | Purpose |
-|------|---------|
+| ---- | ------- |
 | `standards/architecture/` | Architecture patterns (Clean Architecture, SOLID) |
 | `standards/languages/` | Language-specific conventions and tooling |
 | `standards/process/` | Git workflow, documentation, code review |

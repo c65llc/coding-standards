@@ -102,7 +102,7 @@ After syncing, restart your editor to pick up the new configuration.
 
 ## Update Flow
 
-```
+```text
 Standards Repository (new commit pushed)
          |
          v

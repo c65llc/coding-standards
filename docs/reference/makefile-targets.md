@@ -55,13 +55,13 @@ make check-standards
 
 Example output when standards are current:
 
-```
+```text
 Standards are up to date
 ```
 
 Example output when updates are available:
 
-```
+```text
 Standards are out of date. Run 'make sync-standards'
 ```
 
@@ -118,7 +118,7 @@ make test-scripts
 ## Quick Reference
 
 | Target | Description |
-|--------|-------------|
+| ------ | ----------- |
 | `help` | Show all targets with descriptions |
 | `ls` | List target names |
 | `setup` | First-time project setup |

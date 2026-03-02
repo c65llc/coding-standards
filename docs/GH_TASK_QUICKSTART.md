@@ -59,6 +59,7 @@ EOF
 ### Verify Project Setup
 
 Your GitHub Project V2 should have a **Status** field with these options:
+
 - **Todo** - For new issues
 - **In Progress** - For active work  
 - **In Review** - For PRs under review
@@ -81,6 +82,7 @@ gh-task start 42
 ```
 
 This:
+
 - Creates branch `task/42-test-gh-task-workflow`
 - Checks out the branch
 - Moves project card to "In Progress"
@@ -109,6 +111,7 @@ gh-task submit
 ```
 
 This:
+
 - Runs any tests configured in your project
 - Pushes branch to remote
 - Creates Draft PR linked to issue
@@ -154,6 +157,7 @@ gh-task help
 ### "gh not found"
 
 Install GitHub CLI:
+
 ```bash
 # macOS
 brew install gh
@@ -174,6 +178,7 @@ gh auth login
 ### "PROJECT_ID not configured"
 
 Edit `.gemini/settings.json` and add your Project ID:
+
 ```json
 {
   "project_id": "PVT_kwDOABCDEF"
@@ -183,6 +188,7 @@ Edit `.gemini/settings.json` and add your Project ID:
 ### Tests fail during submit
 
 Run tests manually to see the error:
+
 ```bash
 npm test  # or make test, or pytest
 ```

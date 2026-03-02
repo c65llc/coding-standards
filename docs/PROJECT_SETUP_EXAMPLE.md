@@ -5,6 +5,7 @@ This guide walks through setting up a complete project with gh-task and GitHub P
 ## Scenario
 
 You're starting a new Node.js project and want to:
+
 1. Use coding standards from this repository
 2. Set up gh-task for issue/PR workflow
 3. Configure GitHub Actions for automatic project syncing
@@ -327,7 +328,7 @@ Check that everything worked:
 
 ## Directory Structure After Setup
 
-```
+```text
 my-project/
 ├── .github/
 │   └── workflows/
@@ -416,16 +417,19 @@ gh-task submit
 ## Best Practices
 
 1. **Always authenticate first**
+
    ```bash
    gh auth login
    ```
 
 2. **Configure project before first use**
+
    ```bash
    # Set PROJECT_ID in .gemini/settings.json
    ```
 
 3. **Use descriptive issue titles**
+
    ```bash
    # Good
    gh-task create "Add user authentication with JWT"
@@ -435,6 +439,7 @@ gh-task submit
    ```
 
 4. **Commit frequently**
+
    ```bash
    # Don't wait until gh-task submit
    git add .
@@ -442,11 +447,13 @@ gh-task submit
    ```
 
 5. **Update progress regularly**
+
    ```bash
    gh-task update "Completed backend, starting frontend"
    ```
 
 6. **Run tests before submitting**
+
    ```bash
    npm test
    gh-task submit
@@ -457,6 +464,7 @@ gh-task submit
 ### "PROJECT_ID not configured"
 
 **Solution:**
+
 ```bash
 # Edit configuration
 vim .gemini/settings.json
@@ -466,6 +474,7 @@ vim .gemini/settings.json
 ### "gh not found"
 
 **Solution:**
+
 ```bash
 # Install GitHub CLI
 brew install gh  # macOS
@@ -475,6 +484,7 @@ brew install gh  # macOS
 ### "Not authenticated with GitHub"
 
 **Solution:**
+
 ```bash
 gh auth login
 # Follow prompts
@@ -483,6 +493,7 @@ gh auth login
 ### Workflow not running
 
 **Solution:**
+
 ```bash
 # Check that PROJECT_ID variable is set
 gh variable list --repo my-org/my-project

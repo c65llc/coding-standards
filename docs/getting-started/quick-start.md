@@ -63,7 +63,7 @@ make update-standards
 
 ## Project Layout After Setup
 
-```
+```text
 your-project/
 ├── .cursorrules            # Cursor AI configuration
 ├── .github/
@@ -93,6 +93,7 @@ make sync-standards
 ## Troubleshooting
 
 **Editor not using standards?**
+
 - Make sure `.cursorrules` (or the relevant config file) is in your project root.
 - Restart your editor completely.
 

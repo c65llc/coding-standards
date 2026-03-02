@@ -46,7 +46,7 @@ git submodule add https://github.com/c65llc/coding_standards.git .standards
 git submodule update --init --recursive
 ```
 
-2. **Symlink gh-task to your PATH**:
+1. **Symlink gh-task to your PATH**:
 
 ```bash
 # Option 1: Project-local bin directory
@@ -63,7 +63,7 @@ ln -s $PWD/.standards/bin/gh-task ~/bin/gh-task
 export PATH="$HOME/bin:$PATH"
 ```
 
-3. **Authenticate with GitHub**:
+1. **Authenticate with GitHub**:
 
 ```bash
 gh auth login
@@ -145,7 +145,8 @@ gh-task create "Add user authentication feature"
 ```
 
 **Output**:
-```
+
+```text
 ℹ️  Creating new issue: Add user authentication feature
 ✅ Created issue #42
 https://github.com/owner/repo/issues/42
@@ -157,6 +158,7 @@ https://github.com/owner/repo/issues/42
 ### gh-task start \<id\>
 
 Starts work on an issue by:
+
 1. Fetching the issue title
 2. Creating a branch named `task/<id>-<kebab-case-title>`
 3. Checking out the branch
@@ -168,7 +170,8 @@ gh-task start 42
 ```
 
 **Output**:
-```
+
+```text
 ℹ️  Starting work on issue #42
 ℹ️  Creating branch: task/42-add-user-authentication-feature
 ✅ Checked out branch: task/42-add-user-authentication-feature
@@ -186,7 +189,8 @@ gh-task status
 ```
 
 **Output**:
-```
+
+```text
 ═══════════════════════════════════════════════════
 Current Task Status
 ═══════════════════════════════════════════════════
@@ -215,7 +219,8 @@ gh-task update "Implemented login endpoint and basic authentication"
 ```
 
 **Output**:
-```
+
+```text
 ℹ️  Adding progress comment to issue #42
 ✅ Comment added to issue #42
 ```
@@ -227,6 +232,7 @@ The comment appears on GitHub as:
 ### gh-task submit
 
 Submits your work by:
+
 1. Running validation checks (tests)
 2. Committing any uncommitted changes (with confirmation)
 3. Pushing the branch to remote
@@ -239,7 +245,8 @@ gh-task submit
 ```
 
 **Output**:
-```
+
+```text
 ℹ️  Submitting task for issue #42
 ℹ️  Running validation checks...
 ℹ️  Running npm test...
@@ -354,6 +361,7 @@ gh-task submit
 **Problem**: The `gh` command is not installed or not in PATH.
 
 **Solution**:
+
 ```bash
 # Install gh (see Installation section above)
 # Verify installation
@@ -365,6 +373,7 @@ gh --version
 **Problem**: You haven't logged in with GitHub CLI.
 
 **Solution**:
+
 ```bash
 gh auth login
 # Follow the prompts
@@ -376,6 +385,7 @@ gh auth login
 **Problem**: Not in a git repository or remote is not set.
 
 **Solution**:
+
 ```bash
 # Check git remote
 git remote -v
@@ -389,6 +399,7 @@ git remote add origin https://github.com/owner/repo.git
 **Problem**: Project configuration is missing.
 
 **Solution**:
+
 ```bash
 # Create configuration file
 mkdir -p .gemini
@@ -404,6 +415,7 @@ EOF
 **Problem**: Your project doesn't have the expected status fields.
 
 **Solution**:
+
 1. Go to your GitHub Project
 2. Click on the "Status" field settings
 3. Ensure you have options: "Todo", "In Progress", "In Review", "Done"
@@ -414,6 +426,7 @@ EOF
 **Problem**: Your test suite is failing.
 
 **Solution**:
+
 ```bash
 # Run tests manually to see the full output
 npm test
@@ -460,6 +473,7 @@ gh project list --owner <your-org>
 You can customize the validation that runs before `gh-task submit` by modifying your test scripts in `package.json`, `Makefile`, or test configuration files.
 
 Example `package.json`:
+
 ```json
 {
   "scripts": {
@@ -473,6 +487,7 @@ Example `package.json`:
 ### Environment Variables
 
 - `GH_TASK_CONFIG`: Override default config file location
+
   ```bash
   GH_TASK_CONFIG=/path/to/config gh-task start 42
   ```
@@ -480,6 +495,7 @@ Example `package.json`:
 ### Branch Naming
 
 The default branch naming convention is `task/<id>-<kebab-case-title>`. The title is:
+
 - Converted to lowercase
 - Spaces replaced with hyphens
 - Special characters removed
@@ -535,9 +551,10 @@ head -n 10 $(which gh-task)
 ### Report Issues
 
 If you encounter bugs or have feature requests, please open an issue at:
-https://github.com/c65llc/coding_standards/issues
+<https://github.com/c65llc/coding_standards/issues>
 
 Include:
+
 - The command you ran
 - The error message
 - Your environment (OS, gh version, git version)
