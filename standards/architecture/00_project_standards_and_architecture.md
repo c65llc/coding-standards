@@ -85,22 +85,43 @@ Strict adherence required. Violations must be justified in code comments.
 ### Type Safety
 
 * **TypeScript:** Strict mode enabled. No `any` without explicit justification.
-* **Python:** Type hints required for all public APIs. Use `mypy` or `pyright`.
+* **Python:** **All code must be strongly typed.** Type hints required on every function, method, variable declaration, and class attribute — not just public APIs. Run `mypy` or `pyright` in **strict mode** with zero errors. No `# type: ignore` without an accompanying comment explaining why.
 * **Rust:** Leverage type system. Use `Result<T, E>` for fallible operations.
 
 ## 4. Testing Standards
+
+### Test-Driven Development (TDD) — Mandatory
+
+**All new code MUST be written using Test-Driven Development when possible.** TDD is the default methodology, not an optional practice.
+
+1. **Red:** Write a failing test that defines the expected behavior.
+2. **Green:** Write the minimum code to make the test pass.
+3. **Refactor:** Clean up the implementation while keeping tests green.
+
+When modifying existing untested code, write characterization tests first before making changes.
+
+### Automated Regression & Local Full-Stack Testing
+
+* **Regression tests:** Every bug fix MUST include a test that reproduces the bug and prevents recurrence.
+* **Local full-stack testing:** The complete application stack must be runnable locally via `make dev` + `make test`. Use Docker Compose, test containers, or in-memory substitutes for all external dependencies.
+* **CI parity:** Local `make test` must run the same suite as CI. No environment-specific test gaps.
 
 ### Test Structure
 
 * **Unit Tests:** Test domain logic in isolation. Mock external dependencies.
 * **Integration Tests:** Test layer interactions. Use test databases/containers.
 * **E2E Tests:** Test complete user workflows. Minimal set, high-value scenarios.
+* **Regression Tests:** Every bug fix includes a test that prevents recurrence.
 
-### Coverage Requirements
+### Coverage Requirements — 95% Absolute Minimum
+
+**95% test coverage is the absolute minimum for any module, in any layer.**
 
 * **Domain:** 100% coverage. Business logic must be fully tested.
-* **Application:** 90%+ coverage. All use cases tested.
-* **Infrastructure:** 80%+ coverage. Critical paths tested.
+* **Application:** 95%+ coverage. All use cases and orchestration paths tested.
+* **Infrastructure:** 95%+ coverage. Adapters and integrations tested.
+
+Coverage gates MUST be enforced in CI. A PR that drops any module below 95% MUST NOT be merged.
 
 ### Test Organization
 

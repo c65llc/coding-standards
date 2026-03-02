@@ -47,8 +47,11 @@
 - [ ] Code works as described in PR description
 - [ ] Follows project architecture and patterns
 - [ ] Meets coding standards (formatting, naming, structure)
-- [ ] Includes appropriate tests (unit, integration, E2E)
-- [ ] Tests pass and coverage is adequate
+- [ ] **TDD was followed** — tests were written before implementation (check commit order)
+- [ ] Includes appropriate tests (unit, integration, E2E, regression)
+- [ ] **Test coverage is ≥ 95%** in every modified module (100% for domain)
+- [ ] Bug fixes include a regression test that reproduces the original bug
+- [ ] **Python code is fully typed** — `mypy --strict` passes with zero errors
 - [ ] Documentation is updated (code comments, README, user docs)
 - [ ] No security vulnerabilities introduced
 - [ ] No obvious performance regressions
@@ -145,7 +148,9 @@ How was this tested?
 
 * **Functionality:** Code works as intended
 * **Standards:** Meets project coding standards
-* **Tests:** Adequate test coverage, all tests pass
+* **TDD:** Evidence that tests were written before implementation (test commits precede implementation commits)
+* **Tests:** ≥ 95% coverage in all modified modules, all tests pass, regression tests for bug fixes
+* **Type Safety:** Python code passes `mypy --strict` with zero errors; TypeScript uses strict mode
 * **Documentation:** Documentation is updated
 * **Security:** No security concerns
 * **Architecture:** Follows project architecture

@@ -17,6 +17,9 @@ cd .claude/worktrees/<branch-name>
 
 * Never modify files in the root checkout from an automated agent session.
 * Create a new worktree at the start of each feature/fix branch.
+* **Follow TDD:** Write failing tests before implementation code. This applies to agents as well as humans.
+* **Maintain ≥ 95% test coverage** in all modified modules. Run coverage checks before considering work complete.
+* **Python code must be strongly typed:** All functions, methods, and variables must have type annotations. `mypy --strict` must pass with zero errors.
 * Run `make ci` within the worktree before considering work complete.
 * **Clean up immediately after merge.** Remove worktree, delete local branch, delete remote branch:
   ```bash

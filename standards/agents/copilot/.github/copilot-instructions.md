@@ -27,6 +27,15 @@ This project follows comprehensive development standards. Reference these docume
 - `standards/process/13_git_version_control_standards.md` - Git workflow, commits, branching
 - `standards/process/14_code_review_expectations.md` - Code review process and expectations
 
+## Non-Negotiable Requirements
+
+These mandates apply to ALL code changes, regardless of scope or urgency:
+
+1. **Test-Driven Development (TDD) is mandatory.** Write failing tests before implementation code. Red → Green → Refactor. No exceptions except thin UI rendering layers, generated code, and one-off scripts.
+2. **95% test coverage is the absolute minimum** for any module, in any layer. Domain must reach 100%. Bug fixes must include regression tests.
+3. **Python code must be strongly typed throughout.** Every function, method, variable, and class attribute requires type annotations. `mypy --strict` must pass with zero errors.
+4. **Build for automated regression and local full-stack testing.** Tests must run locally without external dependencies. Use test containers and in-memory substitutes.
+
 ## Behavior Rules
 
 1. **Always check relevant standards** before making changes:
@@ -75,10 +84,13 @@ When working with code, automatically detect the language and apply the correspo
 ## Violation Detection
 
 When reviewing code, automatically check for:
+- **TDD compliance** — tests committed before or alongside implementation
+- **Coverage below 95%** in any modified module
+- **Untyped Python code** — all functions, methods, and variables must have type annotations
+- **Missing regression tests** for bug fixes
 - Architecture violations (Domain importing Infrastructure)
 - Naming convention mismatches
 - Missing error handling
-- Insufficient test coverage
 - Documentation gaps
 - Git commit message format issues
 

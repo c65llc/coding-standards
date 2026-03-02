@@ -60,14 +60,19 @@ docs/                # Architecture docs, ADRs, development guides
 
 ## Testing
 
+- **Methodology:** **Test-Driven Development (TDD) is mandatory.** Write failing tests before writing implementation code. Red → Green → Refactor.
 - **Structure:** Inline test modules within source files. Integration tests in `tests/` directory.
-- **Coverage baselines:**
+- **Regression:** Every bug fix MUST include a regression test that reproduces the bug.
+- **Local full-stack:** `make dev` + `make test` must run the entire stack locally with no external dependencies.
+- **Coverage baselines (95% absolute minimum):**
 
 | Layer | Min Coverage |
 |-------|-------------|
-| Core / Domain | 95% |
-| Application / Shell | 90% |
-| Infrastructure | 80% |
+| Core / Domain | 100% |
+| Application / Shell | 95% |
+| Infrastructure | 95% |
+
+- **Python typing:** All Python code must be strongly typed. `mypy --strict` must pass with zero errors.
 
 ---
 
@@ -91,6 +96,10 @@ Follow Conventional Commits: `type(scope): subject`
 
 ## What NOT To Do
 
+- **Do not write implementation code before writing a failing test.** TDD is mandatory.
+- **Do not submit code below 95% test coverage** in any module.
+- **Do not write untyped Python code.** Every function, method, and variable must have type annotations. `mypy --strict` must pass.
+- **Do not skip regression tests** when fixing bugs — every fix needs a test proving the bug existed.
 - [Anti-pattern 1: describe what to avoid and why]
 - [Anti-pattern 2: describe what to avoid and why]
 - Do not modify the root checkout from an automated agent session — use a git worktree.

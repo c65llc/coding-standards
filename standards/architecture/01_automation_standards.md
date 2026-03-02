@@ -206,16 +206,16 @@ Targets without `## description` will not appear in `make ls`. This is intention
 Coverage baselines should be configurable per-module via Make variables, not a single global threshold:
 
 ```makefile
-CORE_COV_MIN  ?= 95
-APP_COV_MIN   ?= 90
-INFRA_COV_MIN ?= 80
+CORE_COV_MIN  ?= 100
+APP_COV_MIN   ?= 95
+INFRA_COV_MIN ?= 95
 
 coverage-check: ## Enforce per-module coverage baselines
 	@echo "Checking coverage baselines..."
 	# Run coverage tool per module and compare against threshold
 ```
 
-This allows projects to set tighter constraints on core/domain code (where bugs are most expensive) and lower thresholds on infrastructure (where testing is harder and less valuable).
+**95% coverage is the absolute minimum for any module.** Projects may raise these values but never lower them below 95%. Use test containers, mocks, and in-memory substitutes to achieve infrastructure coverage.
 
 ## 6. Seed Data Targets
 

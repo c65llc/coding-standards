@@ -6,24 +6,28 @@ Instead of a single global coverage threshold, enforce coverage baselines per ar
 
 ### Recommended Baselines
 
+**95% is the absolute minimum for any module.** No layer is exempt.
+
 | Layer | Min Coverage | Rationale |
 |-------|-------------|-----------|
-| Domain / Core | 95-100% | Pure business logic, no external dependencies, highest risk |
-| Application / Shell | 90%+ | Orchestration logic, moderate complexity |
-| Infrastructure / Integration | 80%+ | External adapters, harder to test exhaustively |
+| Domain / Core | 100% | Pure business logic, no external dependencies, highest risk |
+| Application / Shell | 95%+ | Orchestration logic, all use cases tested |
+| Infrastructure / Integration | 95%+ | External adapters — use test containers and mocks to reach threshold |
 
 ### Enforcement
 
-Define per-module thresholds as Make variables so they can be overridden per-project:
+Define per-module thresholds as Make variables. **The floor is 95% — projects may raise but never lower these values:**
 
 ```makefile
-CORE_COV_MIN  ?= 95
-APP_COV_MIN   ?= 90
-INFRA_COV_MIN ?= 80
+CORE_COV_MIN  ?= 100
+APP_COV_MIN   ?= 95
+INFRA_COV_MIN ?= 95
 
 coverage-check: ## Enforce per-module coverage baselines
 	# Run coverage tool per module, compare against threshold
 ```
+
+A PR that drops any module below its coverage gate MUST NOT be merged.
 
 ## 2. Pure Render Logic
 
