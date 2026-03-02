@@ -65,9 +65,9 @@ docs/                # Architecture docs, ADRs, development guides
 
 | Layer | Min Coverage |
 |-------|-------------|
-| Core / Domain | 95% |
-| Application / Shell | 90% |
-| Infrastructure | 80% |
+| Core / Domain | 100% |
+| Application / Shell | 95% |
+| Infrastructure | 95% |
 
 ---
 
