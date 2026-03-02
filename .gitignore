@@ -21,6 +21,9 @@ Thumbs.db
 # Gemini CLI files (but track .gemini/ config files)
 .gemini/active_mission.log
 
+# Worktrees
+.worktrees/
+
 # Temporary files
 *.tmp
 *.temp
