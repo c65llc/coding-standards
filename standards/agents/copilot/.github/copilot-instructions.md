@@ -35,6 +35,7 @@ These mandates apply to ALL code changes, regardless of scope or urgency:
 2. **95% test coverage is the absolute minimum** for any module, in any layer. Domain must reach 100%. Bug fixes must include regression tests.
 3. **Python code must be strongly typed throughout.** Every function, method, variable, and class attribute requires type annotations. `mypy --strict` must pass with zero errors.
 4. **Build for automated regression and local full-stack testing.** Tests must run locally without external dependencies. Use test containers and in-memory substitutes.
+5. **Track all work as GitHub Issues** (or the project's configured tracker). Every bug, feature, tech debt item, and follow-up must have an issue. Every `TODO`/`FIXME` in code must reference an issue number. Never silently defer work.
 
 ## Behavior Rules
 

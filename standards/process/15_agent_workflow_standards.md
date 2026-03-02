@@ -146,3 +146,13 @@ Agent-created PRs should:
 * Include `🤖 Generated with [Agent Name]` in the PR description.
 * Follow the same title/body format as human-authored PRs.
 * Link to the relevant issue or design document.
+
+### Work Tracking
+
+Agents MUST create GitHub Issues (or the project's configured tracker) when they:
+* Discover bugs or failing edge cases during implementation.
+* Identify tech debt or shortcuts taken to meet scope.
+* Encounter out-of-scope work that should be addressed later.
+* Add `TODO` or `FIXME` comments to the codebase — every such comment MUST reference an issue number.
+
+**Agents must NOT silently defer work.** If something needs to be done, it needs to be tracked. Check `CLAUDE.md`, `README.md`, or `.github/CONTRIBUTING.md` for the project's configured tracking tool. Default is GitHub Issues.
