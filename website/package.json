@@ -6,7 +6,9 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "prebuild": "bash scripts/sync-content.sh",
+    "predev": "bash scripts/sync-content.sh"
   },
   "dependencies": {
     "astro": "^5.0.0",

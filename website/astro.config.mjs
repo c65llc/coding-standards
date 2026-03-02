@@ -3,6 +3,9 @@ import starlight from '@astrojs/starlight';
 
 export default defineConfig({
   site: 'https://coding_standards.c65llc.com',
+  legacy: {
+    collections: true,
+  },
   integrations: [
     starlight({
       title: 'Coding Standards',
@@ -17,11 +20,7 @@ export default defineConfig({
       sidebar: [
         {
           label: 'Getting Started',
-          items: [
-            { label: 'Quick Start', slug: 'getting-started/quick-start' },
-            { label: 'Installation', slug: 'getting-started/installation' },
-            { label: 'Project Structure', slug: 'getting-started/project-structure' },
-          ],
+          autogenerate: { directory: 'getting-started' },
         },
         {
           label: 'Standards',
@@ -43,20 +42,11 @@ export default defineConfig({
         },
         {
           label: 'Guides',
-          items: [
-            { label: 'Multi-Agent Setup', slug: 'guides/multi-agent-setup' },
-            { label: 'CI/CD Integration', slug: 'guides/ci-cd-integration' },
-            { label: 'Customization', slug: 'guides/customization' },
-            { label: 'Cursor Commands', slug: 'guides/cursor-commands' },
-          ],
+          autogenerate: { directory: 'guides' },
         },
         {
           label: 'Reference',
-          items: [
-            { label: 'Makefile Targets', slug: 'reference/makefile-targets' },
-            { label: 'Scripts', slug: 'reference/scripts' },
-            { label: 'Agent Configs', slug: 'reference/agent-configs' },
-          ],
+          autogenerate: { directory: 'reference' },
         },
       ],
       customCss: [],
