@@ -11,7 +11,6 @@
 set -e
 
 # Colors for output
-RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
@@ -169,17 +168,21 @@ fi
 echo -e "${BLUE}📝 Updating .gitignore...${NC}"
 if [ -f "$PROJECT_ROOT/.gitignore" ]; then
     if ! grep -q ".standards_tmp" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
-        echo "" >> "$PROJECT_ROOT/.gitignore"
-        echo "# Standards temporary files" >> "$PROJECT_ROOT/.gitignore"
-        echo ".standards_tmp/" >> "$PROJECT_ROOT/.gitignore"
+        {
+            echo ""
+            echo "# Standards temporary files"
+            echo ".standards_tmp/"
+        } >> "$PROJECT_ROOT/.gitignore"
         echo -e "${GREEN}✅ Added .standards_tmp/ to .gitignore${NC}"
     else
         echo -e "${YELLOW}⚠️  .standards_tmp/ already in .gitignore${NC}"
     fi
     if ! grep -q "coverage/" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
-        echo "" >> "$PROJECT_ROOT/.gitignore"
-        echo "# Test coverage output" >> "$PROJECT_ROOT/.gitignore"
-        echo "coverage/" >> "$PROJECT_ROOT/.gitignore"
+        {
+            echo ""
+            echo "# Test coverage output"
+            echo "coverage/"
+        } >> "$PROJECT_ROOT/.gitignore"
         echo -e "${GREEN}✅ Added coverage/ to .gitignore${NC}"
     else
         echo -e "${YELLOW}⚠️  coverage/ already in .gitignore${NC}"
