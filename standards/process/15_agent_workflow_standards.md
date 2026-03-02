@@ -1,32 +1,45 @@
 # Agent Workflow Standards
 
-## 1. Workspace Isolation
+**Governing principle: One task = one branch = one worktree = one PR.**
+
+Every discrete piece of agent work follows the same end-to-end lifecycle: isolate, implement, verify, deliver via pull request. Work is not considered done until a PR exists.
+
+## 1. End-to-End Agent Workflow
+
+### The Complete Lifecycle
+
+Every agent task MUST follow these steps in order:
+
+1. **Create worktree + branch.**
+   ```bash
+   git worktree add .claude/worktrees/<branch-name> -b <branch-name>
+   cd .claude/worktrees/<branch-name>
+   ```
+2. **Write tests first (TDD).** Red → Green → Refactor. No implementation code before a failing test.
+3. **Implement.** Write the minimum code to pass tests. Maintain ≥ 95% coverage in all modified modules. Python code must pass `mypy --strict`.
+4. **Run `make ci`.** The full pipeline must pass before proceeding.
+5. **Push the branch.**
+   ```bash
+   git push -u origin <branch-name>
+   ```
+6. **Create a pull request.** Link to the relevant issue. Include `🤖 Generated with [Agent Name]` in the PR body.
+   ```bash
+   gh pr create --title "type(scope): description" --body "..."
+   ```
+7. **Clean up after merge.** Remove worktree, delete local branch, delete remote branch:
+   ```bash
+   git worktree remove .claude/worktrees/<branch-name>
+   git branch -D <branch-name>
+   git push origin --delete <branch-name>
+   ```
+
+### Workspace Isolation
 
 * **Requirement:** AI agents MUST work in git worktrees, never the developer's root checkout.
 * **Location:** Worktrees live in `.claude/worktrees/` (Claude Code), `.cursor/worktrees/` (Cursor), or equivalent per-agent directory.
 * **Rationale:** The root checkout is the developer's active workspace. Agent modifications cause conflicts with IDE state (unsaved buffers, debug configurations, terminal sessions). Worktrees provide full isolation at near-zero cost.
-
-### Setup
-
-```bash
-git worktree add .claude/worktrees/<branch-name> -b <branch-name>
-cd .claude/worktrees/<branch-name>
-```
-
-### Rules
-
 * Never modify files in the root checkout from an automated agent session.
 * Create a new worktree at the start of each feature/fix branch.
-* **Follow TDD:** Write failing tests before implementation code. This applies to agents as well as humans.
-* **Maintain ≥ 95% test coverage** in all modified modules. Run coverage checks before considering work complete.
-* **Python code must be strongly typed:** All functions, methods, and variables must have type annotations. `mypy --strict` must pass with zero errors.
-* Run `make ci` within the worktree before considering work complete.
-* **Clean up immediately after merge.** Remove worktree, delete local branch, delete remote branch:
-  ```bash
-  git worktree remove .claude/worktrees/<branch-name>
-  git branch -D <branch-name>
-  git push origin --delete <branch-name>  # if pushed to remote
-  ```
 
 ### Branch Naming
 
@@ -142,10 +155,12 @@ Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 
 ### Pull Request Conventions
 
-Agent-created PRs should:
+**Agents MUST open a pull request for every discrete piece of completed work.** Work is not considered done until a PR exists.
+
+Agent-created PRs MUST:
 * Include `🤖 Generated with [Agent Name]` in the PR description.
 * Follow the same title/body format as human-authored PRs.
-* Link to the relevant issue or design document.
+* Link to the relevant issue or design document (`Closes #N`, `Fixes #N`, or `Part of #N`).
 
 ### Work Tracking
 

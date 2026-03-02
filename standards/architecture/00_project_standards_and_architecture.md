@@ -181,7 +181,8 @@ Coverage gates MUST be enforced in CI. A PR that drops any module below 95% MUST
 
 * **Branching:** Feature branches from `main`. Descriptive branch names: `feature/user-authentication`.
 * **Commits:** Atomic, meaningful commits. Use conventional commit format.
-* **Pull Requests:** Required for all changes. Code review mandatory.
+* **Pull Requests:** Required for all changes. Code review mandatory. PRs are the terminal step of all work — nothing is "done" without one.
+* **One task = one branch = one PR.** Each discrete unit of work gets its own branch and its own pull request.
 
 ### Commit Messages
 

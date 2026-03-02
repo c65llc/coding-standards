@@ -112,17 +112,32 @@ Follow Conventional Commits: `type(scope): subject`
 - [Anti-pattern 1: describe what to avoid and why]
 - [Anti-pattern 2: describe what to avoid and why]
 - Do not modify the root checkout from an automated agent session — use a git worktree.
+- **Do not consider work complete without opening a pull request.** One task = one branch = one worktree = one PR.
 
 ---
 
-## Agent Workflow — Worktree Requirement
+## Agent Workflow — End-to-End
 
-**All agent-based development work MUST be completed in a git worktree.**
+**One task = one branch = one worktree = one PR.** Work is not considered done until a PR exists.
 
-```bash
-git worktree add .claude/worktrees/<branch-name> -b <branch-name>
-cd .claude/worktrees/<branch-name>
-# Work here. Run make ci before considering work complete.
-```
+1. **Create worktree + branch:**
+   ```bash
+   git worktree add .claude/worktrees/<branch-name> -b <branch-name>
+   cd .claude/worktrees/<branch-name>
+   ```
+2. **Write tests first (TDD).** Red → Green → Refactor.
+3. **Implement.** Minimum code to pass tests. Maintain ≥ 95% coverage.
+4. **Run `make ci`.** Full pipeline must pass.
+5. **Push branch and create PR:**
+   ```bash
+   git push -u origin <branch-name>
+   gh pr create --title "type(scope): description" --body "..."
+   ```
+6. **Clean up after merge:**
+   ```bash
+   git worktree remove .claude/worktrees/<branch-name>
+   git branch -D <branch-name>
+   git push origin --delete <branch-name>
+   ```
 
 Never modify files in the root checkout from an automated agent session.
