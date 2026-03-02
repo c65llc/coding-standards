@@ -181,7 +181,8 @@ Coverage gates MUST be enforced in CI. A PR that drops any module below 95% MUST
 
 * **Branching:** Feature branches from `main`. Descriptive branch names: `feature/user-authentication`.
 * **Commits:** Atomic, meaningful commits. Use conventional commit format.
-* **Pull Requests:** Required for all changes. Code review mandatory.
+* **Pull Requests:** Required for all changes. Code review mandatory. PRs are the terminal step of all work — nothing is "done" without one.
+* **One task = one branch = one PR.** Each discrete unit of work gets its own branch and its own pull request.
 
 ### Commit Messages
 
@@ -211,7 +212,17 @@ Example: `feat(domain): add user email validation`
 * Explain non-obvious design decisions.
 * Reference related issues/PRs when applicable.
 
-## 9. Security
+## 9. Work Tracking
+
+* **Default tool:** GitHub Issues. All bugs, features, tech debt, and follow-ups MUST be tracked.
+* **TODOs in code:** Every `TODO` or `FIXME` comment MUST reference a GitHub Issue number (e.g., `# TODO(#42): ...`).
+* **PR linking:** PRs must reference related issues (`Closes #123`, `Fixes #456`).
+* **Override:** Projects may specify an alternative tracker (Jira, Linear, etc.) in `CLAUDE.md`, `README.md`, or `.github/CONTRIBUTING.md`.
+* **Agents:** AI agents must create issues when they discover bugs, identify tech debt, or add TODO comments. Never silently defer work.
+
+See `standards/shared/core-standards.md` for full details.
+
+## 10. Security
 
 ### Secrets Management
 

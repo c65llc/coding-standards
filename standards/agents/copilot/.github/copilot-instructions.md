@@ -35,6 +35,9 @@ These mandates apply to ALL code changes, regardless of scope or urgency:
 2. **95% test coverage is the absolute minimum** for any module, in any layer. Domain must reach 100%. Bug fixes must include regression tests.
 3. **Python code must be strongly typed throughout.** Every function, method, variable, and class attribute requires type annotations. `mypy --strict` must pass with zero errors.
 4. **Build for automated regression and local full-stack testing.** Tests must run locally without external dependencies. Use test containers and in-memory substitutes.
+5. **Track all work as GitHub Issues** (or the project's configured tracker). Every bug, feature, tech debt item, and follow-up must have an issue. Every `TODO`/`FIXME` in code must reference an issue number. Never silently defer work.
+6. **Work in a git worktree, never the root checkout.** Create a worktree at the start of each task. See `standards/process/15_agent_workflow_standards.md`.
+7. **Every completed task must result in a pull request.** One task = one branch = one worktree = one PR. Work is not considered done until a PR exists.
 
 ## Behavior Rules
 

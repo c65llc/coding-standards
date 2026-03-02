@@ -76,6 +76,14 @@ docs/                # Architecture docs, ADRs, development guides
 
 ---
 
+## Work Tracking
+
+- **Tool:** GitHub Issues (default). [Override here if using Jira, Linear, Shortcut, etc.]
+- **Requirement:** All bugs, features, tech debt, and follow-ups must be tracked. Every `TODO`/`FIXME` in code must reference an issue number.
+- **Agents:** Create issues for any discovered bugs, tech debt, or deferred work. Never silently defer.
+
+---
+
 ## Key Source Files
 
 | File | Purpose |
@@ -100,20 +108,36 @@ Follow Conventional Commits: `type(scope): subject`
 - **Do not submit code below 95% test coverage** in any module.
 - **Do not write untyped Python code.** Every function, method, and variable must have type annotations. `mypy --strict` must pass.
 - **Do not skip regression tests** when fixing bugs — every fix needs a test proving the bug existed.
+- **Do not silently defer work.** If you discover bugs, tech debt, or out-of-scope items, create a GitHub Issue (or configured tracker item). Every `TODO`/`FIXME` in code must reference an issue number.
 - [Anti-pattern 1: describe what to avoid and why]
 - [Anti-pattern 2: describe what to avoid and why]
 - Do not modify the root checkout from an automated agent session — use a git worktree.
+- **Do not consider work complete without opening a pull request.** One task = one branch = one worktree = one PR.
 
 ---
 
-## Agent Workflow — Worktree Requirement
+## Agent Workflow — End-to-End
 
-**All agent-based development work MUST be completed in a git worktree.**
+**One task = one branch = one worktree = one PR.** Work is not considered done until a PR exists.
 
-```bash
-git worktree add .claude/worktrees/<branch-name> -b <branch-name>
-cd .claude/worktrees/<branch-name>
-# Work here. Run make ci before considering work complete.
-```
+1. **Create worktree + branch:**
+   ```bash
+   git worktree add .claude/worktrees/<branch-name> -b <branch-name>
+   cd .claude/worktrees/<branch-name>
+   ```
+2. **Write tests first (TDD).** Red → Green → Refactor.
+3. **Implement.** Minimum code to pass tests. Maintain ≥ 95% coverage.
+4. **Run `make ci`.** Full pipeline must pass.
+5. **Push branch and create PR:**
+   ```bash
+   git push -u origin <branch-name>
+   gh pr create --title "type(scope): description" --body "..."
+   ```
+6. **Clean up after merge:**
+   ```bash
+   git worktree remove .claude/worktrees/<branch-name>
+   git branch -D <branch-name>
+   git push origin --delete <branch-name>
+   ```
 
 Never modify files in the root checkout from an automated agent session.
