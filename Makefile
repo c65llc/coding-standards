@@ -1,4 +1,4 @@
-.PHONY: help ls setup sync-standards check-standards update-standards setup-agents add-copilot-instructions
+.PHONY: help ls setup sync-standards check-standards update-standards setup-agents add-copilot-instructions website-dev website-build website-preview
 
 help: ## Show this help message
 	@echo "Standards Repository Management"
@@ -78,4 +78,13 @@ add-copilot-instructions: ## Create PR to add GitHub Copilot custom instructions
 		echo "❌ add-copilot-instructions-pr.sh script not found"; \
 		exit 1; \
 	fi
+
+website-dev: ## Start the website dev server
+	@cd website && npm run dev
+
+website-build: ## Build the website for production
+	@cd website && npm run build
+
+website-preview: ## Preview the production build locally
+	@cd website && npm run preview
 
