@@ -224,6 +224,13 @@ Example: `feat(domain): add user email validation`
 - Implement rate limiting on all public-facing APIs to mitigate abuse and denial-of-service. Treat missing rate limiting on public endpoints as at least a P2 security finding.
 - Add `.env` to `.gitignore`. Never commit `.env` files.
 
+### P2 — Medium (Flag as Warning)
+
+- Missing rate limiting on public-facing endpoints.
+- Verbose error messages exposing internal details in production.
+- Unpinned dependency versions.
+- Missing encryption at rest for sensitive data.
+
 ### Secrets Management
 
 - Use secret management services (AWS Secrets Manager, Vault, GCP Secret Manager).
@@ -235,13 +242,6 @@ Example: `feat(domain): add user email validation`
 - Regular security audits (`pnpm audit`, `npm audit`, `cargo audit`, `pip-audit`, `bundle-audit`).
 - Automated vulnerability scanning in CI/CD.
 - Patch critical vulnerabilities immediately.
-
-### P2 — Medium (Flag as Warning)
-
-- Missing rate limiting on public-facing endpoints.
-- Verbose error messages exposing internal details in production.
-- Unpinned dependency versions.
-- Missing encryption at rest for sensitive data.
 
 ## Language-Specific Standards
 
