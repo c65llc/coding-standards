@@ -216,15 +216,15 @@ Example: `feat(domain): add user email validation`
 
 Reference detailed standards in:
 
-- `standards/languages/03_python_standards.md`
-- `standards/languages/04_java_standards.md`
-- `standards/languages/05_kotlin_standards.md`
-- `standards/languages/06_swift_standards.md`
-- `standards/languages/07_dart_standards.md`
-- `standards/languages/08_typescript_standards.md`
-- `standards/languages/09_javascript_standards.md`
-- `standards/languages/10_rust_standards.md`
-- `standards/languages/11_zig_standards.md`
+- `standards/languages/lang-01_python_standards.md`
+- `standards/languages/lang-02_java_standards.md`
+- `standards/languages/lang-03_kotlin_standards.md`
+- `standards/languages/lang-04_swift_standards.md`
+- `standards/languages/lang-05_dart_standards.md`
+- `standards/languages/lang-06_typescript_standards.md`
+- `standards/languages/lang-07_javascript_standards.md`
+- `standards/languages/lang-08_rust_standards.md`
+- `standards/languages/lang-09_zig_standards.md`
 
 ## Work Tracking
 
@@ -272,19 +272,19 @@ Agents must NOT silently defer work. If something needs to be done, it needs to 
 
 Reference detailed process standards in:
 
-- `standards/process/12_documentation_standards.md`
-- `standards/process/13_git_version_control_standards.md`
-- `standards/process/14_code_review_expectations.md`
+- `standards/process/proc-01_documentation_standards.md`
+- `standards/process/proc-02_git_version_control_standards.md`
+- `standards/process/proc-03_code_review_expectations.md`
 
 ## Architecture Patterns
 
 Reference architecture pattern standards in:
 
-- `standards/architecture/16_data_versioning_and_migration_standards.md`
-- `standards/architecture/17_resilient_architecture_patterns.md`
+- `standards/architecture/arch-04_data_versioning_and_migration_standards.md`
+- `standards/architecture/arch-05_resilient_architecture_patterns.md`
 
 ## Agent Workflow
 
 Reference agent workflow standards in:
 
-- `standards/process/15_agent_workflow_standards.md`
+- `standards/process/proc-04_agent_workflow_standards.md`

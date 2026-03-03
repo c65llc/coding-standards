@@ -24,16 +24,16 @@ Review the current branch against main, focusing on correctness, standards compl
    - **Test Coverage:** Check if changes are adequately tested
 
    ### 2. Compliance with Standards
-   - **Architecture:** Check against `standards/architecture/00_project_standards_and_architecture.md`
+   - **Architecture:** Check against `standards/architecture/arch-01_project_standards_and_architecture.md`
      - Domain → Application → Infrastructure layer dependencies
      - SOLID principles followed
      - No architecture violations
    - **Language Standards:** Check against appropriate language standards file:
-     - Python: `standards/languages/03_python_standards.md`
-     - Java: `standards/languages/04_java_standards.md`
-     - TypeScript: `standards/languages/08_typescript_standards.md`
-     - JavaScript: `standards/languages/09_javascript_standards.md`
-     - Rust: `standards/languages/10_rust_standards.md`
+     - Python: `standards/languages/lang-01_python_standards.md`
+     - Java: `standards/languages/lang-02_java_standards.md`
+     - TypeScript: `standards/languages/lang-06_typescript_standards.md`
+     - JavaScript: `standards/languages/lang-07_javascript_standards.md`
+     - Rust: `standards/languages/lang-08_rust_standards.md`
      - (etc. for other languages)
    - **Naming Conventions:** Verify naming follows language-specific conventions
    - **Code Style:** Check formatting, indentation, spacing
@@ -46,7 +46,7 @@ Review the current branch against main, focusing on correctness, standards compl
    - **README Updates:** User-facing changes have README updates
    - **API Documentation:** Public APIs are documented
    - **CHANGELOG:** User-facing changes have CHANGELOG entries (if applicable)
-   - **Commit Messages:** Follow Conventional Commits format from `standards/process/13_git_version_control_standards.md`
+   - **Commit Messages:** Follow Conventional Commits format from `standards/process/proc-02_git_version_control_standards.md`
    - **PR Description:** Clear description of what changed and why
 
    ### 4. Code Maintainability and Readability
@@ -92,7 +92,7 @@ Review the current branch against main, focusing on correctness, standards compl
 
 ## Review Standards
 
-Follow the review expectations from `standards/process/14_code_review_expectations.md`:
+Follow the review expectations from `standards/process/proc-03_code_review_expectations.md`:
 - Be constructive and specific
 - Focus on code, not people
 - Provide actionable feedback

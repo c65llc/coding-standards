@@ -2,7 +2,7 @@
 # Setup script for git aliases based on project standards
 #
 # This script configures git aliases for common operations following
-# the conventions in standards/process/13_git_version_control_standards.md
+# the conventions in standards/process/proc-02_git_version_control_standards.md
 
 set -e
 
