@@ -91,6 +91,7 @@ class Email
     @value = T.let(value, String)
   end
 
+  # T.untyped: Ruby's == can receive any object type by convention
   sig { params(other: T.untyped).returns(T::Boolean) }
   def ==(other)
     other.is_a?(Email) && other.value == value

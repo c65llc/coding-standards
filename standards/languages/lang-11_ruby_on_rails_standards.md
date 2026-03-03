@@ -251,7 +251,7 @@ class UsersController < ApplicationController
 
   sig { void }
   def set_user
-    @user = T.let(User.find(params[:id]), T.nilable(User))
+    @user = T.let(User.find(params[:id]), User)
   end
 
   sig { void }
@@ -291,11 +291,13 @@ class CreateUser
     def success? = success
   end
 
+  # T.untyped values: Rails params are dynamic hashes from user input
   sig { params(params: T::Hash[Symbol, T.untyped], created_by: User).returns(Result) }
   def self.call(params:, created_by:)
     new(params: params, created_by: created_by).call
   end
 
+  # T.untyped values: Rails params are dynamic hashes from user input
   sig { params(params: T::Hash[Symbol, T.untyped], created_by: User).void }
   def initialize(params:, created_by:)
     @params = T.let(params, T::Hash[Symbol, T.untyped])
