@@ -224,3 +224,11 @@ pub fn createUser(
 * **ReleaseSafe:** `-O ReleaseSafe` - Safety checks enabled, optimized.
 * **ReleaseFast:** `-O ReleaseFast` - No safety checks, maximum optimization.
 * **ReleaseSmall:** `-O ReleaseSmall` - Optimized for size.
+
+## 14. Security
+
+> Full security standards: `standards/security/sec-01_security_standards.md`
+
+- **SAST:** No major SAST tool for Zig yet. Rely on compiler warnings and manual review.
+- **Memory safety:** Zig has no hidden control flow. Use `@panic` only for programming errors. Validate all external inputs at system boundaries.
+- **Secure random:** Use `std.crypto.random` for security contexts.

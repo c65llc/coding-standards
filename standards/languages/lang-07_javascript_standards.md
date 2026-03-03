@@ -214,3 +214,13 @@ function createUser(email, name) {
 * **Pure Functions:** Write pure functions when possible. Avoid side effects.
 * **Single Responsibility:** Functions should do one thing. Keep functions small.
 * **Early Returns:** Use early returns to reduce nesting.
+
+## 14. Security
+
+> Full security standards: `standards/security/sec-01_security_standards.md`
+
+- **SAST:** Use `eslint-plugin-security` in ESLint config.
+- **Dependency scanning:** Run `npm audit` or `yarn audit` in CI.
+- **Secrets scanning:** Use `detect-secrets` as a pre-commit hook.
+- **Banned functions:** `eval()`, `Function()`, `setTimeout(string)`, `setInterval(string)`, `document.write()`.
+- **Secure random:** Use `crypto.randomUUID()` or `crypto.getRandomValues()`, not `Math.random()`, for security contexts.

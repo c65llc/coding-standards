@@ -294,3 +294,11 @@ fn load_project(path: &Path) -> anyhow::Result<Project> {
 [target.wasm32-unknown-unknown]
 rustflags = ['--cfg', 'getrandom_backend="custom"']
 ```
+
+## 20. Security
+
+> Full security standards: `standards/security/sec-01_security_standards.md`
+
+- **Dependency scanning:** Run `cargo audit` and `cargo deny check` in CI.
+- **Unsafe code:** Minimize `unsafe` blocks. Document safety invariants for every `unsafe` usage. Prefer safe abstractions.
+- **Secure random:** Use `rand::rngs::OsRng` or `getrandom` crate for cryptographic randomness.
