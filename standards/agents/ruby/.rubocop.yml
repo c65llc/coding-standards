@@ -1,0 +1,160 @@
+require:
+  - rubocop-rails
+  - rubocop-rspec
+  - rubocop-performance
+
+AllCops:
+  TargetRubyVersion: 3.2
+  TargetRailsVersion: 7.2
+  NewCops: enable
+  SuggestExtensions: false
+  Exclude:
+    - 'db/schema.rb'
+    - 'db/migrate/**/*'
+    - 'config/secrets/**/*'
+    - 'script/**/*'
+    - 'bin/{rails,rake}'
+Rails/UnknownEnv:
+  Environments: [development, test, staging, demo, production]
+Rails/SafeNavigation:
+  ConvertTry: true
+Rails/RedundantPresenceValidationOnBelongsTo:
+  Enabled: false
+Rails/I18nLocaleTexts:
+  Enabled: false
+
+Style/Documentation:
+  Enabled: false
+Style/SymbolArray:
+  Enabled: false
+Style/AsciiComments:
+  Enabled: false
+Style/GlobalVars:
+  AllowedVariables: [$redis]
+Style/HashSyntax:
+  Enabled: false
+
+Layout/LineLength:
+  AllowedPatterns:
+    - '# rubocop:disable*'
+Layout/MultilineMethodCallIndentation:
+  EnforcedStyle: indented
+Layout/FirstHashElementIndentation:
+  EnforcedStyle: consistent
+Layout/ClassStructure:
+  Enabled: true
+  Categories:
+    module_inclusion:
+      - include
+      - prepend
+      - extend
+      - require
+    gem_config:
+      - acts_as_taggable_on
+      - audited
+      - base_uri
+      - devise
+      - has_ancestry
+      - has_associated_audits
+      - mount_uploader
+      - searchkick
+      - sidekiq_options
+      - embed
+    attributes:
+      - attribute
+      - attributes
+      - attr_reader
+      - attr_writer
+      - attr_accessor
+      - alias_attribute
+    associations:
+      - has_one
+      - has_many
+      - belongs_to
+      - has_and_belongs_to_many
+      - delegate
+    validations:
+      - validate
+      - validates
+      - validates_each
+      - validates_with
+      - validates_presence_of
+      - validates_uniqueness_of
+      - validates_acceptance_of
+      - validates_confirmation_of
+      - validates_exclusion_of
+      - validates_inclusion_of
+      - validates_length_of
+      - validates_numericality_of
+      - validates_format_of
+      - validates_associated
+      - validates_absence_of
+      - validates_size_of
+    nested_attributes:
+      - accepts_nested_attributes_for
+    hooks:
+      - before_validation
+      - before_save
+      - before_create
+      - before_update
+      - before_destroy
+      - after_validation
+      - after_create
+      - after_save
+      - after_commit
+      - after_rollback
+      - after_update
+      - after_destroy
+      - around_save
+      - around_create
+      - around_update
+      - around_destroy
+      - define_model_callbacks
+    scopes:
+      - scope
+    enums:
+      - enum
+    serializers:
+      - serialize
+  ExpectedOrder:
+    - module_inclusion
+    - gem_config
+    - constants
+    - attributes
+    - enums
+    - serializers
+    - associations
+    - nested_attributes
+    - scopes
+    - validations
+    - hooks
+    - public_class_methods
+    - initializer
+    - public_methods
+    - protected_methods
+    - private_methods
+
+Bundler/OrderedGems:
+  Enabled: false
+
+Metrics/BlockLength:
+  Exclude:
+    - 'Rakefile'
+    - '**/*.rake'
+    - 'spec/**/*.rb'
+
+Metrics/ModuleLength:
+  Exclude:
+    - 'spec/**/*.rb'
+
+Metrics/MethodLength:
+  AllowedMethods: ['strong_params_array']
+  CountAsOne: ['hash', 'method_call']
+  Exclude:
+    - 'db/migrate/*.rb'
+
+Naming/VariableNumber:
+  AllowedPatterns: ['line_1', 'line_2', 'line_3', 'line_4']
+
+Lint/MissingSuper:
+  AllowedParentClasses: []

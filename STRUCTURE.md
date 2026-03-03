@@ -15,25 +15,28 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │
 ├── standards/                      # 📋 All standards documents
 │   ├── architecture/              # Core architecture & automation standards
-│   │   ├── 00_project_standards_and_architecture.md
-│   │   ├── 01_automation_standards.md
-│   │   └── 02_cursor_automation_standards.md
+│   │   ├── arch-01_project_standards_and_architecture.md
+│   │   ├── arch-02_automation_standards.md
+│   │   └── arch-03_cursor_automation_standards.md
 │   │
 │   ├── languages/                 # Language-specific standards
-│   │   ├── 03_python_standards.md
-│   │   ├── 04_java_standards.md
-│   │   ├── 05_kotlin_standards.md
-│   │   ├── 06_swift_standards.md
-│   │   ├── 07_dart_standards.md
-│   │   ├── 08_typescript_standards.md
-│   │   ├── 09_javascript_standards.md
-│   │   ├── 10_rust_standards.md
-│   │   └── 11_zig_standards.md
+│   │   ├── lang-01_python_standards.md
+│   │   ├── lang-02_java_standards.md
+│   │   ├── lang-03_kotlin_standards.md
+│   │   ├── lang-04_swift_standards.md
+│   │   ├── lang-05_dart_standards.md
+│   │   ├── lang-06_typescript_standards.md
+│   │   ├── lang-07_javascript_standards.md
+│   │   ├── lang-08_rust_standards.md
+│   │   ├── lang-09_zig_standards.md
+│   │   ├── lang-10_ruby_standards.md
+│   │   └── lang-11_ruby_on_rails_standards.md
 │   │
 │   ├── process/                   # Process & workflow standards
-│   │   ├── 12_documentation_standards.md
-│   │   ├── 13_git_version_control_standards.md
-│   │   └── 14_code_review_expectations.md
+│   │   ├── proc-01_documentation_standards.md
+│   │   ├── proc-02_git_version_control_standards.md
+│   │   ├── proc-03_code_review_expectations.md
+│   │   └── proc-04_agent_workflow_standards.md
 │   │
 │   ├── shared/                   # Shared standards for all agents
 │   │   └── core-standards.md
@@ -90,9 +93,9 @@ This document explains the reorganized file hierarchy for easier navigation and 
 
 | Category | Location | Files |
 |----------|----------|-------|
-| Architecture | `standards/architecture/` | 00-02 |
-| Languages | `standards/languages/` | 03-11 |
-| Process | `standards/process/` | 12-14 |
+| Architecture | `standards/architecture/` | arch-01 through arch-03 |
+| Languages | `standards/languages/` | lang-01 through lang-11 |
+| Process | `standards/process/` | proc-01 through proc-04 |
 
 ### Automation
 

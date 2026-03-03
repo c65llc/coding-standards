@@ -120,7 +120,7 @@ curl -fsSL https://raw.githubusercontent.com/<your-org>/coding-standards/main/in
 
 If a single project needs extra rules beyond what the shared standards cover:
 
-1. Create a file like `standards/languages/15_project_specific.md`.
+1. Create a file like `standards/languages/lang-99_project_specific.md`.
 2. Update `.cursorrules` to reference it.
 3. Commit to the project repository (not the standards repo) if the rule only applies to that project.
 

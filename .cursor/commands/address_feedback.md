@@ -60,9 +60,9 @@ Guide the user through resolving all unresolved comments on the current GitHub P
    **b) Analyze:**
    - Read the related file and code context
    - Analyze the comment's concern against:
-     * Project standards (`standards/architecture/00_project_standards_and_architecture.md`)
+     * Project standards (`standards/architecture/arch-01_project_standards_and_architecture.md`)
      * Language-specific standards (if applicable)
-     * Code review expectations (`standards/process/14_code_review_expectations.md`)
+     * Code review expectations (`standards/process/proc-03_code_review_expectations.md`)
    - Suggest a response that:
      * Acknowledges the concern
      * Explains the reasoning (if the code is correct)

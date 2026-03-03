@@ -5,22 +5,24 @@
 # All code suggestions should follow standards in the standards/ directory
 
 ## Architecture Standards
-# Reference: standards/architecture/00_project_standards_and_architecture.md
+# Reference: standards/architecture/arch-01_project_standards_and_architecture.md
 # - Follow Clean Architecture (Domain → Application → Infrastructure → Apps)
 # - Enforce SOLID principles
 # - No circular dependencies
 
 ## Language Standards
 # Apply language-specific standards from standards/languages/:
-# - Python: 03_python_standards.md
-# - Java: 04_java_standards.md
-# - Kotlin: 05_kotlin_standards.md
-# - Swift: 06_swift_standards.md
-# - Dart: 07_dart_standards.md
-# - TypeScript: 08_typescript_standards.md
-# - JavaScript: 09_javascript_standards.md
-# - Rust: 10_rust_standards.md
-# - Zig: 11_zig_standards.md
+# - Python: lang-01_python_standards.md
+# - Java: lang-02_java_standards.md
+# - Kotlin: lang-03_kotlin_standards.md
+# - Swift: lang-04_swift_standards.md
+# - Dart: lang-05_dart_standards.md
+# - TypeScript: lang-06_typescript_standards.md
+# - JavaScript: lang-07_javascript_standards.md
+# - Rust: lang-08_rust_standards.md
+# - Zig: lang-09_zig_standards.md
+# - Ruby: lang-10_ruby_standards.md
+# - Ruby on Rails: lang-11_ruby_on_rails_standards.md
 
 ## Coding Standards
 # Reference: standards/shared/core-standards.md
@@ -37,9 +39,9 @@
 # - Mirror source structure in tests
 
 ## Process Standards
-# - Documentation: standards/process/12_documentation_standards.md
-# - Git workflow: standards/process/13_git_version_control_standards.md
-# - Code review: standards/process/14_code_review_expectations.md
+# - Documentation: standards/process/proc-01_documentation_standards.md
+# - Git workflow: standards/process/proc-02_git_version_control_standards.md
+# - Code review: standards/process/proc-03_code_review_expectations.md
 
 ## Response Guidelines
 # - Tone: Terse, objective, professional

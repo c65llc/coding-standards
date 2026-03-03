@@ -25,10 +25,10 @@ There are no build steps, no test suites, and no application to run. The primary
 
 ### Standards Documents (`standards/`)
 
-14 numbered Markdown files organized by category:
-- `architecture/` (00-02): Core architecture, automation standards, Cursor-specific automation
-- `languages/` (03-11): Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig
-- `process/` (12-14): Documentation, git/version control, code review
+Markdown files organized by category with prefix-based naming:
+- `architecture/` (arch-01 through arch-03): Core architecture, automation standards, Cursor-specific automation
+- `languages/` (lang-01 through lang-11): Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby on Rails
+- `process/` (proc-01 through proc-04): Documentation, git/version control, code review, agent workflow
 - `shared/core-standards.md`: Canonical source of cross-cutting standards (Clean Architecture, SOLID, naming, testing coverage targets). All agent configs reference this file.
 
 ### Agent Configurations (`standards/agents/`)
@@ -53,7 +53,7 @@ All bash. Key scripts:
 
 ## Conventions
 
-- **Standards numbering**: Files are numbered 00-14. Preserve this numbering scheme when adding new standards.
+- **Standards numbering**: Files use category-based prefixes (arch-XX, lang-XX, proc-XX). Preserve this naming scheme when adding new standards.
 - **Conventional Commits**: `type(scope): subject` — types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`, `ci`
 - **Temporary files**: Go in `.standards_tmp/` (gitignored).
 - **Agent config consistency**: When modifying shared standards in `core-standards.md`, check that agent configs (`.cursorrules`, copilot-instructions.md, `.aiderrc`, `.codexrc`, `GEMINI.md`) stay aligned.

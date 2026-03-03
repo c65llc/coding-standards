@@ -19,7 +19,7 @@ Create and populate a GitHub Pull Request from the current branch to main using 
      - **Testing:** Testing approach or test coverage notes
      - **Breaking Changes:** Any breaking changes (if applicable)
    - Use the commit messages, file changes, and code context to create an intelligent description
-   - Follow PR standards from `standards/process/13_git_version_control_standards.md`
+   - Follow PR standards from `standards/process/proc-02_git_version_control_standards.md`
 
 3. **Display and Execute:**
    - Show the generated title and body to the user for review

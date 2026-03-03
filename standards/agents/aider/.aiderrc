@@ -32,21 +32,23 @@ Follow Clean Architecture principles:
 - Infrastructure layer: Depends on Application and Domain
 - Apps layer: Depends on all inner layers
 
-Reference: standards/architecture/00_project_standards_and_architecture.md
+Reference: standards/architecture/arch-01_project_standards_and_architecture.md
 """
 
 # Language-specific standards
 language_standards = """
 Apply language-specific standards from:
-- Python: standards/languages/03_python_standards.md
-- Java: standards/languages/04_java_standards.md
-- Kotlin: standards/languages/05_kotlin_standards.md
-- Swift: standards/languages/06_swift_standards.md
-- Dart: standards/languages/07_dart_standards.md
-- TypeScript: standards/languages/08_typescript_standards.md
-- JavaScript: standards/languages/09_javascript_standards.md
-- Rust: standards/languages/10_rust_standards.md
-- Zig: standards/languages/11_zig_standards.md
+- Python: standards/languages/lang-01_python_standards.md
+- Java: standards/languages/lang-02_java_standards.md
+- Kotlin: standards/languages/lang-03_kotlin_standards.md
+- Swift: standards/languages/lang-04_swift_standards.md
+- Dart: standards/languages/lang-05_dart_standards.md
+- TypeScript: standards/languages/lang-06_typescript_standards.md
+- JavaScript: standards/languages/lang-07_javascript_standards.md
+- Rust: standards/languages/lang-08_rust_standards.md
+- Zig: standards/languages/lang-09_zig_standards.md
+- Ruby: standards/languages/lang-10_ruby_standards.md
+- Ruby on Rails: standards/languages/lang-11_ruby_on_rails_standards.md
 """
 
 # Testing requirements
@@ -70,7 +72,7 @@ documentation_standards = """
 - Create ADRs for architectural decisions
 - Update CHANGELOG.md for user-facing changes
 
-Reference: standards/process/12_documentation_standards.md
+Reference: standards/process/proc-01_documentation_standards.md
 """
 
 # Error handling

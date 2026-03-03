@@ -7,25 +7,27 @@ You are an AI coding assistant working within a project that follows strict arch
 This project follows comprehensive development standards. Reference these documents:
 
 ### Architecture & Standards
-- `standards/architecture/00_project_standards_and_architecture.md` - Core architecture, SOLID principles, naming conventions
-- `standards/architecture/01_automation_standards.md` - Makefile targets and automation requirements
+- `standards/architecture/arch-01_project_standards_and_architecture.md` - Core architecture, SOLID principles, naming conventions
+- `standards/architecture/arch-02_automation_standards.md` - Makefile targets and automation requirements
 - `standards/shared/core-standards.md` - Shared core standards
 
 ### Language-Specific Standards
-- `standards/languages/03_python_standards.md` - Python (poetry/uv, black, ruff, mypy, pytest)
-- `standards/languages/04_java_standards.md` - Java (Gradle/Maven, Java 17+, JUnit 5)
-- `standards/languages/05_kotlin_standards.md` - Kotlin (Gradle, ktlint, detekt, MockK)
-- `standards/languages/06_swift_standards.md` - Swift (SPM, swiftformat, XCTest)
-- `standards/languages/07_dart_standards.md` - Dart (pub, dart format, test package)
-- `standards/languages/08_typescript_standards.md` - TypeScript (pnpm, prettier, eslint, vitest, strict mode)
-- `standards/languages/09_javascript_standards.md` - JavaScript (pnpm, prettier, eslint, vitest)
-- `standards/languages/10_rust_standards.md` - Rust (cargo, rustfmt, clippy, Result<T, E>)
-- `standards/languages/11_zig_standards.md` - Zig (zig build, zig fmt, manual memory management)
+- `standards/languages/lang-01_python_standards.md` - Python (poetry/uv, black, ruff, mypy, pytest)
+- `standards/languages/lang-02_java_standards.md` - Java (Gradle/Maven, Java 17+, JUnit 5)
+- `standards/languages/lang-03_kotlin_standards.md` - Kotlin (Gradle, ktlint, detekt, MockK)
+- `standards/languages/lang-04_swift_standards.md` - Swift (SPM, swiftformat, XCTest)
+- `standards/languages/lang-05_dart_standards.md` - Dart (pub, dart format, test package)
+- `standards/languages/lang-06_typescript_standards.md` - TypeScript (pnpm, prettier, eslint, vitest, strict mode)
+- `standards/languages/lang-07_javascript_standards.md` - JavaScript (pnpm, prettier, eslint, vitest)
+- `standards/languages/lang-08_rust_standards.md` - Rust (cargo, rustfmt, clippy, Result<T, E>)
+- `standards/languages/lang-09_zig_standards.md` - Zig (zig build, zig fmt, manual memory management)
+- `standards/languages/lang-10_ruby_standards.md` - Ruby (bundler, rubocop, sorbet, rspec)
+- `standards/languages/lang-11_ruby_on_rails_standards.md` - Ruby on Rails (Rails 7.2+, rubocop-rails)
 
 ### Process Standards
-- `standards/process/12_documentation_standards.md` - ADR, code docs, changelog, user docs
-- `standards/process/13_git_version_control_standards.md` - Git workflow, commits, branching
-- `standards/process/14_code_review_expectations.md` - Code review process and expectations
+- `standards/process/proc-01_documentation_standards.md` - ADR, code docs, changelog, user docs
+- `standards/process/proc-02_git_version_control_standards.md` - Git workflow, commits, branching
+- `standards/process/proc-03_code_review_expectations.md` - Code review process and expectations
 
 ## Non-Negotiable Requirements
 
@@ -36,16 +38,16 @@ These mandates apply to ALL code changes, regardless of scope or urgency:
 3. **Python code must be strongly typed throughout.** Every function, method, variable, and class attribute requires type annotations. `mypy --strict` must pass with zero errors.
 4. **Build for automated regression and local full-stack testing.** Tests must run locally without external dependencies. Use test containers and in-memory substitutes.
 5. **Track all work as GitHub Issues** (or the project's configured tracker). Every bug, feature, tech debt item, and follow-up must have an issue. Every `TODO`/`FIXME` in code must reference an issue number. Never silently defer work.
-6. **Work in a git worktree, never the root checkout.** Create a worktree at the start of each task. See `standards/process/15_agent_workflow_standards.md`.
+6. **Work in a git worktree, never the root checkout.** Create a worktree at the start of each task. See `standards/process/proc-04_agent_workflow_standards.md`.
 7. **Every completed task must result in a pull request.** One task = one branch = one worktree = one PR. Work is not considered done until a PR exists.
 
 ## Behavior Rules
 
 1. **Always check relevant standards** before making changes:
-   - Architecture decisions → `standards/architecture/00_project_standards_and_architecture.md`
+   - Architecture decisions → `standards/architecture/arch-01_project_standards_and_architecture.md`
    - Language-specific code → corresponding language standards file in `standards/languages/`
-   - Documentation → `standards/process/12_documentation_standards.md`
-   - Git operations → `standards/process/13_git_version_control_standards.md`
+   - Documentation → `standards/process/proc-01_documentation_standards.md`
+   - Git operations → `standards/process/proc-02_git_version_control_standards.md`
 
 2. **Enforce standards automatically:**
    - Check naming conventions match language standards
@@ -57,25 +59,27 @@ These mandates apply to ALL code changes, regardless of scope or urgency:
    - Update code documentation for public APIs
    - Create ADRs for architectural decisions
    - Update CHANGELOG.md for user-facing changes
-   - Follow documentation format from `standards/process/12_documentation_standards.md`
+   - Follow documentation format from `standards/process/proc-01_documentation_standards.md`
 
 4. **Git commit standards:**
-   - Use Conventional Commits format from `standards/process/13_git_version_control_standards.md`
+   - Use Conventional Commits format from `standards/process/proc-02_git_version_control_standards.md`
    - Ensure commit messages follow: `type(scope): subject`
    - Reference issues/PRs in commit footer
 
 ## Language Detection
 
 When working with code, automatically detect the language and apply the corresponding standards file:
-- `.py` files → `standards/languages/03_python_standards.md`
-- `.java` files → `standards/languages/04_java_standards.md`
-- `.kt` files → `standards/languages/05_kotlin_standards.md`
-- `.swift` files → `standards/languages/06_swift_standards.md`
-- `.dart` files → `standards/languages/07_dart_standards.md`
-- `.ts`, `.tsx` files → `standards/languages/08_typescript_standards.md`
-- `.js`, `.jsx` files → `standards/languages/09_javascript_standards.md`
-- `.rs` files → `standards/languages/10_rust_standards.md`
-- `.zig` files → `standards/languages/11_zig_standards.md`
+- `.py` files → `standards/languages/lang-01_python_standards.md`
+- `.java` files → `standards/languages/lang-02_java_standards.md`
+- `.kt` files → `standards/languages/lang-03_kotlin_standards.md`
+- `.swift` files → `standards/languages/lang-04_swift_standards.md`
+- `.dart` files → `standards/languages/lang-05_dart_standards.md`
+- `.ts`, `.tsx` files → `standards/languages/lang-06_typescript_standards.md`
+- `.js`, `.jsx` files → `standards/languages/lang-07_javascript_standards.md`
+- `.rs` files → `standards/languages/lang-08_rust_standards.md`
+- `.zig` files → `standards/languages/lang-09_zig_standards.md`
+- `.rb` files → `standards/languages/lang-10_ruby_standards.md`
+- `.erb` files, `Gemfile`, `Rakefile` → `standards/languages/lang-11_ruby_on_rails_standards.md`
 
 ## Response Style
 

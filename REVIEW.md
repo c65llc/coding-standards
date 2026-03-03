@@ -27,7 +27,7 @@ This codebase provides a comprehensive standards repository for software develop
 #### Makefile
 - **Location**: `Makefile`
 - **Issues**:
-  - Missing some standard targets from `01_automation_standards.md` (bootstrap, dev, test, build, run, fmt)
+  - Missing some standard targets from `arch-02_automation_standards.md` (bootstrap, dev, test, build, run, fmt)
   - Could benefit from better organization
 - **Recommendation**: Add missing targets or document why they're not needed for this repo
 

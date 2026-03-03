@@ -1,6 +1,6 @@
 # Document 2: Automation & Workflows
 
-**Filename:** `01_automation_standards.md`
+**Filename:** `arch-02_automation_standards.md`
 
 > **Usage:** This rules file instructs the AI to always check for or generate a `Makefile` that wraps the underlying tech stack (npm, pip, cargo, etc).
 
@@ -255,5 +255,5 @@ Projects with a graphical interface SHOULD include an agent-friendly development
 ### `make devloop`
 
 * **Goal:** Start an HTTP server for autonomous UI iteration.
-* **Action:** Launches a build/inspect cycle API (see `15_agent_workflow_standards.md` for endpoint specification).
+* **Action:** Launches a build/inspect cycle API (see `proc-04_agent_workflow_standards.md` for endpoint specification).
 * **Post-condition:** Server is running and accessible at a documented port (e.g., `localhost:9010`).
