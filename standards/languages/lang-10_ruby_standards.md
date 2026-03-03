@@ -9,7 +9,7 @@
 ## 2. Code Style
 
 * **Linter/Formatter:** `rubocop`. Run via `make lint` or `bundle exec rubocop`.
-* **Auto-correct:** `rubocop -A` for safe auto-corrections. Run via `make fmt`.
+* **Auto-correct:** `rubocop -a` for safe auto-corrections only. Run via `make fmt`. Use `rubocop -A` for unsafe auto-corrections when you've reviewed the changes.
 * **Config:** `.rubocop.yml` at project root. Enable `NewCops`.
 
 ### .rubocop.yml (base)
@@ -57,6 +57,12 @@ Layout/FirstHashElementIndentation:
 * **Nullable:** Use `T.nilable(Type)` for nullable values.
 * **No `T.untyped`** without explicit justification in a comment.
 * **RBI generation:** Use `tapioca` for generating RBI files. Store in `sorbet/rbi/`.
+
+### Exceptions
+
+* **Spec files (`spec/`):** `# typed: false` is acceptable. Test files use dynamic matchers and DSLs that are incompatible with strict mode.
+* **Migrations (`db/migrate/`):** `# typed: false` is acceptable. Generated code.
+* **Config files (`config/`):** `# typed: ignore` is acceptable for Rails-generated config files.
 
 ### sorbet/config
 

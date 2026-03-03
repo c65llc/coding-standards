@@ -1,4 +1,7 @@
-require: rubocop-rails
+require:
+  - rubocop-rails
+  - rubocop-rspec
+  - rubocop-performance
 
 AllCops:
   TargetRailsVersion: 7.2
@@ -6,6 +9,7 @@ AllCops:
   SuggestExtensions: false
   Exclude:
     - 'db/schema.rb'
+    - 'db/migrate/**/*'
     - 'config/secrets/**/*'
     - 'script/**/*'
     - 'bin/{rails,rake}'

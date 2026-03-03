@@ -13,7 +13,6 @@ require:
   - rubocop-rails
   - rubocop-rspec
   - rubocop-performance
-  - rubocop-sorbet
 
 AllCops:
   TargetRubyVersion: 3.2
@@ -342,7 +341,7 @@ end
 * **System specs:** Use Capybara for end-to-end browser testing. Use `driven_by(:selenium_chrome_headless)`.
 * **Factories:** Use `factory_bot` for test data. Never use fixtures for new tests.
 * **Database:** Use `database_cleaner` with transaction strategy for speed. Use truncation strategy for system specs.
-* **Coverage:** 95% minimum for models and services. 90% minimum for controllers.
+* **Coverage:** 95% minimum for models, services, and controllers. 100% for domain.
 
 ### Request Spec Example
 
@@ -530,23 +529,8 @@ Key Rails-specific RuboCop decisions for this project. Reference `standards/agen
 
 ```yaml
 # Layout/ClassStructure -- enforce the ordering defined in Section 2
-Layout/ClassStructure:
-  Enabled: true
-  ExpectedOrder:
-    - module_inclusion
-    - constants
-    - attributes
-    - enums
-    - associations
-    - nested_attributes
-    - scopes
-    - validations
-    - callbacks
-    - public_class_methods
-    - initializer
-    - public_methods
-    - protected_methods
-    - private_methods
+# See `standards/agents/ruby/.rubocop.yml` for the full `Layout/ClassStructure`
+# configuration matching the 16-level ordering described in Section 2.
 
 # Never enforce hash rocket vs. symbol style -- allow both
 Style/HashSyntax:
