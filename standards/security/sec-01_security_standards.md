@@ -206,7 +206,7 @@ Never use these functions with untrusted input. If used with trusted input, add 
 |----------|------|
 | Python | `pip-audit`, `safety` |
 | JavaScript/TypeScript | `npm audit`, `yarn audit` |
-| Ruby | `bundle-audit`, `bundler-audit` |
+| Ruby | `bundler-audit` (`bundle-audit` command) |
 | Java/Kotlin | OWASP Dependency-Check, `gradle dependencyCheckAnalyze` |
 | Rust | `cargo audit`, `cargo deny` |
 | Swift | — (use GitHub Dependabot) |
@@ -216,7 +216,7 @@ Never use these functions with untrusted input. If used with trusted input, add 
 ### Lock File Requirements `[P1]`
 
 - **Always commit lock files** (`package-lock.json`, `Gemfile.lock`, `Cargo.lock`, `poetry.lock`, etc.).
-- CI must install from lock files (`npm ci`, `bundle install --frozen`, etc.).
+- CI must install from lock files (`npm ci`, `BUNDLE_FROZEN=1 bundle install`, etc.).
 
 ### HTTP Dependency Prohibition `[P2]`
 
@@ -296,7 +296,7 @@ logger.info("User login", extra={"username": username})
 | JavaScript/TypeScript | `eslint-plugin-security` | Add to ESLint config |
 | Ruby | `brakeman` | `brakeman --no-pager` |
 | Java/Kotlin | SpotBugs + Find Security Bugs | Gradle/Maven plugin |
-| Rust | `cargo audit` | `cargo audit` |
+| Rust | `cargo-geiger` (unsafe audit), `clippy` | `cargo geiger`, `cargo clippy` |
 | Swift | — | Use Xcode static analyzer |
 | Dart | `dart analyze` | Built-in security rules |
 
