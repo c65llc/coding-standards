@@ -29,6 +29,9 @@ Reference and strictly follow these documents when making any changes:
    - `standards/process/proc-02_git_version_control_standards.md` - Git workflow, commits, branching
    - `standards/process/proc-03_code_review_expectations.md` - Code review process and expectations
 
+4. **Security Standards:**
+   - `standards/security/sec-01_security_standards.md` - Security guidelines with P0-P2 severity model
+
 ## Non-Negotiable Requirements
 
 These mandates apply to ALL code changes, regardless of scope or urgency:
@@ -106,6 +109,8 @@ When reviewing code, automatically check for:
 - Missing error handling
 - Documentation gaps
 - Git commit message format issues
+- **P0 Security violations** — hardcoded secrets, SQL injection, command injection, insecure deserialization, auth bypass, default credentials
+- **P1 Security violations** — missing CSRF protection, XSS, SSRF, missing authorization, sensitive data in logs, HTTP dependencies, missing security headers, insecure random
 
 If violations are detected, suggest fixes referencing the specific standards document.
 

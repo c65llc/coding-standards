@@ -167,3 +167,12 @@ fun createUser(email: String, name: String): User {
     // Implementation
 }
 ```
+
+## 13. Security
+
+> Full security standards: `standards/security/sec-01_security_standards.md`
+
+- **SAST:** Use SpotBugs with Find Security Bugs plugin or detekt security ruleset in CI.
+- **Dependency scanning:** Run OWASP Dependency-Check (`gradle dependencyCheckAnalyze`).
+- **Banned functions:** `Runtime.exec()` with unsanitized string, `ObjectInputStream.readObject()` on untrusted data, `ScriptEngine.eval()`.
+- **Secure random:** Use `java.security.SecureRandom`, not `java.util.Random`, for security contexts.

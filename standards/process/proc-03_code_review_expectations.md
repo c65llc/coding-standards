@@ -53,10 +53,12 @@
 - [ ] Bug fixes include a regression test that reproduces the original bug
 - [ ] **Python code is fully typed** — `mypy --strict` passes with zero errors
 - [ ] Documentation is updated (code comments, README, user docs)
-- [ ] No security vulnerabilities introduced
+- [ ] No P0/P1 security violations (see `standards/security/sec-01_security_standards.md`)
+- [ ] No hardcoded secrets, API keys, or credentials in source code
+- [ ] No SQL injection, command injection, or XSS vulnerabilities
+- [ ] No use of banned dangerous functions with untrusted input
 - [ ] No obvious performance regressions
 - [ ] Dependencies are justified and up-to-date
-- [ ] No secrets or sensitive data committed
 - [ ] Git history is clean (meaningful commits)
 
 ## 3. Review Feedback
@@ -154,7 +156,7 @@ How was this tested?
 * **Tests:** ≥ 95% coverage in all modified modules, all tests pass, regression tests for bug fixes
 * **Type Safety:** Python code passes `mypy --strict` with zero errors; TypeScript uses strict mode
 * **Documentation:** Documentation is updated
-* **Security:** No security concerns
+* **Security:** No P0 or P1 security findings (per `standards/security/sec-01_security_standards.md`). P0/P1 findings block approval.
 * **Architecture:** Follows project architecture
 
 ### Approval Types
@@ -204,7 +206,7 @@ How was this tested?
 * **Linting:** Automated style and linting checks
 * **Type Checking:** Type safety validation
 * **Tests:** Automated test execution
-* **Security:** Dependency vulnerability scanning
+* **Security:** Dependency vulnerability scanning, SAST (language-appropriate: bandit, eslint-plugin-security, brakeman, SpotBugs), secrets scanning
 * **Coverage:** Code coverage reporting
 
 ### Bot Reviews

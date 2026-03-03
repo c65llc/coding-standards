@@ -182,3 +182,12 @@ func createUser(email: String, name: String) throws -> User {
 * **iOS/macOS:** Follow Apple's Human Interface Guidelines.
 * **Server-Side:** Use Vapor or SwiftNIO for HTTP servers.
 * **Cross-Platform:** Use `#if os()` for platform-specific code.
+
+## 13. Security
+
+> Full security standards: `standards/security/sec-01_security_standards.md`
+
+- **SAST:** Use Xcode's built-in static analyzer. No major third-party SAST tool for Swift.
+- **Dependency scanning:** Enable GitHub Dependabot for SPM dependencies.
+- **Banned functions:** `NSExpression` with user input, `Process`/`NSTask` with unsanitized arguments.
+- **Secure random:** Use `SystemRandomNumberGenerator` or `SecRandomCopyBytes` for security contexts.

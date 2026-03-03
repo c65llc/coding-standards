@@ -494,6 +494,8 @@ end
 
 ## 9. Security
 
+> Full security standards: `standards/security/sec-01_security_standards.md`
+
 * **CSRF protection:** Enabled by default via `protect_from_forgery with: :exception` in `ApplicationController`. Never disable it for non-API controllers.
 * **Strong parameters:** Always use strong params. Never call `params.permit!` or mass-assign unfiltered input.
 * **Safe navigation:** Use `&.` (safe navigation operator) instead of `try` or `try!`:

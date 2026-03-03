@@ -38,6 +38,9 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │   │   ├── proc-03_code_review_expectations.md
 │   │   └── proc-04_agent_workflow_standards.md
 │   │
+│   ├── security/                  # Security standards
+│   │   └── sec-01_security_standards.md
+│   │
 │   ├── shared/                   # Shared standards for all agents
 │   │   └── core-standards.md
 │   │
@@ -96,6 +99,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 | Architecture | `standards/architecture/` | arch-01 through arch-03 |
 | Languages | `standards/languages/` | lang-01 through lang-11 |
 | Process | `standards/process/` | proc-01 through proc-04 |
+| Security | `standards/security/` | sec-01 |
 
 ### Automation
 
@@ -116,7 +120,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 
 All references have been updated:
 
-- **`.cursorrules`** - References `standards/architecture/`, `standards/languages/`, `standards/process/`
+- **`.cursorrules`** - References `standards/architecture/`, `standards/languages/`, `standards/process/`, `standards/security/`
 - **Scripts** - Updated to find `.cursorrules` in parent directory
 - **Makefile** - Updated to reference `scripts/` directory
 - **Documentation** - Updated to reflect new paths

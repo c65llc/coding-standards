@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Security Standards Framework** (`standards/security/sec-01_security_standards.md`)
+  - P0-P2 severity model (P0/P1 block merge, P2 flagged as warning)
+  - Injection prevention (SQL, command, XSS, SSRF, template injection)
+  - Authentication & authorization requirements
+  - Secrets management and hardcoded credential detection
+  - Dangerous functions and insecure deserialization rules
+  - Dependency and supply chain security (CVE scanning, lock files)
+  - Configuration security (TLS, security headers, debug mode)
+  - Data protection (sensitive data in logs, PII, encryption)
+  - Per-language SAST and dependency scanning tooling reference
+- Security violation detection rules added to all agent configs (`.cursorrules`, `copilot-instructions.md`, `.aiderrc`, `.codexrc`, `GEMINI.md`)
+- Security sections added to all 11 language standards with language-specific tooling
+- Expanded security section in `core-standards.md` with P0/P1/P2 merge-blocking rules
+- Security checklist in `proc-03_code_review_expectations.md` updated with P0-P2 model
 - **GitHub Project Lifecycle Automation Suite**
   - `bin/gh-task` - CLI tool for GitHub Projects V2 integration
   - Commands: `create`, `start`, `status`, `update`, `submit`

@@ -202,3 +202,11 @@ User createUser(Email email, String name) {
 * **Framework:** Use `shelf` or `dart_frog` for HTTP servers.
 * **Isolates:** Leverage isolates for concurrent request handling.
 * **Database:** Use `postgres` or `mongo_dart` packages.
+
+## 14. Security
+
+> Full security standards: `standards/security/sec-01_security_standards.md`
+
+- **SAST:** Run `dart analyze` with security-relevant lint rules enabled.
+- **Dependency scanning:** Enable GitHub Dependabot for pub dependencies.
+- **Secure random:** Use `dart:math Random.secure()` for security contexts, not `Random()`.

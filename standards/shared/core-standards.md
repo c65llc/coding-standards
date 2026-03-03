@@ -195,21 +195,50 @@ Example: `feat(domain): add user email validation`
 
 ## Security
 
+> Full security standards with code examples: `standards/security/sec-01_security_standards.md`
+>
+> Severity model: **P0** (Critical) and **P1** (High) findings block merge. **P2** (Medium) are warnings.
+
+### P0 — Critical (Must Block Merge)
+
+- Never construct SQL via string concatenation with user input. Use parameterized queries.
+- Never pass unsanitized user input to `eval()`, `exec()`, `system()`, or shell commands.
+- Never commit secrets, API keys, passwords, or credentials to source code.
+- Never deserialize untrusted data using native serialization (pickle, Marshal, ObjectInputStream).
+- Never ship default credentials in production.
+- Verify authentication on every request. Never bypass auth checks.
+
+### P1 — High (Must Block Merge)
+
+- Encode all output in HTML contexts. Never use `innerHTML` with untrusted data.
+- Validate and sanitize URL inputs. Block SSRF to internal IP ranges.
+- Enable CSRF protection on all state-changing endpoints.
+- Set secure cookie attributes (`Secure`, `HttpOnly`, `SameSite`). Regenerate session IDs after login.
+- Never pass user input into server-side template expressions or evaluated template strings.
+- Enforce authorization checks on every endpoint.
+- Use cryptographically secure random for tokens, keys, and session IDs.
+- Run dependency vulnerability scanning in CI/CD. Commit lock files.
+- Enforce HTTPS/TLS for all external communication.
+- Configure security headers (CSP, HSTS, X-Content-Type-Options, X-Frame-Options).
+- Never log passwords, tokens, API keys, or PII.
+- Add `.env` to `.gitignore`. Never commit `.env` files.
+
+### P2 — Medium (Flag as Warning)
+
+- Missing rate limiting on public-facing endpoints.
+- Verbose error messages exposing internal details in production.
+- Unpinned dependency versions.
+- Missing encryption at rest for sensitive data.
+
 ### Secrets Management
 
-- Never commit secrets, API keys, or credentials.
-- Use secret management services (AWS Secrets Manager, Vault).
+- Use secret management services (AWS Secrets Manager, Vault, GCP Secret Manager).
 - Rotate credentials regularly.
-
-### Input Validation
-
-- Validate and sanitize all external inputs.
-- Use parameterized queries. No string concatenation for SQL.
-- Rate limiting on public APIs.
+- Scan for secrets with `git-secrets`, `truffleHog`, or `detect-secrets`.
 
 ### Dependency Security
 
-- Regular security audits (`npm audit`, `cargo audit`, `safety`).
+- Regular security audits (`pnpm audit`, `npm audit`, `cargo audit`, `pip-audit`, `bundle-audit`).
 - Automated vulnerability scanning in CI/CD.
 - Patch critical vulnerabilities immediately.
 
@@ -285,6 +314,12 @@ Reference architecture pattern standards in:
 
 - `standards/architecture/arch-04_data_versioning_and_migration_standards.md`
 - `standards/architecture/arch-05_resilient_architecture_patterns.md`
+
+## Security Standards
+
+Reference detailed security standards in:
+
+- `standards/security/sec-01_security_standards.md`
 
 ## Agent Workflow
 

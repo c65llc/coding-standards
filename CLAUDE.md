@@ -29,6 +29,7 @@ Markdown files organized by category with prefix-based naming:
 - `architecture/` (arch-01 through arch-03): Core architecture, automation standards, Cursor-specific automation
 - `languages/` (lang-01 through lang-11): Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby on Rails
 - `process/` (proc-01 through proc-04): Documentation, git/version control, code review, agent workflow
+- `security/` (sec-01): Security guidelines with P0-P2 severity model
 - `shared/core-standards.md`: Canonical source of cross-cutting standards (Clean Architecture, SOLID, naming, testing coverage targets). All agent configs reference this file.
 
 ### Agent Configurations (`standards/agents/`)

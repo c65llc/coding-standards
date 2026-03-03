@@ -85,6 +85,29 @@ error_handling = """
 Reference: standards/shared/core-standards.md
 """
 
+# Security standards
+security_standards = """
+P0 (Critical — must block merge):
+- Hardcoded secrets, API keys, or credentials in source code
+- SQL injection via string concatenation
+- Command injection via eval/exec/system with untrusted input
+- Insecure deserialization of untrusted data
+- Authentication bypass patterns
+- Default credentials in production configs
+
+P1 (High — must block merge):
+- Missing CSRF protection on state-changing endpoints
+- XSS via unsanitized user input in HTML output
+- SSRF via unvalidated URL inputs
+- Missing authorization checks on endpoints
+- Sensitive data in logs or error messages
+- HTTP dependencies (non-HTTPS)
+- Missing security headers (CSP, HSTS)
+- Insecure random for security contexts (tokens, keys)
+
+Reference: standards/security/sec-01_security_standards.md
+"""
+
 # Response style
 response_style = """
 - Tone: Terse, objective, professional
