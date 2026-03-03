@@ -142,7 +142,7 @@ if hmac.compare_digest(provided_token, stored_token):
 
 Common patterns to detect and reject:
 
-```
+```text
 # BAD — P0 violations (any of these patterns in source code)
 API_KEY = "sk-abc123..."
 password = "hardcoded_password"

@@ -13,6 +13,7 @@
 ### Task 1: Create feature branch
 
 **Files:**
+
 - None (git operation only)
 
 **Step 1: Create and switch to feature branch**
@@ -25,11 +26,12 @@ Expected: `Switched to a new branch 'feat/security-standards'`
 ### Task 2: Create the security standards document
 
 **Files:**
+
 - Create: `standards/security/sec-01_security_standards.md`
 
 **Step 1: Create the security directory and standards file**
 
-```markdown
+````markdown
 # Security Standards
 
 > **Severity Model:** Rules are tagged P0 (Critical), P1 (High), P2 (Medium), or P3 (Low).
@@ -174,7 +176,7 @@ if hmac.compare_digest(provided_token, stored_token):
 
 Common patterns to detect and reject:
 
-```
+```text
 # BAD — P0 violations (any of these patterns in source code)
 API_KEY = "sk-abc123..."
 password = "hardcoded_password"
@@ -340,11 +342,13 @@ logger.info("User login", extra={"username": username})
 | `truffleHog` | Full repo history scan |
 | `detect-secrets` | Pre-commit + CI |
 | GitHub Secret Scanning | Automatic (GitHub repos) |
-```
+
+````
 
 **Step 2: Commit**
 
 Run:
+
 ```bash
 mkdir -p standards/security
 # (write file)
@@ -357,6 +361,7 @@ git commit -m "feat(security): add sec-01 security standards with P0-P3 severity
 ### Task 3: Update core-standards.md security section
 
 **Files:**
+
 - Modify: `standards/shared/core-standards.md` (lines 196-214, and add reference after line 281)
 
 **Step 1: Replace the security section (lines 196-214) with an expanded version**
@@ -421,6 +426,7 @@ Reference detailed security standards in:
 **Step 3: Commit**
 
 Run:
+
 ```bash
 git add standards/shared/core-standards.md
 git commit -m "feat(security): expand core-standards security section with P0-P3 model"
@@ -431,20 +437,25 @@ git commit -m "feat(security): expand core-standards security section with P0-P3
 ### Task 4: Update code review expectations
 
 **Files:**
+
 - Modify: `standards/process/proc-03_code_review_expectations.md`
 
 **Step 1: Expand the security checklist items (around lines 57, 60)**
 
 Replace lines 57 and 60:
-```
+
+```text
 - [ ] No security vulnerabilities introduced
 ```
+
 and
-```
+
+```text
 - [ ] No secrets or sensitive data committed
 ```
 
 With:
+
 ```markdown
 - [ ] No P0/P1 security violations (see `standards/security/sec-01_security_standards.md`)
 - [ ] No hardcoded secrets, API keys, or credentials in source code
@@ -455,11 +466,13 @@ With:
 **Step 2: Expand the approval criteria security line (line 157)**
 
 Replace:
-```
+
+```text
 - **Security:** No security concerns
 ```
 
 With:
+
 ```markdown
 - **Security:** No P0 or P1 security findings (per `standards/security/sec-01_security_standards.md`). P0/P1 findings block approval.
 ```
@@ -467,11 +480,13 @@ With:
 **Step 3: Expand the CI/CD security check (line 207)**
 
 Replace:
-```
+
+```text
 - **Security:** Dependency vulnerability scanning
 ```
 
 With:
+
 ```markdown
 - **Security:** Dependency vulnerability scanning, SAST (language-appropriate: bandit, eslint-plugin-security, brakeman, SpotBugs), secrets scanning
 ```
@@ -479,6 +494,7 @@ With:
 **Step 4: Commit**
 
 Run:
+
 ```bash
 git add standards/process/proc-03_code_review_expectations.md
 git commit -m "feat(security): update code review expectations with P0-P3 security checks"
@@ -489,6 +505,7 @@ git commit -m "feat(security): update code review expectations with P0-P3 securi
 ### Task 5: Update .cursorrules (root + template)
 
 **Files:**
+
 - Modify: `.cursorrules` (lines 31, 108)
 - Modify: `standards/agents/cursor/.cursorrules` (if it exists — check first; if not, only modify root)
 
@@ -514,6 +531,7 @@ After `- Git commit message format issues`, add:
 **Step 3: Commit**
 
 Run:
+
 ```bash
 git add .cursorrules
 git commit -m "feat(security): add security violation detection to .cursorrules"
@@ -524,6 +542,7 @@ git commit -m "feat(security): add security violation detection to .cursorrules"
 ### Task 6: Update copilot-instructions.md (root + template)
 
 **Files:**
+
 - Modify: `.github/copilot-instructions.md` (lines 31, 102)
 - Modify: `standards/agents/copilot/.github/copilot-instructions.md` (same edits)
 
@@ -549,6 +568,7 @@ After `- Git commit message format issues`, add:
 **Step 3: Commit both files**
 
 Run:
+
 ```bash
 git add .github/copilot-instructions.md standards/agents/copilot/.github/copilot-instructions.md
 git commit -m "feat(security): add security violation detection to copilot instructions"
@@ -559,6 +579,7 @@ git commit -m "feat(security): add security violation detection to copilot instr
 ### Task 7: Update .aiderrc (root + template)
 
 **Files:**
+
 - Modify: `.aiderrc` (insert new block after line 86)
 - Modify: `standards/agents/aider/.aiderrc` (same edit)
 
@@ -594,6 +615,7 @@ Reference: standards/security/sec-01_security_standards.md
 **Step 2: Commit both files**
 
 Run:
+
 ```bash
 git add .aiderrc standards/agents/aider/.aiderrc
 git commit -m "feat(security): add security standards block to aider config"
@@ -604,6 +626,7 @@ git commit -m "feat(security): add security standards block to aider config"
 ### Task 8: Update .codexrc (root + template)
 
 **Files:**
+
 - Modify: `.codexrc` (after line 44, and after line 67)
 - Modify: `standards/agents/codex/.codexrc` (same edits)
 
@@ -633,6 +656,7 @@ After `# - Documentation gaps`, add:
 **Step 3: Commit both files**
 
 Run:
+
 ```bash
 git add .codexrc standards/agents/codex/.codexrc
 git commit -m "feat(security): add security standards to codex config"
@@ -643,13 +667,14 @@ git commit -m "feat(security): add security standards to codex config"
 ### Task 9: Update GEMINI.md
 
 **Files:**
+
 - Modify: `.gemini/GEMINI.md` (lines 64, 109)
 
 **Step 1: Add security/ to repository structure tree (after line 64)**
 
 Change `│   ├── process/` and add security before agents:
 
-```
+```text
 │   ├── process/
 │   ├── security/
 │   └── agents/
@@ -674,6 +699,7 @@ After the Safety block, add:
 **Step 4: Commit**
 
 Run:
+
 ```bash
 git add .gemini/GEMINI.md
 git commit -m "feat(security): add security standards to Gemini config"
@@ -684,13 +710,14 @@ git commit -m "feat(security): add security standards to Gemini config"
 ### Task 10: Update STRUCTURE.md
 
 **Files:**
+
 - Modify: `STRUCTURE.md` (lines 40-44, line 98, line 119)
 
 **Step 1: Add security/ directory to tree (between process/ and agents/)**
 
 After `proc-04_agent_workflow_standards.md` (line 39), add:
 
-```
+```text
 │   │
 │   ├── security/                  # Security standards
 │   │   └── sec-01_security_standards.md
@@ -700,24 +727,28 @@ After `proc-04_agent_workflow_standards.md` (line 39), add:
 
 After `| Process | ... |`, add:
 
-```
+```text
 | Security | `standards/security/` | sec-01 |
 ```
 
 **Step 3: Update Path References (line 119)**
 
 Change:
-```
+
+```text
 - **`.cursorrules`** - References `standards/architecture/`, `standards/languages/`, `standards/process/`
 ```
+
 To:
-```
+
+```text
 - **`.cursorrules`** - References `standards/architecture/`, `standards/languages/`, `standards/process/`, `standards/security/`
 ```
 
 **Step 4: Commit**
 
 Run:
+
 ```bash
 git add STRUCTURE.md
 git commit -m "docs: add security/ directory to STRUCTURE.md"
@@ -728,6 +759,7 @@ git commit -m "docs: add security/ directory to STRUCTURE.md"
 ### Task 11: Add security sections to language standards
 
 **Files:**
+
 - Modify: `standards/languages/lang-01_python_standards.md` (append)
 - Modify: `standards/languages/lang-02_java_standards.md` (append)
 - Modify: `standards/languages/lang-03_kotlin_standards.md` (append)
@@ -745,6 +777,7 @@ git commit -m "docs: add security/ directory to STRUCTURE.md"
 Each language gets a section following this template, customized with language-specific tools:
 
 **Python (lang-01):**
+
 ```markdown
 
 ## 11. Security
@@ -759,6 +792,7 @@ Each language gets a section following this template, customized with language-s
 ```
 
 **Java (lang-02):**
+
 ```markdown
 
 ## 13. Security
@@ -772,6 +806,7 @@ Each language gets a section following this template, customized with language-s
 ```
 
 **Kotlin (lang-03):**
+
 ```markdown
 
 ## 13. Security
@@ -785,6 +820,7 @@ Each language gets a section following this template, customized with language-s
 ```
 
 **Swift (lang-04):**
+
 ```markdown
 
 ## 13. Security
@@ -798,6 +834,7 @@ Each language gets a section following this template, customized with language-s
 ```
 
 **Dart (lang-05):**
+
 ```markdown
 
 ## 14. Security
@@ -810,6 +847,7 @@ Each language gets a section following this template, customized with language-s
 ```
 
 **TypeScript (lang-06):**
+
 ```markdown
 
 ## 13. Security
@@ -824,6 +862,7 @@ Each language gets a section following this template, customized with language-s
 ```
 
 **JavaScript (lang-07):**
+
 ```markdown
 
 ## 14. Security
@@ -838,6 +877,7 @@ Each language gets a section following this template, customized with language-s
 ```
 
 **Rust (lang-08):**
+
 ```markdown
 
 ## 20. Security
@@ -850,6 +890,7 @@ Each language gets a section following this template, customized with language-s
 ```
 
 **Zig (lang-09):**
+
 ```markdown
 
 ## 14. Security
@@ -862,6 +903,7 @@ Each language gets a section following this template, customized with language-s
 ```
 
 **Ruby (lang-10):**
+
 ```markdown
 
 ## 11. Security
@@ -888,6 +930,7 @@ Add a reference blockquote at the top of the existing Security section (line 495
 **Step 3: Commit**
 
 Run:
+
 ```bash
 git add standards/languages/
 git commit -m "feat(security): add security sections to all language standards"
@@ -898,6 +941,7 @@ git commit -m "feat(security): add security sections to all language standards"
 ### Task 12: Update CLAUDE.md
 
 **Files:**
+
 - Modify: `CLAUDE.md`
 
 **Step 1: Add security/ to the Architecture section**
@@ -911,6 +955,7 @@ In the "Standards Documents" subsection, add after the process/ description:
 **Step 2: Commit**
 
 Run:
+
 ```bash
 git add CLAUDE.md
 git commit -m "docs: add security standards reference to CLAUDE.md"
