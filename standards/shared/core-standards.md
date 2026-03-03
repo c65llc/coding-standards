@@ -134,6 +134,7 @@ Coverage gates MUST be enforced in CI. A PR that drops coverage below 95% in any
 - **Python:** `uv` for dependency management (preferred over `poetry` or naked `pip`). Lock files committed.
 - **JavaScript/TypeScript:** `pnpm` preferred, `npm` acceptable. Lock files committed.
 - **Rust:** `cargo`. `Cargo.lock` committed for applications, not libraries.
+- **Ruby:** `bundler` for gem management. `mise` for Ruby version management. `Gemfile.lock` committed.
 
 ### Version Pinning
 
@@ -225,6 +226,8 @@ Reference detailed standards in:
 - `standards/languages/lang-07_javascript_standards.md`
 - `standards/languages/lang-08_rust_standards.md`
 - `standards/languages/lang-09_zig_standards.md`
+- `standards/languages/lang-10_ruby_standards.md`
+- `standards/languages/lang-11_ruby_on_rails_standards.md`
 
 ## Work Tracking
 

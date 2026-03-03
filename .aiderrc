@@ -47,6 +47,8 @@ Apply language-specific standards from:
 - JavaScript: standards/languages/lang-07_javascript_standards.md
 - Rust: standards/languages/lang-08_rust_standards.md
 - Zig: standards/languages/lang-09_zig_standards.md
+- Ruby: standards/languages/lang-10_ruby_standards.md
+- Ruby on Rails: standards/languages/lang-11_ruby_on_rails_standards.md
 """
 
 # Testing requirements

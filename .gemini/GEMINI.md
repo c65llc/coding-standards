@@ -105,7 +105,7 @@ When working with this repository, agents must follow the A-P-E (Analyze, Plan, 
 - **Architecture:** `standards/architecture/arch-01_project_standards_and_architecture.md`
 - **Automation:** `standards/architecture/arch-02_automation_standards.md`
 - **Cursor Integration:** `standards/architecture/arch-03_cursor_automation_standards.md`
-- **Language Standards:** `standards/languages/lang-01_python_standards.md` through `lang-09_zig_standards.md`
+- **Language Standards:** `standards/languages/lang-01_python_standards.md` through `lang-11_ruby_on_rails_standards.md`
 - **Process Standards:** `standards/process/proc-01_documentation_standards.md` through `proc-03_code_review_expectations.md`
 
 ## 🔗 Integration Points

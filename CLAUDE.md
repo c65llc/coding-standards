@@ -27,7 +27,7 @@ There are no build steps, no test suites, and no application to run. The primary
 
 Markdown files organized by category with prefix-based naming:
 - `architecture/` (arch-01 through arch-03): Core architecture, automation standards, Cursor-specific automation
-- `languages/` (lang-01 through lang-09): Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig
+- `languages/` (lang-01 through lang-11): Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby on Rails
 - `process/` (proc-01 through proc-03): Documentation, git/version control, code review
 - `shared/core-standards.md`: Canonical source of cross-cutting standards (Clean Architecture, SOLID, naming, testing coverage targets). All agent configs reference this file.
 

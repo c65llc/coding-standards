@@ -38,7 +38,9 @@ This document explains the repository layout so you can find what you need quick
 │   │   ├── lang-06_typescript_standards.md
 │   │   ├── lang-07_javascript_standards.md
 │   │   ├── lang-08_rust_standards.md
-│   │   └── lang-09_zig_standards.md
+│   │   ├── lang-09_zig_standards.md
+│   │   ├── lang-10_ruby_standards.md
+│   │   └── lang-11_ruby_on_rails_standards.md
 │   │
 │   ├── process/                    # Process and workflow standards
 │   │   ├── proc-01_documentation_standards.md
@@ -92,7 +94,7 @@ Standards are organized by category so you only look at what applies:
 | Category | Path | Content |
 | -------- | ---- | ------- |
 | Architecture | `standards/architecture/` | Clean Architecture, automation, Cursor integration |
-| Languages | `standards/languages/` | Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig |
+| Languages | `standards/languages/` | Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby on Rails |
 | Process | `standards/process/` | Documentation, git workflow, code review |
 | Shared | `standards/shared/` | Core standards that apply across all agents |
 | Agent configs | `standards/agents/` | Templates for each AI agent |

@@ -28,7 +28,9 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │   │   ├── lang-06_typescript_standards.md
 │   │   ├── lang-07_javascript_standards.md
 │   │   ├── lang-08_rust_standards.md
-│   │   └── lang-09_zig_standards.md
+│   │   ├── lang-09_zig_standards.md
+│   │   ├── lang-10_ruby_standards.md
+│   │   └── lang-11_ruby_on_rails_standards.md
 │   │
 │   ├── process/                   # Process & workflow standards
 │   │   ├── proc-01_documentation_standards.md
@@ -91,7 +93,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 | Category | Location | Files |
 |----------|----------|-------|
 | Architecture | `standards/architecture/` | arch-01 through arch-03 |
-| Languages | `standards/languages/` | lang-01 through lang-09 |
+| Languages | `standards/languages/` | lang-01 through lang-11 |
 | Process | `standards/process/` | proc-01 through proc-03 |
 
 ### Automation

@@ -21,6 +21,8 @@ This project follows comprehensive development standards. Reference these docume
 - `standards/languages/lang-07_javascript_standards.md` - JavaScript (pnpm, prettier, eslint, vitest)
 - `standards/languages/lang-08_rust_standards.md` - Rust (cargo, rustfmt, clippy, Result<T, E>)
 - `standards/languages/lang-09_zig_standards.md` - Zig (zig build, zig fmt, manual memory management)
+- `standards/languages/lang-10_ruby_standards.md` - Ruby (bundler, rubocop, sorbet, rspec)
+- `standards/languages/lang-11_ruby_on_rails_standards.md` - Ruby on Rails (Rails 7.2+, rubocop-rails)
 
 ### Process Standards
 - `standards/process/proc-01_documentation_standards.md` - ADR, code docs, changelog, user docs
@@ -76,6 +78,8 @@ When working with code, automatically detect the language and apply the correspo
 - `.js`, `.jsx` files → `standards/languages/lang-07_javascript_standards.md`
 - `.rs` files → `standards/languages/lang-08_rust_standards.md`
 - `.zig` files → `standards/languages/lang-09_zig_standards.md`
+- `.rb` files → `standards/languages/lang-10_ruby_standards.md`
+- `.erb` files, `Gemfile`, `Rakefile` → `standards/languages/lang-11_ruby_on_rails_standards.md`
 
 ## Response Style
 

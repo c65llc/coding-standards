@@ -55,6 +55,14 @@ Strict adherence required. Violations must be justified in code comments.
 * `UPPER_SNAKE_CASE` for constants
 * `_leading_underscore` for private/internal
 
+**Ruby:**
+
+* `snake_case` for variables, functions, modules, files
+* `PascalCase` for classes and modules
+* `UPPER_SNAKE_CASE` for constants
+* Predicate methods end with `?` (e.g., `valid?`, `active?`)
+* Dangerous methods end with `!` (e.g., `save!`, `destroy!`)
+
 **General:**
 
 * Verbose and descriptive names. Avoid abbreviations.
@@ -87,6 +95,7 @@ Strict adherence required. Violations must be justified in code comments.
 * **TypeScript:** Strict mode enabled. No `any` without explicit justification.
 * **Python:** **All code must be strongly typed.** Type hints required on every function, method, variable declaration, and class attribute — not just public APIs. Run `mypy` or `pyright` in **strict mode** with zero errors. No `# type: ignore` without an accompanying comment explaining why.
 * **Rust:** Leverage type system. Use `Result<T, E>` for fallible operations.
+* **Ruby:** Sorbet with `typed: strict` on all files. `sig` annotations required on every method. No `T.untyped` without justification.
 
 ## 4. Testing Standards
 
