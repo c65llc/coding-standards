@@ -213,6 +213,8 @@ Example: `feat(domain): add user email validation`
 - Encode all output in HTML contexts. Never use `innerHTML` with untrusted data.
 - Validate and sanitize URL inputs. Block SSRF to internal IP ranges.
 - Enable CSRF protection on all state-changing endpoints.
+- Set secure cookie attributes (`Secure`, `HttpOnly`, `SameSite`). Regenerate session IDs after login.
+- Never pass user input into server-side template expressions or evaluated template strings.
 - Enforce authorization checks on every endpoint.
 - Use cryptographically secure random for tokens, keys, and session IDs.
 - Run dependency vulnerability scanning in CI/CD. Commit lock files.

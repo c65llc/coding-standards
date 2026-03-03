@@ -195,7 +195,7 @@ def create_user(email: str, name: str) -> User:
 > Full security standards: `standards/security/sec-01_security_standards.md`
 
 - **SAST:** Run `bandit -r src/` in CI. Configure with `.bandit` or `pyproject.toml`.
-- **Dependency scanning:** Run `pip-audit` and `safety check` in CI.
+- **Dependency scanning:** Run `pip-audit` in CI. (`safety scan` is an alternative but requires a Safety CLI account.)
 - **Secrets scanning:** Use `detect-secrets` as a pre-commit hook.
 - **Banned functions:** `eval()`, `exec()`, `pickle.loads()` (untrusted), `yaml.load()` (use `safe_load`), `os.system()`, `subprocess.call(..., shell=True)`.
 - **Secure random:** Use `secrets` module for tokens and keys, not `random`.

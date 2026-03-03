@@ -29,7 +29,7 @@ This design creates a security standards framework inspired by [Omar Gate](https
 
 **File:** `standards/security/sec-01_security_standards.md`
 
-Seven sections, each rule tagged with severity:
+Eight sections, each rule tagged with severity:
 
 #### 1.1 Injection Prevention
 - SQL Injection — parameterized queries only `[P0]`
