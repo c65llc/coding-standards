@@ -43,6 +43,13 @@
 # - Git workflow: standards/process/proc-02_git_version_control_standards.md
 # - Code review: standards/process/proc-03_code_review_expectations.md
 
+## Security Standards
+# Reference: standards/security/sec-01_security_standards.md
+# P0 (Critical — block merge): hardcoded secrets, SQL injection, command injection,
+#   insecure deserialization, auth bypass, default credentials
+# P1 (High — block merge): CSRF, XSS, SSRF, missing authorization,
+#   sensitive data in logs, HTTP deps, missing security headers, insecure random
+
 ## Response Guidelines
 # - Tone: Terse, objective, professional
 # - Code-focused: No conversational filler
@@ -65,6 +72,8 @@
 # - Missing error handling
 # - Insufficient test coverage
 # - Documentation gaps
+# - P0 Security violations (secrets, injection, deserialization, auth bypass)
+# - P1 Security violations (CSRF, XSS, SSRF, authorization, data exposure)
 
 
 
