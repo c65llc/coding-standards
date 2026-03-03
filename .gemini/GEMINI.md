@@ -31,6 +31,7 @@ The standards cover architecture patterns, language-specific conventions, proces
   - Do not modify files ending in `.secret` or `.tfstate`
   - Do not modify `.standards_tmp/` directory (temporary files only)
   - Preserve existing standards structure and numbering
+- **Security:** Follow P0-P3 severity model in `standards/security/sec-01_security_standards.md`. P0/P1 violations block merge.
 - **Commits:** Follow Conventional Commits format (`feat:`, `fix:`, `docs:`, `refactor:`, etc.)
 - **Architecture:** SOLID principles required, violations must be justified
 - **Documentation:** All standards must be documented in Markdown with clear examples
@@ -58,6 +59,7 @@ The standards cover architecture patterns, language-specific conventions, proces
 │   ├── architecture/              # Core architecture & automation
 │   ├── languages/                 # Language-specific standards
 │   ├── process/                   # Process & workflow standards
+│   ├── security/                  # Security standards
 │   └── agents/                    # Agent-specific configurations
 ├── scripts/                       # Automation scripts
 └── docs/                          # User documentation
@@ -107,6 +109,7 @@ When working with this repository, agents must follow the A-P-E (Analyze, Plan, 
 - **Cursor Integration:** `standards/architecture/arch-03_cursor_automation_standards.md`
 - **Language Standards:** `standards/languages/lang-01_python_standards.md` through `lang-11_ruby_on_rails_standards.md`
 - **Process Standards:** `standards/process/proc-01_documentation_standards.md` through `proc-04_agent_workflow_standards.md`
+- **Security Standards:** `standards/security/sec-01_security_standards.md` - P0-P3 security guidelines
 
 ## 🔗 Integration Points
 
