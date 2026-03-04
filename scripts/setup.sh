@@ -107,16 +107,19 @@ setup_ai_agents() {
                 for lang in $DETECTED_LANGS; do
                     local LANG_CONFIG_DIR="$AGENTS_DIR/$lang"
                     if [ -d "$LANG_CONFIG_DIR" ]; then
-                        for config_file in "$LANG_CONFIG_DIR"/*; do
-                            [ -f "$config_file" ] || continue
-                            local config_name
-                            config_name="$(basename "$config_file")"
-                            if [ ! -f "$PROJECT_ROOT/$config_name" ]; then
-                                if cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
-                                    echo "   ✅ Installed $config_name ($lang)"
+                        (
+                            shopt -s dotglob nullglob
+                            for config_file in "$LANG_CONFIG_DIR"/*; do
+                                [ -f "$config_file" ] || continue
+                                local config_name
+                                config_name="$(basename "$config_file")"
+                                if [ ! -f "$PROJECT_ROOT/$config_name" ]; then
+                                    if cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
+                                        echo "   ✅ Installed $config_name ($lang)"
+                                    fi
                                 fi
-                            fi
-                        done
+                            done
+                        )
                     fi
                 done
             fi

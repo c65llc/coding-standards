@@ -142,22 +142,25 @@ sync_ai_agents() {
             for lang in $SYNC_LANGS; do
                 local LANG_CONFIG_DIR="$AGENTS_DIR/$lang"
                 if [ -d "$LANG_CONFIG_DIR" ]; then
-                    for config_file in "$LANG_CONFIG_DIR"/*; do
-                        [ -f "$config_file" ] || continue
-                        local config_name
-                        config_name="$(basename "$config_file")"
-                        if [ ! -f "$PROJECT_ROOT/$config_name" ]; then
-                            if cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
-                                echo "   ✅ Added $config_name ($lang)"
-                            fi
-                        elif ! cmp -s "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
-                            if [ "$UPDATED" = true ]; then
+                    (
+                        shopt -s dotglob nullglob
+                        for config_file in "$LANG_CONFIG_DIR"/*; do
+                            [ -f "$config_file" ] || continue
+                            local config_name
+                            config_name="$(basename "$config_file")"
+                            if [ ! -f "$PROJECT_ROOT/$config_name" ]; then
                                 if cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
-                                    echo "   ✅ Updated $config_name ($lang)"
+                                    echo "   ✅ Added $config_name ($lang)"
+                                fi
+                            elif ! cmp -s "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
+                                if [ "$UPDATED" = true ]; then
+                                    if cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
+                                        echo "   ✅ Updated $config_name ($lang)"
+                                    fi
                                 fi
                             fi
-                        fi
-                    done
+                        done
+                    )
                 fi
             done
         fi
