@@ -26,6 +26,22 @@ jobs:
             shellcheck website/scripts/*.sh
           fi
 
+  test-scripts:
+    name: Test Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Syntax check (bash -n)
+        run: make test-scripts
+
+      - name: Bootstrap functional tests
+        run: ./scripts/test-bootstrap.sh
+
+      - name: gh-task tests
+        run: ./scripts/test-gh-task.sh
+
   markdown-lint:
     name: Markdown Lint
     runs-on: ubuntu-latest
