@@ -146,7 +146,6 @@ sync_ai_agents() {
                         shopt -s dotglob nullglob
                         for config_file in "$LANG_CONFIG_DIR"/*; do
                             [ -f "$config_file" ] || continue
-                            local config_name
                             config_name="$(basename "$config_file")"
                             if [ ! -f "$PROJECT_ROOT/$config_name" ]; then
                                 if cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then

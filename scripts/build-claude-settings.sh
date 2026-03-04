@@ -33,7 +33,7 @@ if [ ${#LANGUAGES[@]} -eq 0 ]; then
 fi
 
 # Collect all extra permission lines from detected languages into a temp file
-TMPFILE="$(mktemp)"
+TMPFILE="$(mktemp "${TMPDIR:-/tmp}/claude-settings.XXXXXX")"
 trap 'rm -f "$TMPFILE"' EXIT
 
 for lang in "${LANGUAGES[@]}"; do
