@@ -71,6 +71,7 @@ curl -fsSL https://raw.githubusercontent.com/c65llc/coding-standards/main/instal
 ```
 
 Under the hood:
+
 1. `install.sh` adds this repo as `.standards/` via `git submodule add`
 2. `setup.sh` copies agent config templates to their expected locations
 3. A `post-merge` git hook is installed to remind you when standards have upstream updates
@@ -83,6 +84,7 @@ make sync-standards
 ```
 
 This runs `sync-standards.sh`, which:
+
 1. Pulls the latest commit in the `.standards/` submodule
 2. Copies updated agent configs to project root (`.cursorrules`, `.aiderrc`, etc.)
 3. Regenerates any derived configs (e.g., `.gemini/GEMINI.md`)

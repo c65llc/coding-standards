@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - `.github/CODEOWNERS` — default code ownership (proc-03 compliance)
 - `.github/dependabot.yml` — automated dependency updates for npm and GitHub Actions (sec-01 compliance)
 - `docs/adr/0001-unified-standards-repository.md` — foundational architecture decision record (proc-01 compliance)
@@ -25,22 +26,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Blog posts covering project release history
 
 ### Changed
+
 - Restructured `CHANGELOG.md` with versioned release sections
 
 ## [0.5.0] - 2026-03-03
 
 ### Added
+
 - **Language-aware bootstrap** for Claude Code settings (#24)
   - Automatic language detection from project files
   - Dynamic `settings.json` generation with language-specific tool configs
   - CI test infrastructure for bootstrap validation
 
 ### Fixed
+
 - Corrected invalid Claude Code `settings.json` template (#23)
 
 ## [0.4.0] - 2026-03-03
 
 ### Added
+
 - **Security Standards Framework** (`standards/security/sec-01_security_standards.md`) (#22)
   - P0-P2 severity model (P0/P1 block merge, P2 flagged as warning)
   - 8 security categories: injection, auth, secrets, dangerous functions, dependencies, config, data protection, SAST tooling
@@ -53,27 +58,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] - 2026-03-03
 
 ### Added
+
 - **Ruby standards** (`lang-10_ruby_standards.md`)
 - **Ruby on Rails standards** (`lang-11_ruby_on_rails_standards.md`)
 
 ### Changed
+
 - Restructured language file numbering to accommodate new languages
 
 ## [0.2.0] - 2026-03-02
 
 ### Added
+
 - `CLAUDE.md` for Claude Code project instructions
 - Gemini CLI and Antigravity support with `.gemini/` configuration
 - Marketing website with Starlight documentation site
 - Comprehensive documentation: getting started, guides, reference
 
 ### Changed
+
 - Updated setup/sync scripts with Gemini CLI detection
 - Public launch improvements: collaboration docs, CI workflows
 
 ## [0.1.0] - 2025-12-22
 
 ### Added
+
 - **GitHub Project Lifecycle Automation Suite**
   - `bin/gh-task` — CLI tool for GitHub Projects V2 integration
   - Commands: `create`, `start`, `status`, `update`, `submit`

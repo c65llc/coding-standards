@@ -17,7 +17,7 @@ This directory contains all coding standards documents organized by category.
 
 Files use category-based prefixes with zero-padded numbers:
 
-```
+```text
 <category>-<number>_<descriptive_name>.md
 ```
 
