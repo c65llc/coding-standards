@@ -182,3 +182,10 @@ Agents MUST create GitHub Issues (or the project's configured tracker) when they
 * Add `TODO` or `FIXME` comments to the codebase — every such comment MUST reference an issue number.
 
 **Agents must NOT silently defer work.** If something needs to be done, it needs to be tracked. Check `CLAUDE.md`, `README.md`, or `.github/CONTRIBUTING.md` for the project's configured tracking tool. Default is GitHub Issues.
+
+## Context Handling Across Layers
+
+When agent work spans multiple architectural layers:
+- Reference specific file paths when discussing code (e.g., `packages/domain/user.py`).
+- Summarize changes in the current layer's context before moving to the next layer.
+- Keep conversation context focused: avoid loading full files when only a section is relevant.
