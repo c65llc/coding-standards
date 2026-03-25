@@ -409,6 +409,17 @@ HOOK
     echo "✅ Git hooks installed"
 fi
 
+# Install standards review workflow template
+if [ -d "$STANDARDS_DIR/.github/actions/standards-review" ]; then
+    if [ ! -f "$PROJECT_ROOT/.github/workflows/standards-review.yml" ]; then
+        mkdir -p "$PROJECT_ROOT/.github/workflows"
+        if [ -f "$STANDARDS_DIR/templates/standards-review.yml.example" ]; then
+            cp "$STANDARDS_DIR/templates/standards-review.yml.example" "$PROJECT_ROOT/.github/workflows/standards-review.yml"
+            echo "✅ Standards review workflow installed at .github/workflows/standards-review.yml"
+        fi
+    fi
+fi
+
 # Set up git aliases (global configuration)
 if command -v git >/dev/null 2>&1; then
     # Determine path to setup-git-aliases.sh
