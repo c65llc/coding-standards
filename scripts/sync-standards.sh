@@ -6,6 +6,18 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
+# Source checksum helpers
+CHECKSUMS_LIB=""
+if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
+    CHECKSUMS_LIB="$SCRIPT_DIR/lib/checksums.sh"
+elif [ -n "$STANDARDS_DIR" ] && [ -f "$STANDARDS_DIR/scripts/lib/checksums.sh" ]; then
+    CHECKSUMS_LIB="$STANDARDS_DIR/scripts/lib/checksums.sh"
+fi
+if [ -n "$CHECKSUMS_LIB" ]; then
+    # shellcheck source=lib/checksums.sh
+    source "$CHECKSUMS_LIB"
+fi
+
 # Map detected languages to block filenames (shared with setup.sh)
 map_languages_to_blocks() {
     local BLOCKS=()
@@ -121,6 +133,13 @@ sync_ai_agents() {
         BLOCK_ARGS+=("$ROLE_BLOCK")
     fi
 
+    # Checksum accumulator for tracking assembled file hashes
+    local CHECKSUMS_PATH="$PROJECT_ROOT/$CHECKSUMS_FILE"
+    local NEW_CHECKSUMS=""
+    if [ -f "$CHECKSUMS_PATH" ]; then
+        NEW_CHECKSUMS=$(cat "$CHECKSUMS_PATH")
+    fi
+
     # Re-assemble each agent config
     for agent in $AGENTS_LIST; do
         local BASE_TEMPLATE="$AGENTS_DIR/$agent/base-$agent.md"
@@ -145,22 +164,97 @@ sync_ai_agents() {
             gemini)  mkdir -p "$PROJECT_ROOT/.gemini" ;;
         esac
 
-        echo "📝 Re-assembling $agent config..."
-        if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$OUTPUT_PATH" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"}; then
-            echo "✅ $agent config synced"
+        # Checksum-guarded assembly: skip customized files, stage pending updates
+        if [ -n "$CHECKSUMS_LIB" ]; then
+            local sa_rc=0
+            should_assemble "$OUTPUT_PATH" "$CHECKSUMS_PATH" || sa_rc=$?
+
+            if [ "$sa_rc" -eq 1 ]; then
+                # File has been customized — assemble to temp and stage as pending
+                local TEMP_ASSEMBLED
+                TEMP_ASSEMBLED=$(mktemp)
+                if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$TEMP_ASSEMBLED" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} 2>/dev/null; then
+                    write_pending "$OUTPUT_PATH" "$agent"
+                    cp "$TEMP_ASSEMBLED" "$PROJECT_ROOT/$PENDING_DIR/$(basename "$OUTPUT_PATH")"
+                fi
+                rm -f "$TEMP_ASSEMBLED"
+                echo "⚠️  $agent config customized — update staged to $PENDING_DIR/"
+            elif [ "$sa_rc" -eq 2 ]; then
+                # Manual file without assembly header — already backed up by should_assemble
+                echo "⚠️  $agent config was manually created — skipping, backup in $PENDING_DIR/"
+            else
+                # Safe to assemble
+                echo "📝 Re-assembling $agent config..."
+                if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$OUTPUT_PATH" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"}; then
+                    echo "✅ $agent config synced"
+                    local new_hash
+                    new_hash=$(compute_hash "$OUTPUT_PATH")
+                    NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$new_hash" "$NEW_CHECKSUMS")
+                else
+                    echo "⚠️  Failed to sync $agent config (non-fatal, continuing...)"
+                fi
+            fi
         else
-            echo "⚠️  Failed to sync $agent config (non-fatal, continuing...)"
+            # Fallback: no checksum library available — assemble unconditionally
+            echo "📝 Re-assembling $agent config..."
+            if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$OUTPUT_PATH" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"}; then
+                echo "✅ $agent config synced"
+            else
+                echo "⚠️  Failed to sync $agent config (non-fatal, continuing...)"
+            fi
         fi
 
         # Aider special handling: also sync aiderrc.template to .aiderrc
         if [ "$agent" = "aider" ] && [ -f "$AGENTS_DIR/aider/aiderrc.template" ]; then
-            if ! cmp -s "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
-                if cp "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
-                    echo "   ✅ Aider .aiderrc synced"
+            if [ -n "$CHECKSUMS_LIB" ]; then
+                # Checksum-protected: compare full-file hash
+                local stored_rc_hash
+                stored_rc_hash=$(read_stored_hash ".aiderrc" "$CHECKSUMS_PATH")
+                local current_rc_hash=""
+                if [ -f "$PROJECT_ROOT/.aiderrc" ]; then
+                    current_rc_hash=$(shasum -a 256 "$PROJECT_ROOT/.aiderrc" | awk '{print $1}')
+                fi
+
+                if [ ! -f "$PROJECT_ROOT/.aiderrc" ] || [ -z "$stored_rc_hash" ] || [ "$current_rc_hash" = "$stored_rc_hash" ]; then
+                    if cp "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+                        echo "   ✅ Aider .aiderrc synced"
+                        local new_rc_hash
+                        new_rc_hash=$(shasum -a 256 "$PROJECT_ROOT/.aiderrc" | awk '{print $1}')
+                        NEW_CHECKSUMS=$(update_checksum_entry ".aiderrc" "$new_rc_hash" "$NEW_CHECKSUMS")
+                    fi
+                else
+                    echo "   ⚠️  Aider .aiderrc customized — skipping"
+                fi
+            else
+                # Fallback: no checksum library
+                if ! cmp -s "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+                    if cp "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+                        echo "   ✅ Aider .aiderrc synced"
+                    fi
                 fi
             fi
         fi
     done
+
+    # Write accumulated checksums atomically
+    if [ -n "$CHECKSUMS_LIB" ] && [ -n "$NEW_CHECKSUMS" ]; then
+        echo "$NEW_CHECKSUMS" > "$CHECKSUMS_PATH"
+    fi
+
+    # Copy merge-standards skill if it exists and has changed
+    local SKILL_SOURCE="$AGENTS_DIR/claude-code/skills/merge-standards.md"
+    if [ -f "$SKILL_SOURCE" ]; then
+        mkdir -p "$PROJECT_ROOT/.claude/skills"
+        if ! cmp -s "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md" 2>/dev/null; then
+            cp "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md"
+            echo "✅ /merge-standards skill synced"
+        fi
+    fi
+
+    # Add .standards-pending/ to .gitignore if not already present
+    if [ -f "$PROJECT_ROOT/.gitignore" ] && ! grep -q ".standards-pending" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
+        echo ".standards-pending/" >> "$PROJECT_ROOT/.gitignore"
+    fi
 
     # Codex: deprecation warning for old .codexrc
     if [ -f "$PROJECT_ROOT/.codexrc" ]; then
