@@ -49,7 +49,7 @@ fi
 
 # Source helpers for YAML parsing
 if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
-    # shellcheck source=scripts/lib/checksums.sh
+    # shellcheck disable=SC1091
     source "$SCRIPT_DIR/lib/checksums.sh"
 fi
 
@@ -133,11 +133,11 @@ output_text() {
     separator="═══════════════════════════════════════"
 
     printf "\n"
-    printf "${BOLD}🔎 Standards Compliance Check${RESET}\n"
+    printf "%s\n" "${BOLD}🔎 Standards Compliance Check${RESET}"
     printf "%s\n\n" "$separator"
 
     if [ ${#RESULTS[@]} -eq 0 ]; then
-        printf "  ${DIM}No checks ran. Is .standards.yml configured?${RESET}\n"
+        printf "  %s\n" "${DIM}No checks ran. Is .standards.yml configured?${RESET}"
     fi
 
     for result in "${RESULTS[@]}"; do
@@ -165,6 +165,7 @@ output_text() {
                 ;;
         esac
 
+        # shellcheck disable=SC2059
         printf "  %s ${color}%-6s${RESET}  %-28s %s\n" \
             "$icon" "$status" "$check_name" "$message"
     done
@@ -178,11 +179,12 @@ output_text() {
         result_color="$YELLOW"
     fi
 
+    # shellcheck disable=SC2059
     printf "  ${result_color}Results: %d pass, %d warn, %d fail${RESET}\n" \
         "$PASS" "$WARN" "$FAIL"
     printf "\n"
-    printf "  ${DIM}Run with --format json for machine-readable output${RESET}\n"
-    printf "  ${DIM}Run with --format sarif for GitHub Code Scanning integration${RESET}\n"
+    printf "  %s\n" "${DIM}Run with --format json for machine-readable output${RESET}"
+    printf "  %s\n" "${DIM}Run with --format sarif for GitHub Code Scanning integration${RESET}"
     printf "\n"
 }
 
@@ -251,6 +253,7 @@ output_sarif() {
     }
 
     printf '{\n'
+    # shellcheck disable=SC2016
     printf '  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",\n'
     printf '  "version": "2.1.0",\n'
     printf '  "runs": [\n'
