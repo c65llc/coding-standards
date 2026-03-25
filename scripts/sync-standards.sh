@@ -6,6 +6,29 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
+# Map detected languages to block filenames (shared with setup.sh)
+map_languages_to_blocks() {
+    local BLOCKS=()
+    for lang in $1; do
+        case "$lang" in
+            python)     BLOCKS+=("lang-python.md") ;;
+            javascript) BLOCKS+=("lang-javascript.md") ;;
+            typescript) BLOCKS+=("lang-typescript.md") ;;
+            jvm)        BLOCKS+=("lang-java.md" "lang-kotlin.md") ;;
+            java)       BLOCKS+=("lang-java.md") ;;
+            kotlin)     BLOCKS+=("lang-kotlin.md") ;;
+            ruby)       BLOCKS+=("lang-ruby.md") ;;
+            rails)      BLOCKS+=("lang-rails.md" "lang-ruby.md") ;;
+            rust)       BLOCKS+=("lang-rust.md") ;;
+            swift)      BLOCKS+=("lang-swift.md") ;;
+            dart)       BLOCKS+=("lang-dart.md") ;;
+            zig)        BLOCKS+=("lang-zig.md") ;;
+        esac
+    done
+    # Deduplicate and output
+    printf '%s\n' "${BLOCKS[@]}" | sort -u | tr '\n' ' '
+}
+
 # Function to sync AI agent configurations
 sync_ai_agents() {
     local STANDARDS_DIR="$1"
@@ -21,151 +44,190 @@ sync_ai_agents() {
         return
     fi
 
-    # Sync GitHub Copilot
-    if [ -f "$AGENTS_DIR/copilot/.github/copilot-instructions.md" ]; then
-        if [ ! -f "$PROJECT_ROOT/.github/copilot-instructions.md" ]; then
-            # File doesn't exist, automatically apply it
-            echo "📝 Adding GitHub Copilot instructions (not yet configured)..."
-            mkdir -p "$PROJECT_ROOT/.github"
-            if cp "$AGENTS_DIR/copilot/.github/copilot-instructions.md" "$PROJECT_ROOT/.github/copilot-instructions.md" 2>/dev/null; then
-                echo "✅ GitHub Copilot instructions added at .github/copilot-instructions.md"
-                echo "💡 To enable Copilot code review: Settings > Copilot > Code review > 'Use custom instructions when reviewing pull requests'"
-            fi
-        elif [ "$UPDATED" = true ] || ! cmp -s "$AGENTS_DIR/copilot/.github/copilot-instructions.md" "$PROJECT_ROOT/.github/copilot-instructions.md" 2>/dev/null; then
-            # File exists but is different or standards were updated
-            echo "📝 Updating GitHub Copilot instructions..."
-            mkdir -p "$PROJECT_ROOT/.github"
-            if cp "$AGENTS_DIR/copilot/.github/copilot-instructions.md" "$PROJECT_ROOT/.github/copilot-instructions.md" 2>/dev/null; then
-                echo "✅ GitHub Copilot instructions updated"
-                echo "⚠️  Please restart your IDE to load updated instructions"
-            fi
+    local BLOCKS_DIR=""
+    if [ -d "$STANDARDS_DIR/standards/shared/blocks" ]; then
+        BLOCKS_DIR="$STANDARDS_DIR/standards/shared/blocks"
+    elif [ -d "$SCRIPT_DIR/../standards/shared/blocks" ]; then
+        BLOCKS_DIR="$SCRIPT_DIR/../standards/shared/blocks"
+    else
+        echo "⚠️  No content blocks found (standards/shared/blocks directory missing)"
+        return
+    fi
+
+    local ASSEMBLE_SCRIPT=""
+    if [ -x "$SCRIPT_DIR/assemble-config.sh" ]; then
+        ASSEMBLE_SCRIPT="$SCRIPT_DIR/assemble-config.sh"
+    elif [ -n "$STANDARDS_DIR" ] && [ -x "$STANDARDS_DIR/scripts/assemble-config.sh" ]; then
+        ASSEMBLE_SCRIPT="$STANDARDS_DIR/scripts/assemble-config.sh"
+    else
+        echo "⚠️  assemble-config.sh not found, cannot sync agent configs"
+        return
+    fi
+
+    # Read .standards-config for persisted settings
+    local ROLE="service"
+    local DETECTED_LANGS=""
+    local AGENTS_LIST=""
+
+    if [ -f "$PROJECT_ROOT/.standards-config" ]; then
+        # shellcheck disable=SC1091
+        source "$PROJECT_ROOT/.standards-config"
+        ROLE="${STANDARDS_ROLE:-service}"
+        # Convert comma-separated to space-separated
+        DETECTED_LANGS=$(echo "${STANDARDS_LANGUAGES:-}" | tr ',' ' ')
+        AGENTS_LIST=$(echo "${STANDARDS_AGENTS:-}" | tr ',' ' ')
+    else
+        echo "⚠️  No .standards-config found. Running auto-detection (default role: service)."
+        ROLE="service"
+        DETECTED_LANGS=""
+    fi
+
+    # If no languages from config, try auto-detection
+    if [ -z "$DETECTED_LANGS" ]; then
+        local DETECT_SCRIPT="$SCRIPT_DIR/detect-languages.sh"
+        if [ -x "$DETECT_SCRIPT" ]; then
+            DETECTED_LANGS=$("$DETECT_SCRIPT" "$PROJECT_ROOT")
         fi
     fi
 
-    # Sync Aider (Claude Code)
-    if [ -f "$AGENTS_DIR/aider/.aiderrc" ]; then
-        if [ ! -f "$PROJECT_ROOT/.aiderrc" ]; then
-            # File doesn't exist, automatically apply it
-            echo "📝 Adding Aider (Claude Code) configuration (not yet configured)..."
-            if cp "$AGENTS_DIR/aider/.aiderrc" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
-                echo "✅ Aider configuration added at .aiderrc"
-            fi
-        elif [ "$UPDATED" = true ] || ! cmp -s "$AGENTS_DIR/aider/.aiderrc" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
-            # File exists but is different or standards were updated
-            echo "📝 Updating Aider configuration..."
-            if cp "$AGENTS_DIR/aider/.aiderrc" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
-                echo "✅ Aider configuration updated"
-            fi
-        fi
+    # Default agents list if not in config
+    if [ -z "$AGENTS_LIST" ]; then
+        AGENTS_LIST="claude-code cursor copilot gemini codex aider"
     fi
 
-    # Sync OpenAI Codex
-    if [ -f "$AGENTS_DIR/codex/.codexrc" ]; then
-        if [ ! -f "$PROJECT_ROOT/.codexrc" ]; then
-            # File doesn't exist, automatically apply it
-            echo "📝 Adding OpenAI Codex configuration (not yet configured)..."
-            if cp "$AGENTS_DIR/codex/.codexrc" "$PROJECT_ROOT/.codexrc" 2>/dev/null; then
-                echo "✅ Codex configuration added at .codexrc"
-            fi
-        elif [ "$UPDATED" = true ] || ! cmp -s "$AGENTS_DIR/codex/.codexrc" "$PROJECT_ROOT/.codexrc" 2>/dev/null; then
-            # File exists but is different or standards were updated
-            echo "📝 Updating Codex configuration..."
-            if cp "$AGENTS_DIR/codex/.codexrc" "$PROJECT_ROOT/.codexrc" 2>/dev/null; then
-                echo "✅ Codex configuration updated"
-            fi
-        fi
+    # Build block arguments: language blocks + role block
+    # shellcheck disable=SC2086
+    local LANG_BLOCKS
+    LANG_BLOCKS=$(map_languages_to_blocks "$DETECTED_LANGS")
+    local ROLE_BLOCK="role-${ROLE}.md"
+
+    local BLOCK_ARGS=()
+    for b in $LANG_BLOCKS; do
+        BLOCK_ARGS+=("$b")
+    done
+    if [ -f "$BLOCKS_DIR/$ROLE_BLOCK" ]; then
+        BLOCK_ARGS+=("$ROLE_BLOCK")
     fi
 
-    # Sync Claude Code
-    if [ -d "$AGENTS_DIR/claude-code" ]; then
-        if [ ! -f "$PROJECT_ROOT/CLAUDE.md" ]; then
-            if [ -f "$AGENTS_DIR/claude-code/CLAUDE.md.template" ]; then
-                echo "📝 Adding Claude Code guide (CLAUDE.md not yet configured)..."
-                if cp "$AGENTS_DIR/claude-code/CLAUDE.md.template" "$PROJECT_ROOT/CLAUDE.md" 2>/dev/null; then
-                    echo "✅ CLAUDE.md template added at project root"
-                    echo "💡 Customize CLAUDE.md with your project-specific details"
-                fi
-            fi
+    # Re-assemble each agent config
+    for agent in $AGENTS_LIST; do
+        local BASE_TEMPLATE="$AGENTS_DIR/$agent/base-$agent.md"
+        if [ ! -f "$BASE_TEMPLATE" ]; then
+            continue
+        fi
+
+        local OUTPUT_PATH=""
+        case "$agent" in
+            claude-code) OUTPUT_PATH="$PROJECT_ROOT/CLAUDE.md" ;;
+            cursor)      OUTPUT_PATH="$PROJECT_ROOT/.cursorrules" ;;
+            copilot)     OUTPUT_PATH="$PROJECT_ROOT/.github/copilot-instructions.md" ;;
+            gemini)      OUTPUT_PATH="$PROJECT_ROOT/.gemini/GEMINI.md" ;;
+            codex)       OUTPUT_PATH="$PROJECT_ROOT/AGENTS.md" ;;
+            aider)       OUTPUT_PATH="$PROJECT_ROOT/.aider-instructions.md" ;;
+            *)           continue ;;
+        esac
+
+        # Create parent directories as needed
+        case "$agent" in
+            copilot) mkdir -p "$PROJECT_ROOT/.github" ;;
+            gemini)  mkdir -p "$PROJECT_ROOT/.gemini" ;;
+        esac
+
+        echo "📝 Re-assembling $agent config..."
+        # shellcheck disable=SC2086
+        if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$OUTPUT_PATH" ${BLOCK_ARGS[*]+"${BLOCK_ARGS[@]}"}; then
+            echo "✅ $agent config synced"
         else
-            echo "ℹ️  CLAUDE.md exists (project-specific, not overwritten by sync)"
+            echo "⚠️  Failed to sync $agent config (non-fatal, continuing...)"
         fi
-        if [ ! -f "$PROJECT_ROOT/.claude/settings.json" ]; then
-            if [ -f "$AGENTS_DIR/claude-code/settings.json.example" ]; then
-                echo "📝 Adding Claude Code settings..."
-                mkdir -p "$PROJECT_ROOT/.claude"
-                # Detect project languages and build language-aware settings
-                local DETECT_SCRIPT=""
-                local BUILD_SCRIPT=""
-                if [ -n "$STANDARDS_DIR" ]; then
-                    DETECT_SCRIPT="$STANDARDS_DIR/scripts/detect-languages.sh"
-                    BUILD_SCRIPT="$STANDARDS_DIR/scripts/build-claude-settings.sh"
+
+        # Aider special handling: also sync aiderrc.template to .aiderrc
+        if [ "$agent" = "aider" ] && [ -f "$AGENTS_DIR/aider/aiderrc.template" ]; then
+            if ! cmp -s "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+                if cp "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+                    echo "   ✅ Aider .aiderrc synced"
                 fi
-                [ ! -x "$DETECT_SCRIPT" ] && DETECT_SCRIPT="$SCRIPT_DIR/detect-languages.sh"
-                [ ! -x "$BUILD_SCRIPT" ] && BUILD_SCRIPT="$SCRIPT_DIR/build-claude-settings.sh"
+            fi
+        fi
+    done
 
-                local BASE_SETTINGS="$AGENTS_DIR/claude-code/settings.json.example"
-                local PERMS_DIR="$AGENTS_DIR/claude-code/permissions"
+    # Codex: deprecation warning for old .codexrc
+    if [ -f "$PROJECT_ROOT/.codexrc" ]; then
+        echo "⚠️  .codexrc is deprecated. Codex now uses AGENTS.md."
+        echo "   Your .codexrc has been preserved. Remove it when ready."
+    fi
 
-                if [ -x "$DETECT_SCRIPT" ] && [ -x "$BUILD_SCRIPT" ] && [ -d "$PERMS_DIR" ]; then
-                    local DETECTED_LANGS
-                    DETECTED_LANGS=$("$DETECT_SCRIPT" "$PROJECT_ROOT")
-                    if [ -n "$DETECTED_LANGS" ]; then
+    # Claude Code settings.json (unchanged from original — only create if missing)
+    if [ ! -f "$PROJECT_ROOT/.claude/settings.json" ]; then
+        if [ -f "$AGENTS_DIR/claude-code/settings.json.example" ]; then
+            echo "📝 Adding Claude Code settings..."
+            mkdir -p "$PROJECT_ROOT/.claude"
+            local BUILD_SCRIPT=""
+            local DETECT_SCRIPT=""
+            if [ -n "$STANDARDS_DIR" ]; then
+                DETECT_SCRIPT="$STANDARDS_DIR/scripts/detect-languages.sh"
+                BUILD_SCRIPT="$STANDARDS_DIR/scripts/build-claude-settings.sh"
+            fi
+            [ ! -x "$DETECT_SCRIPT" ] && DETECT_SCRIPT="$SCRIPT_DIR/detect-languages.sh"
+            [ ! -x "$BUILD_SCRIPT" ] && BUILD_SCRIPT="$SCRIPT_DIR/build-claude-settings.sh"
+
+            local BASE_SETTINGS="$AGENTS_DIR/claude-code/settings.json.example"
+            local PERMS_DIR="$AGENTS_DIR/claude-code/permissions"
+
+            if [ -x "$DETECT_SCRIPT" ] && [ -x "$BUILD_SCRIPT" ] && [ -d "$PERMS_DIR" ]; then
+                local SETTINGS_LANGS="$DETECTED_LANGS"
+                if [ -z "$SETTINGS_LANGS" ]; then
+                    SETTINGS_LANGS=$("$DETECT_SCRIPT" "$PROJECT_ROOT")
+                fi
+                if [ -n "$SETTINGS_LANGS" ]; then
+                    # shellcheck disable=SC2086
+                    if "$BUILD_SCRIPT" "$BASE_SETTINGS" "$PERMS_DIR" $SETTINGS_LANGS > "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null; then
+                        echo "✅ Claude Code settings added at .claude/settings.json"
                         # shellcheck disable=SC2086
-                        if "$BUILD_SCRIPT" "$BASE_SETTINGS" "$PERMS_DIR" $DETECTED_LANGS > "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null; then
-                            echo "✅ Claude Code settings added at .claude/settings.json"
-                            echo "   Detected languages: $(echo $DETECTED_LANGS | tr '\n' ' ')"
-                        else
-                            cp "$BASE_SETTINGS" "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null
-                            echo "✅ Claude Code settings added at .claude/settings.json (base template)"
-                        fi
+                        echo "   Detected languages: $(echo $SETTINGS_LANGS | tr '\n' ' ')"
                     else
                         cp "$BASE_SETTINGS" "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null
-                        echo "✅ Claude Code settings added at .claude/settings.json"
+                        echo "✅ Claude Code settings added at .claude/settings.json (base template)"
                     fi
                 else
                     cp "$BASE_SETTINGS" "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null
                     echo "✅ Claude Code settings added at .claude/settings.json"
                 fi
+            else
+                cp "$BASE_SETTINGS" "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null
+                echo "✅ Claude Code settings added at .claude/settings.json"
             fi
-        fi
-
-        # Sync language-specific tool configs (only if language detected and file differs)
-        local DETECT_SCRIPT_SYNC=""
-        if [ -n "$STANDARDS_DIR" ]; then
-            DETECT_SCRIPT_SYNC="$STANDARDS_DIR/scripts/detect-languages.sh"
-        fi
-        [ ! -x "$DETECT_SCRIPT_SYNC" ] && DETECT_SCRIPT_SYNC="$SCRIPT_DIR/detect-languages.sh"
-
-        if [ -x "$DETECT_SCRIPT_SYNC" ]; then
-            local SYNC_LANGS
-            SYNC_LANGS=$("$DETECT_SCRIPT_SYNC" "$PROJECT_ROOT")
-            for lang in $SYNC_LANGS; do
-                local LANG_CONFIG_DIR="$AGENTS_DIR/$lang"
-                if [ -d "$LANG_CONFIG_DIR" ]; then
-                    (
-                        shopt -s dotglob nullglob
-                        for config_file in "$LANG_CONFIG_DIR"/*; do
-                            [ -f "$config_file" ] || continue
-                            config_name="$(basename "$config_file")"
-                            if [ ! -f "$PROJECT_ROOT/$config_name" ]; then
-                                if cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
-                                    echo "   ✅ Added $config_name ($lang)"
-                                fi
-                            elif ! cmp -s "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
-                                if [ "$UPDATED" = true ]; then
-                                    if cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
-                                        echo "   ✅ Updated $config_name ($lang)"
-                                    fi
-                                fi
-                            fi
-                        done
-                    )
-                fi
-            done
         fi
     fi
 
-    # Sync Gemini CLI & Antigravity
+    # Sync language-specific tool configs (only if language detected and file differs)
+    if [ -n "$DETECTED_LANGS" ]; then
+        for lang in $DETECTED_LANGS; do
+            local LANG_CONFIG_DIR="$AGENTS_DIR/$lang"
+            if [ -d "$LANG_CONFIG_DIR" ]; then
+                (
+                    shopt -s dotglob nullglob
+                    for config_file in "$LANG_CONFIG_DIR"/*; do
+                        [ -f "$config_file" ] || continue
+                        config_name="$(basename "$config_file")"
+                        if [ ! -f "$PROJECT_ROOT/$config_name" ]; then
+                            if cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
+                                echo "   ✅ Added $config_name ($lang)"
+                            fi
+                        elif ! cmp -s "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
+                            if [ "$UPDATED" = true ]; then
+                                if cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
+                                    echo "   ✅ Updated $config_name ($lang)"
+                                fi
+                            fi
+                        fi
+                    done
+                )
+            fi
+        done
+    fi
+
+    # Sync Gemini settings.json (separate from GEMINI.md which is now assembled)
     local GEMINI_SOURCE=""
     if [ -n "$STANDARDS_DIR" ] && [ -d "$STANDARDS_DIR/.gemini" ]; then
         GEMINI_SOURCE="$STANDARDS_DIR/.gemini"
@@ -173,51 +235,32 @@ sync_ai_agents() {
         GEMINI_SOURCE="$SCRIPT_DIR/../.gemini"
     fi
 
-    if [ -n "$GEMINI_SOURCE" ] && [ -d "$GEMINI_SOURCE" ]; then
+    if [ -n "$GEMINI_SOURCE" ] && [ -f "$GEMINI_SOURCE/settings.json" ]; then
         mkdir -p "$PROJECT_ROOT/.gemini"
-
-        # Sync GEMINI.md
-        if [ -f "$GEMINI_SOURCE/GEMINI.md" ]; then
-            if [ ! -f "$PROJECT_ROOT/.gemini/GEMINI.md" ]; then
-                echo "📝 Adding Gemini CLI configuration (not yet configured)..."
-                if cp "$GEMINI_SOURCE/GEMINI.md" "$PROJECT_ROOT/.gemini/GEMINI.md" 2>/dev/null; then
-                    echo "✅ Gemini configuration added at .gemini/GEMINI.md"
-                fi
-            elif [ "$UPDATED" = true ] || ! cmp -s "$GEMINI_SOURCE/GEMINI.md" "$PROJECT_ROOT/.gemini/GEMINI.md" 2>/dev/null; then
-                echo "📝 Updating Gemini configuration..."
-                if cp "$GEMINI_SOURCE/GEMINI.md" "$PROJECT_ROOT/.gemini/GEMINI.md" 2>/dev/null; then
-                    echo "✅ Gemini configuration updated"
-                fi
+        # Validate JSON syntax before copying
+        local JSON_VALID=true
+        if command -v python3 >/dev/null 2>&1; then
+            if ! python3 -m json.tool "$GEMINI_SOURCE/settings.json" >/dev/null 2>&1; then
+                echo "⚠️  Invalid JSON in Gemini settings.json, skipping update..."
+                JSON_VALID=false
+            fi
+        elif command -v jq >/dev/null 2>&1; then
+            if ! jq empty "$GEMINI_SOURCE/settings.json" >/dev/null 2>&1; then
+                echo "⚠️  Invalid JSON in Gemini settings.json, skipping update..."
+                JSON_VALID=false
             fi
         fi
 
-        # Sync settings.json
-        if [ -f "$GEMINI_SOURCE/settings.json" ]; then
-            # Validate JSON syntax before copying
-            local JSON_VALID=true
-            if command -v python3 >/dev/null 2>&1; then
-                if ! python3 -m json.tool "$GEMINI_SOURCE/settings.json" >/dev/null 2>&1; then
-                    echo "⚠️  Invalid JSON in Gemini settings.json, skipping update..."
-                    JSON_VALID=false
+        if [ "$JSON_VALID" = true ]; then
+            if [ ! -f "$PROJECT_ROOT/.gemini/settings.json" ]; then
+                echo "📝 Adding Gemini CLI settings (not yet configured)..."
+                if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
+                    echo "✅ Gemini CLI settings added at .gemini/settings.json"
                 fi
-            elif command -v jq >/dev/null 2>&1; then
-                if ! jq empty "$GEMINI_SOURCE/settings.json" >/dev/null 2>&1; then
-                    echo "⚠️  Invalid JSON in Gemini settings.json, skipping update..."
-                    JSON_VALID=false
-                fi
-            fi
-
-            if [ "$JSON_VALID" = true ]; then
-                if [ ! -f "$PROJECT_ROOT/.gemini/settings.json" ]; then
-                    echo "📝 Adding Gemini CLI settings (not yet configured)..."
-                    if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
-                        echo "✅ Gemini CLI settings added at .gemini/settings.json"
-                    fi
-                elif [ "$UPDATED" = true ] || ! cmp -s "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
-                    echo "📝 Updating Gemini CLI settings..."
-                    if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
-                        echo "✅ Gemini CLI settings updated"
-                    fi
+            elif [ "$UPDATED" = true ] || ! cmp -s "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
+                echo "📝 Updating Gemini CLI settings..."
+                if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
+                    echo "✅ Gemini CLI settings updated"
                 fi
             fi
         fi
@@ -228,11 +271,9 @@ echo "🔄 Syncing project standards..."
 
 # Determine standards location
 STANDARDS_DIR=""
-CURSORRULES_SOURCE=""
 
 if [ -d "$PROJECT_ROOT/.standards" ]; then
     STANDARDS_DIR="$PROJECT_ROOT/.standards"
-    CURSORRULES_SOURCE="$STANDARDS_DIR/.cursorrules"
     echo "📋 Found standards submodule at .standards"
 
     # Update submodule
@@ -250,35 +291,14 @@ if [ -d "$PROJECT_ROOT/.standards" ]; then
         UPDATED=false
     fi
     cd "$PROJECT_ROOT"
-elif [ -f "$SCRIPT_DIR/../.cursorrules" ]; then
+elif [ -d "$SCRIPT_DIR/../standards" ]; then
     # Standards are in script directory (standards repo itself)
-    CURSORRULES_SOURCE="$SCRIPT_DIR/../.cursorrules"
+    STANDARDS_DIR="$SCRIPT_DIR/.."
     echo "📋 Using standards from script location"
     UPDATED=false
 else
     echo "❌ Error: Could not find standards directory"
     exit 1
-fi
-
-# Update .cursorrules if it exists and is different
-if [ -f "$PROJECT_ROOT/.cursorrules" ]; then
-    if [ "$UPDATED" = true ] || ! cmp -s "$CURSORRULES_SOURCE" "$PROJECT_ROOT/.cursorrules"; then
-        if [ -L "$PROJECT_ROOT/.cursorrules" ]; then
-            echo "🔗 .cursorrules is a symlink, no update needed"
-        else
-            echo "📝 Updating .cursorrules..."
-            cp "$CURSORRULES_SOURCE" "$PROJECT_ROOT/.cursorrules"
-            echo "✅ .cursorrules updated"
-            echo "⚠️  Please restart Cursor to load updated rules"
-        fi
-    else
-        echo "✅ .cursorrules is up to date"
-    fi
-else
-    echo "📝 Creating .cursorrules..."
-    cp "$CURSORRULES_SOURCE" "$PROJECT_ROOT/.cursorrules"
-    echo "✅ .cursorrules created"
-    echo "⚠️  Please restart Cursor to load rules"
 fi
 
 # Update Cursor custom commands if they exist
