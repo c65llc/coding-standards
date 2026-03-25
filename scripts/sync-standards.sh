@@ -14,7 +14,7 @@ elif [ -n "$STANDARDS_DIR" ] && [ -f "$STANDARDS_DIR/scripts/lib/checksums.sh" ]
     CHECKSUMS_LIB="$STANDARDS_DIR/scripts/lib/checksums.sh"
 fi
 if [ -n "$CHECKSUMS_LIB" ]; then
-    # shellcheck disable=SC1091
+    # shellcheck disable=SC1090,SC1091
     source "$CHECKSUMS_LIB"
 fi
 
