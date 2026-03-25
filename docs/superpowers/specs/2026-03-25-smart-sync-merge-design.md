@@ -14,36 +14,60 @@ The sentinel only protects content below the marker. Content above it — which 
 
 ## Design Decisions
 
-- **Checksum-based detection** in `assemble-config.sh` for all agents — agent-agnostic, deterministic, no git dependency.
+- **Checksum-based detection** managed by the calling scripts (`setup.sh`, `sync-standards.sh`) — agent-agnostic, deterministic, no git dependency. `assemble-config.sh` remains a pure assembler; checksum logic wraps it.
 - **Skip-and-stage pattern** — customized files are never overwritten. Pending updates go to `.standards-pending/`.
 - **Claude Code skill** (`/merge-standards`) for AI-powered merge with diff approval.
 - **Agent prompt doc** (`docs/reference/merge-standards-prompt.md`) so Gemini, Codex, Cursor, and Aider users can perform the same merge when prompted.
 
 ---
 
-## 1. Checksum Detection in `assemble-config.sh`
+## 1. Checksum Detection
 
-### Mechanism
+### Architecture
 
-After assembling a config file, the script computes a SHA256 hash of the content **above** the sentinel marker and stores it in `.standards-checksums`.
-
-On subsequent assembly runs:
+`assemble-config.sh` remains a pure assembler — it takes inputs and writes an output file. It has no knowledge of checksums or `.standards-pending/`. All checksum logic lives in the **calling scripts** (`setup.sh` and `sync-standards.sh`), which wrap the assembly call:
 
 ```text
-1. Does the output file exist?
-   ├─ No  → assemble normally, record checksum
-   └─ Yes → compute hash of current content above sentinel
-            ├─ Matches stored hash → unchanged since last assembly → overwrite, update checksum
-            └─ Differs from stored hash → customized →
-                 a) Skip overwriting
-                 b) Write would-be assembled version to .standards-pending/<filename>
-                 c) Warn user
-                 d) Leave current file untouched
+For each agent config:
+  1. Does the output file exist?
+     ├─ No  → call assemble-config.sh, record checksum of result
+     └─ Yes → compute hash of current file's assembler-controlled content
+              ├─ No stored hash exists → file predates checksum system
+              │   ├─ Has assembly header → safe to overwrite, record hash
+              │   └─ No assembly header → manually created, back up + skip
+              ├─ Matches stored hash → unchanged → call assemble-config.sh, update hash
+              └─ Differs from stored hash → customized →
+                   a) Call assemble-config.sh to .standards-pending/<filename>
+                   b) Warn user
+                   c) Leave current file untouched
 ```
+
+### Hash Scope
+
+The hash covers the **assembler-controlled portion** of the file — everything above the `<!-- BEGIN PROJECT-SPECIFIC` sentinel. This is the content that `/claude-md-improver` and manual edits enrich. The project-specific section below the sentinel is already preserved by `assemble-config.sh`'s extract-and-reattach logic.
+
+The hash is computed after normalizing trailing whitespace (strip trailing blank lines) to avoid cosmetic variations from the extract-and-reattach cycle causing false positives.
+
+```bash
+# Portable hash function (works on macOS + Linux)
+compute_hash() {
+    local file="$1"
+    local sentinel="<!-- BEGIN PROJECT-SPECIFIC"
+    local content
+    if grep -qF "$sentinel" "$file" 2>/dev/null; then
+        content=$(sed "/$sentinel/,\$d" "$file" | sed -e :a -e '/^[[:space:]]*$/{ $d; N; ba; }')
+    else
+        content=$(cat "$file" | sed -e :a -e '/^[[:space:]]*$/{ $d; N; ba; }')
+    fi
+    printf '%s' "$content" | shasum -a 256 | awk '{print $1}'
+}
+```
+
+Note: Uses `shasum -a 256` (available on macOS and Linux) instead of `sha256sum` (not default on macOS).
 
 ### `.standards-checksums` Format
 
-One line per file, `sha256sum`-compatible:
+One line per file, space-separated hash and path:
 
 ```text
 a1b2c3d4e5f6...  CLAUDE.md
@@ -56,6 +80,15 @@ d1e2f3g4h5i6...  .aider-instructions.md
 
 This file is committed to git so the team shares the same baseline.
 
+### `.standards-checksums` Deletion Recovery
+
+If `.standards-checksums` is missing (deleted, fresh clone before first commit, `git clean`):
+
+- Files with the `<!-- Assembled by coding-standards` header are treated as assembler-generated and safe to overwrite. A new checksums file is created.
+- Files without the assembly header are treated as manually created — backed up and skipped (same as today's behavior).
+
+This ensures no data loss even if the checksums file is lost.
+
 ### `.standards-pending/` Directory
 
 Each pending file includes a header comment:
@@ -66,21 +99,18 @@ Each pending file includes a header comment:
      Other agents: see .standards/docs/reference/merge-standards-prompt.md -->
 ```
 
-The directory is added to `.gitignore` (transient — consumed by the merge process).
+The directory is added to `.gitignore` (transient — consumed by the merge process). Pending files can be regenerated by re-running `sync-standards.sh`, so losing them (branch switch, `git clean`) is not a problem.
 
-### Hash Computation
+### Aider `.aiderrc` Handling
 
-Extract content above the sentinel, pipe to `sha256sum`:
+The Aider two-file model requires explicit treatment:
 
-```bash
-# Extract content above sentinel (or entire file if no sentinel)
-if grep -qF "$SENTINEL" "$file" 2>/dev/null; then
-    content=$(sed "/$SENTINEL/,\$d" "$file")
-else
-    content=$(cat "$file")
-fi
-echo "$content" | sha256sum | awk '{print $1}'
-```
+- **`.aider-instructions.md`** — assembled by `assemble-config.sh`, gets full checksum protection (same as all other assembled configs).
+- **`.aiderrc`** — copied from `aiderrc.template`, not assembled. Gets a **separate simpler check**: if the current `.aiderrc` differs from the template and a stored hash exists, skip and warn. Users commonly customize `.aiderrc` (model selection, flags), so this file is protected too.
+
+### Checksum Update Atomicity
+
+Checksum updates are accumulated in memory during the sync run and written to `.standards-checksums` once at the end, after all agents have been processed. If the script fails mid-run (`set -e`), the old checksums file is preserved — no partial state.
 
 ### Warning Output
 
@@ -218,9 +248,9 @@ If sync-standards warns about customized files, pending updates are in .standard
 
 | File | Change |
 |---|---|
-| `scripts/assemble-config.sh` | Add checksum read/compare/write, `.standards-pending/` staging, skip-and-warn logic |
-| `scripts/setup.sh` | Copy skill to `.claude/skills/`, add `.standards-pending/` to `.gitignore` |
-| `scripts/sync-standards.sh` | Update skill file on sync, add `.standards-pending/` to `.gitignore` |
+| `scripts/assemble-config.sh` | No changes — remains a pure assembler |
+| `scripts/setup.sh` | Add checksum computation after assembly, write `.standards-checksums`, copy skill to `.claude/skills/`, add `.standards-pending/` to `.gitignore` |
+| `scripts/sync-standards.sh` | Add checksum comparison before assembly, `.standards-pending/` staging, skip-and-warn logic, atomic checksum update, update skill file |
 | `standards/agents/claude-code/skills/merge-standards.md` | **New** — Claude Code skill for AI-powered merge |
 | `docs/reference/merge-standards-prompt.md` | **New** — agent-agnostic merge instructions |
 | `standards/agents/*/base-*.md` | Add one-line merge workflow note to conventions |
@@ -233,6 +263,10 @@ If sync-standards warns about customized files, pending updates are in .standard
 2. **Clean pass-through:** Unmodified configs are updated in place — no behavior change for untouched files.
 3. **Claude Code path:** `/merge-standards` reads pending files, shows diffs, merges on approval, updates checksums, cleans up.
 4. **Other agent path:** `merge-standards-prompt.md` provides equivalent instructions any agent can follow.
-5. **Checksum reliable:** SHA256 of content above sentinel correctly detects any modification.
-6. **Idempotent:** Running sync twice with no changes produces no pending updates and no warnings.
-7. **Existing tests pass:** `make test-scripts` validates all modified scripts.
+5. **Checksum reliable:** SHA256 of assembler-controlled content (above sentinel, whitespace-normalized) correctly detects modifications. Portable across macOS and Linux (`shasum -a 256`).
+6. **Checksums file resilient:** Missing `.standards-checksums` is recovered gracefully — files with assembly headers are safe to overwrite, others are backed up.
+7. **Aider protected:** Both `.aider-instructions.md` (assembled) and `.aiderrc` (template copy) are checksum-protected.
+8. **Atomic updates:** Checksum file is written once at end of sync, not incrementally — no partial state on failure.
+9. **Idempotent:** Running sync twice with no changes produces no pending updates and no warnings.
+10. **Pending files regenerable:** `.standards-pending/` is transient and gitignored. Re-running sync regenerates pending files if they were lost.
+11. **Existing tests pass:** `make test-scripts` validates all modified scripts.
