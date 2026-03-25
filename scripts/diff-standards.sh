@@ -29,7 +29,7 @@ BOLD='\033[1m'
 # ---------------------------------------------------------------------------
 
 if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
-    # shellcheck source=scripts/lib/checksums.sh
+    # shellcheck disable=SC1091
     source "$SCRIPT_DIR/lib/checksums.sh"
 fi
 
@@ -96,11 +96,11 @@ fi
 # Read project configuration
 # ---------------------------------------------------------------------------
 
-printf "\n${BOLD}Standards Diff${NC}\n"
+printf "\n%s\n" "${BOLD}Standards Diff${NC}"
 printf "=======================================\n\n"
 
 if ! declare -f read_standards_config >/dev/null 2>&1 || ! read_standards_config "$PROJECT_ROOT" 2>/dev/null; then
-    printf "${YELLOW}⚠️  No .standards.yml found in $PROJECT_ROOT${NC}\n"
+    printf "%s\n" "${YELLOW}⚠️  No .standards.yml found in $PROJECT_ROOT${NC}"
     printf "   Run 'make setup' to initialize standards for this project.\n\n"
     exit 0
 fi
@@ -132,17 +132,17 @@ fi
 # ---------------------------------------------------------------------------
 
 if [ -z "$ASSEMBLE_SCRIPT" ]; then
-    printf "${RED}❌ assemble-config.sh not found — cannot diff agent configs${NC}\n\n"
+    printf "%s\n\n" "${RED}❌ assemble-config.sh not found — cannot diff agent configs${NC}"
     exit 1
 fi
 
 if [ -z "$AGENTS_DIR" ]; then
-    printf "${RED}❌ standards/agents directory not found${NC}\n\n"
+    printf "%s\n\n" "${RED}❌ standards/agents directory not found${NC}"
     exit 1
 fi
 
 if [ -z "$BLOCKS_DIR" ]; then
-    printf "${RED}❌ standards/shared/blocks directory not found${NC}\n\n"
+    printf "%s\n\n" "${RED}❌ standards/shared/blocks directory not found${NC}"
     exit 1
 fi
 
@@ -152,6 +152,7 @@ NEW_FILES=0
 SKIPPED=0
 
 TEMP_FILES=()
+# shellcheck disable=SC2317
 cleanup() {
     for f in "${TEMP_FILES[@]}"; do
         rm -f "$f"
@@ -176,6 +177,7 @@ for agent in $AGENTS_LIST; do
         *)           continue ;;
     esac
 
+    # shellcheck disable=SC2059
     printf "${CYAN}→ %s${NC}  (%s)\n" "$agent" "$(basename "$OUTPUT_PATH")"
 
     # Assemble to temp file
@@ -183,13 +185,13 @@ for agent in $AGENTS_LIST; do
     TEMP_FILES+=("$TEMP_FILE")
 
     if ! "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$TEMP_FILE" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} 2>/dev/null; then
-        printf "  ${YELLOW}⚠️  Assembly failed — skipping${NC}\n\n"
+        printf "  %s\n\n" "${YELLOW}⚠️  Assembly failed — skipping${NC}"
         SKIPPED=$((SKIPPED + 1))
         continue
     fi
 
     if [ ! -f "$OUTPUT_PATH" ]; then
-        printf "  ${GREEN}+ Would create: $OUTPUT_PATH${NC}\n"
+        printf "  %s\n" "${GREEN}+ Would create: $OUTPUT_PATH${NC}"
         NEW_FILES=$((NEW_FILES + 1))
         printf "\n"
         continue
@@ -199,11 +201,12 @@ for agent in $AGENTS_LIST; do
     DIFF_OUTPUT=$(diff --unified=3 "$OUTPUT_PATH" "$TEMP_FILE" 2>/dev/null || true)
 
     if [ -z "$DIFF_OUTPUT" ]; then
-        printf "  ${GREEN}✅ Up to date${NC}\n"
+        printf "  %s\n" "${GREEN}✅ Up to date${NC}"
         UNCHANGED=$((UNCHANGED + 1))
     else
         ADDED=$(printf '%s\n' "$DIFF_OUTPUT" | grep -c '^+[^+]' || true)
         REMOVED=$(printf '%s\n' "$DIFF_OUTPUT" | grep -c '^-[^-]' || true)
+        # shellcheck disable=SC2059
         printf "  ${YELLOW}~ Changes: +%d/-%d lines${NC}\n" "$ADDED" "$REMOVED"
         # Print colored diff
         printf '%s\n' "$DIFF_OUTPUT" | while IFS= read -r line; do
