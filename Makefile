@@ -64,6 +64,8 @@ test-scripts: ## Test setup and sync scripts
 	@bash -n scripts/build-claude-settings.sh && echo "✅ build-claude-settings.sh syntax valid"
 	@echo "Testing assemble-config.sh..."
 	@bash -n scripts/assemble-config.sh && echo "✅ assemble-config.sh syntax valid"
+	@echo "Testing lib/checksums.sh..."
+	@bash -n scripts/lib/checksums.sh && echo "✅ lib/checksums.sh syntax valid"
 	@echo "Testing sync-content.sh..."
 	@bash -n website/scripts/sync-content.sh && echo "✅ sync-content.sh syntax valid"
 	@echo "Testing gh-task..."
