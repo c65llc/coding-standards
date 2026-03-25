@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-25
 **Status:** Draft
-**Goal:** Reduce per-agent-session token consumption in consumer projects by ~80-90%, ensure all 6 AI agent configs follow current best practices.
+**Goal:** Eliminate submodule traversal costs and reduce per-agent-session token consumption in consumer projects by ~60%, ensure all 6 AI agent configs follow current best practices.
 
 ---
 
@@ -10,8 +10,9 @@
 
 The coding standards repo serves agent configs and standards docs to consumer projects via submodule. Two problems exist:
 
-1. **Token waste:** Agents in consumer projects potentially read 1,200+ lines / ~4,800 tokens of standards content per session, with 60-75% redundancy across configs and irrelevant content (e.g., a Python project loading Rust/Swift/Dart standards).
-2. **Agent best practices gaps:** Missing `.cursorrules` template, no Copilot-specific features, obsolete Codex format (`.codexrc`), no context-length/performance guidance, inline duplication of security and testing rules across all 6 configs.
+1. **Submodule traversal cost:** Current agent configs contain references like "See `standards/languages/lang-01_python_standards.md`" that instruct agents to read files inside the submodule. A diligent agent following a Cursor config (329 lines) may also traverse into `core-standards.md` (329 lines), relevant language docs (200+ lines each), and `sec-01` (311 lines) — accumulating 800-1,200+ lines of content per session. Much of this is irrelevant (e.g., a Python project loading Rust/Swift/Dart standards) or redundant (security rules repeated in 3+ files).
+2. **Config verbosity:** Even without traversal, individual agent configs contain duplicated content. The largest (`.cursorrules` at 329 lines) could be reduced to ~125 lines by extracting only relevant standards content.
+3. **Agent best practices gaps:** Missing `.cursorrules` template, no Copilot-specific features, obsolete Codex format (`.codexrc`), no context-length/performance guidance, inline duplication of security and testing rules across all 6 configs.
 
 ## Design Decisions
 
@@ -73,7 +74,7 @@ A `standards/shared/blocks/` directory containing atomic, reusable content fragm
 - No explanations of why — just rules
 - One concept per line where possible
 - Code examples only when the pattern isn't obvious from the rule
-- Each block must be self-contained (no cross-references to other blocks)
+- Each block must be self-contained (no cross-references to blocks that may not be included). Exception: `lang-rails.md` may assume `lang-ruby.md` content is present; the assembly script always includes `lang-ruby.md` when `lang-rails.md` is selected.
 
 ---
 
@@ -87,7 +88,7 @@ Each agent gets a base template in `standards/agents/<agent>/` containing only a
 |---|---|---|---|---|
 | Claude Code | `base-claude-code.md` | `CLAUDE.md` | 30 | CLAUDE.md structure, key commands, conventions, architecture overview placeholder |
 | Cursor | `base-cursor.md` | `.cursorrules` | 35 | Interaction modes, condensed command signatures, reference to `.cursor/commands/` |
-| Copilot | `base-copilot.md` | `.github/copilot-instructions.md` | 25 | `/explain`, `/fix`, `/tests` guidance, workspace context strategy, chat panel usage |
+| Copilot | `base-copilot.md` | `.github/copilot-instructions.md` | 30 | `/explain`, `/fix`, `/tests` guidance, workspace context strategy, chat panel usage, code suggestion behavioral rules, PR assistance guidance |
 | Gemini | `base-gemini.md` | `.gemini/GEMINI.md` | 30 | A-P-E workflow, checkpointing, `active_mission.log`, safety constraints |
 | Aider | `base-aider.md` | `.aiderrc` | 25 | Model selection, file exclusion, diff mode, `/add`/`/edit`/`/ask` usage |
 | Codex | `base-codex.md` | `AGENTS.md` | 25 | Sandbox awareness, approval mode, tool usage patterns, no interactive commands |
@@ -116,15 +117,17 @@ Each agent gets a base template in `standards/agents/<agent>/` containing only a
 
 ### Assembled Config Expectations
 
+**Baseline comparison** (Cursor, worst case today): 329-line config + agent traverses into `core-standards.md` (329 lines) + `lang-01` (202 lines) + `lang-06` (216 lines) + `sec-01` (311 lines) = ~1,387 lines read per session.
+
 A Python/TypeScript web service using Claude Code:
-- ~127 lines / ~508 tokens
-- **89% reduction** from current potential of ~1,202 lines / ~4,800 tokens
+- ~127 lines — **self-contained, no traversal**
+- ~60% reduction vs. current config-only size; eliminates all submodule traversal
 
 A Rust library using Aider:
-- ~103 lines / ~412 tokens
+- ~103 lines
 
 A Dart/Swift mobile app using Cursor:
-- ~125 lines / ~500 tokens
+- ~125 lines
 
 ---
 
@@ -158,31 +161,98 @@ setup.sh [--role <service|library|app|data-pipeline>] \
 - `--agents` defaults to all detected agents (based on existing config files in the project)
 - `--languages` overrides auto-detection from `detect-languages.sh`
 
+### Language Detection-to-Block Mapping
+
+`detect-languages.sh` outputs keys that must be mapped to block filenames. The assembly script uses this mapping:
+
+| Detection Key | Block(s) Selected | Notes |
+|---|---|---|
+| `python` | `lang-python.md` | |
+| `javascript` | `lang-javascript.md`, `lang-typescript.md` | Both included; TS detection via `tsconfig.json` presence adds `lang-typescript.md` only if not already present |
+| `jvm` | `lang-java.md`, `lang-kotlin.md` | Both included by default. If only `*.kt`/`*.kts` files exist (no `*.java`), include only `lang-kotlin.md`. Vice versa for Java-only. |
+| `ruby` | `lang-ruby.md` | If `Gemfile` contains `rails` or `config/routes.rb` exists, also include `lang-rails.md` |
+| `rust` | `lang-rust.md` | |
+| `swift` | `lang-swift.md` | |
+| `dart` | `lang-dart.md` | |
+| `zig` | `lang-zig.md` | |
+
+**Updates to `detect-languages.sh`:** Add TypeScript sub-detection (check for `tsconfig.json` or `.ts` files) and Rails sub-detection (check for `config/routes.rb` or `rails` in Gemfile). Output format changes from single keys to key:subkey pairs where applicable (e.g., `javascript:typescript`, `ruby:rails`).
+
 ### Assembly Logic
 
 ```
 1. Run detect-languages.sh (or use --languages override)
 2. Determine role from --role flag (default: service)
-3. For each agent in target set:
+3. Map detection keys to block filenames (see mapping table above)
+4. For each agent in target set:
    a. Read base template from standards/agents/<agent>/
-   b. Read common blocks: architecture-core, testing-policy,
+   b. For Aider: use TOML wrapper (see Aider Format Handling below)
+   c. Read common blocks: architecture-core, testing-policy,
       security-summary, naming-conventions, git-workflow,
       documentation-policy
-   c. Read language blocks for each detected language
-   d. Read role block for selected role
-   e. Concatenate with ## section headers between blocks
-   f. Prepend header: "# Assembled by coding-standards setup.sh — do not edit directly"
-   g. Write to correct location in consumer project
-4. Copy relevant tooling configs (ruff.toml, .prettierrc, .rubocop.yml,
+   d. Read language blocks for each mapped language
+   e. Read role block for selected role
+   f. Concatenate with ## section headers between blocks
+   g. Prepend header comment (format varies by agent)
+   h. Extract and append ## Project-Specific section (see below)
+   i. Write to correct location in consumer project
+5. Copy relevant tooling configs (ruff.toml, .prettierrc, .rubocop.yml,
    clippy.toml, etc.) for detected languages
+6. Save selections to .standards-config for future sync runs
 ```
+
+### Aider Format Handling
+
+Aider's `.aiderrc` uses a key-value format, not Markdown. The assembly handles this as a special case:
+
+- `base-aider.md` contains the TOML-format wrapper with a `read` key pointing to an `.aider-instructions.md` file
+- The assembled Markdown content (blocks) is written to `.aider-instructions.md`
+- The `.aiderrc` contains only Aider-native config (model, excludes, read path)
+- This produces two files: `.aiderrc` (~15 lines, TOML) + `.aider-instructions.md` (~90 lines, Markdown)
+
+### Project-Specific Section Preservation
+
+Algorithm for preserving user customizations across re-assembly:
+
+1. **Sentinel marker:** `<!-- BEGIN PROJECT-SPECIFIC — DO NOT EDIT THIS LINE -->` (for Markdown configs) or `# BEGIN PROJECT-SPECIFIC` (for `.aiderrc`)
+2. **Extraction:** Before assembly, if the target file exists, scan for the sentinel. If found, capture everything from the sentinel line to EOF.
+3. **Re-attachment:** After assembly, append the captured content (including sentinel) to the end of the new file.
+4. **First run:** No existing file → no extraction → assembled config has no project-specific section. A comment at the end of the assembled file explains how to add one.
+5. **Edge case — no sentinel but file was manually edited:** If the target file exists but has no sentinel and also has no `# Assembled by coding-standards` header, it was manually created. The setup script backs it up to `<filename>.pre-standards-setup` and warns the user, then writes the assembled version.
+
+### Configuration Persistence
+
+Setup selections are saved to `.standards-config` in the consumer project root:
+
+```
+# Generated by coding-standards setup.sh — used by sync-standards.sh
+STANDARDS_ROLE=service
+STANDARDS_LANGUAGES=python,typescript
+STANDARDS_AGENTS=claude-code,cursor,copilot
+STANDARDS_VERSION=1.0.0
+```
+
+`sync-standards.sh` reads this file to re-run assembly with the same selections. If the file is missing, sync falls back to auto-detection + `service` default and warns the user.
 
 ### Key Behaviors
 
 - **Idempotent:** Running setup twice produces the same result.
-- **Project-specific section preserved:** If the assembled config contains a `## Project-Specific` section at the bottom, setup reads it from the existing config and appends it after re-assembly.
-- **`sync-standards.sh` integration:** Re-runs assembly to pick up block updates from the submodule.
+- **`sync-standards.sh` integration:** Re-runs assembly using `.standards-config` selections.
 - **Deprecation warning:** If `.codexrc` exists in consumer project, `sync-standards.sh` warns it's deprecated and `AGENTS.md` is the replacement.
+
+### Migration Plan for Existing Consumer Projects
+
+For projects that already have standards configs deployed via the current setup:
+
+1. **First `sync-standards.sh` run after this change:**
+   - Detects absence of `.standards-config`, runs language detection, defaults role to `service`
+   - Warns user: "Generating .standards-config with detected settings. Review and re-run if needed."
+   - For each existing config file:
+     - If file has no sentinel and no assembly header → backs up to `<filename>.pre-standards-setup`, writes new assembled version
+     - If file has assembly header → overwrites (it was previously assembled)
+   - `.codexrc` → warns deprecated, generates `AGENTS.md` alongside it
+2. **Aider migration:** Old `.aiderrc` (with inline standards content) is backed up. New `.aiderrc` (TOML-only) + `.aider-instructions.md` (Markdown) written.
+3. **No destructive operations:** Nothing is deleted. Old files are backed up with `.pre-standards-setup` suffix.
 
 ---
 
@@ -292,10 +362,12 @@ standards/
 
 ## 8. Success Criteria
 
-1. **Token reduction:** Assembled agent configs for a typical 2-language project are <150 lines / <600 tokens (vs. current ~1,200 lines / ~4,800 tokens potential).
+1. **Token reduction:** Assembled agent configs for a typical 2-language project are <150 lines. Eliminates all submodule traversal — agents never need to read files inside `.standards/`.
 2. **Self-contained:** No assembled config requires the agent to read additional files from the submodule.
 3. **All 6 agents functional:** Each agent config follows current best practices for that agent's platform.
 4. **Idempotent assembly:** `setup.sh` and `sync-standards.sh` produce identical results on repeated runs.
-5. **Project-specific sections preserved:** Custom content survives re-assembly.
-6. **Existing tests pass:** `make test-scripts` validates all shell scripts.
-7. **Codex migration complete:** `.codexrc` replaced with `AGENTS.md` in this repo and in templates.
+5. **Project-specific sections preserved:** Custom content survives re-assembly via sentinel markers.
+6. **Migration safe:** Existing consumer projects can run `sync-standards.sh` without data loss. Pre-existing configs are backed up before overwrite.
+7. **Configuration persisted:** `.standards-config` stores role/language/agent selections for reproducible syncs.
+8. **Existing tests pass:** `make test-scripts` validates all shell scripts.
+9. **Codex migration complete:** `.codexrc` replaced with `AGENTS.md` in this repo and in templates.
