@@ -79,7 +79,7 @@ The orchestrator (`scripts/lint-standards.sh`) reads `.standards.yml` to determi
 ### JSON
 
 ```bash
-make lint-standards FORMAT=--format\ json
+./scripts/lint-standards.sh --format json
 ```
 
 Produces a structured JSON object with `summary` counts and a `results` array — suitable for parsing in scripts, dashboards, or custom reporters.

@@ -69,26 +69,34 @@ fi
 # Secret patterns to scan for
 MATCHES=""
 
+# Helper: grep a pattern across all source files safely (handles spaces in paths)
+grep_source_files() {
+    local pattern="$1"
+    while IFS= read -r file; do
+        grep -lE "$pattern" "$file" 2>/dev/null || true
+    done <<< "$SOURCE_FILES"
+}
+
 # AWS access key pattern
-aws_matches=$(echo "$SOURCE_FILES" | xargs grep -lE 'AKIA[0-9A-Z]{16}' 2>/dev/null || true)
+aws_matches=$(grep_source_files 'AKIA[0-9A-Z]{16}' || true)
 [ -n "$aws_matches" ] && MATCHES="${MATCHES}AWS keys in: $(echo "$aws_matches" | head -3 | tr '\n' ' '); "
 
 # Private key blocks
-pk_matches=$(echo "$SOURCE_FILES" | xargs grep -lE '\-\-\-\-\-BEGIN.*(PRIVATE|RSA|EC|DSA) KEY' 2>/dev/null || true)
+pk_matches=$(grep_source_files '\-\-\-\-\-BEGIN.*(PRIVATE|RSA|EC|DSA) KEY' || true)
 [ -n "$pk_matches" ] && MATCHES="${MATCHES}Private keys in: $(echo "$pk_matches" | head -3 | tr '\n' ' '); "
 
 # Hardcoded passwords (not in comments, not test fixtures)
-pwd_matches=$(echo "$SOURCE_FILES" | xargs grep -lE 'password\s*=\s*["'"'"'][^"'"'"']{4,}["'"'"']' 2>/dev/null \
+pwd_matches=$(grep_source_files 'password\s*=\s*["'"'"'][^"'"'"']{4,}["'"'"']' \
     | grep -vE '(test|spec|fixture|example|sample|mock|dummy)' || true)
 [ -n "$pwd_matches" ] && MATCHES="${MATCHES}Hardcoded passwords in: $(echo "$pwd_matches" | head -3 | tr '\n' ' '); "
 
 # API keys
-api_matches=$(echo "$SOURCE_FILES" | xargs grep -lE 'api_key\s*=\s*["'"'"'][^"'"'"']{8,}["'"'"']' 2>/dev/null \
+api_matches=$(grep_source_files 'api_key\s*=\s*["'"'"'][^"'"'"']{8,}["'"'"']' \
     | grep -vE '(test|spec|fixture|example|sample|mock|dummy)' || true)
 [ -n "$api_matches" ] && MATCHES="${MATCHES}Hardcoded API keys in: $(echo "$api_matches" | head -3 | tr '\n' ' '); "
 
 # Secret tokens
-secret_matches=$(echo "$SOURCE_FILES" | xargs grep -lE '(secret|token)\s*=\s*["'"'"'][^"'"'"']{8,}["'"'"']' 2>/dev/null \
+secret_matches=$(grep_source_files '(secret|token)\s*=\s*["'"'"'][^"'"'"']{8,}["'"'"']' \
     | grep -vE '(test|spec|fixture|example|sample|mock|dummy|placeholder|your[-_])' || true)
 [ -n "$secret_matches" ] && MATCHES="${MATCHES}Hardcoded secrets/tokens in: $(echo "$secret_matches" | head -3 | tr '\n' ' '); "
 

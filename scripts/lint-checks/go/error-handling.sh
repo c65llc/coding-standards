@@ -45,9 +45,7 @@ blank_multi=$(echo "$GO_FILES" | xargs grep -nE ',\s*_\s*:?=\s*\w+' 2>/dev/null 
 if [ -n "$blank_multi" ]; then
     count=$(echo "$blank_multi" | wc -l | tr -d ' ')
     first=$(echo "$blank_multi" | head -1 | sed "s|$PROJECT_ROOT/||")
-    if [ -z "$VIOLATIONS" ]; then
-        VIOLATIONS="${VIOLATIONS}Multi-return blanked values (, _ := ...) $count occurrence(s), first: $first; "
-    fi
+    VIOLATIONS="${VIOLATIONS}Multi-return blanked values (, _ := ...) $count occurrence(s), first: $first; "
 fi
 
 if [ -z "$VIOLATIONS" ]; then
