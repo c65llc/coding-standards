@@ -85,7 +85,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.check-website.outputs.exists == 'true'
-        run: cd website && npm ci
+        run: cd website && npm install
 
       - name: Build website
         if: steps.check-website.outputs.exists == 'true'
