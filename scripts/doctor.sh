@@ -17,7 +17,6 @@ PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 # Source helpers if available
 if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
     # shellcheck source=scripts/lib/checksums.sh
-    # shellcheck disable=SC1091
     source "$SCRIPT_DIR/lib/checksums.sh"
 fi
 
@@ -138,7 +137,7 @@ check_config() {
             "Migrate: rename .standards-config to .standards.yml and convert to YAML format"
     else
         check_fail "Configuration" ".standards.yml not found" \
-            "Create: add .standards.yml to this project (see .standards/templates/standards.yml.example)"
+            "Create: add .standards.yml to this project (see .standards/templates/.standards.yml.example)"
     fi
 }
 
@@ -216,11 +215,7 @@ check_checksums() {
         [ ! -f "$full_path" ] && continue
 
         local current_hash
-        if [ "$key" = ".aiderrc" ]; then
-            current_hash=$(shasum -a 256 "$full_path" | awk '{print $1}')
-        else
-            current_hash=$(compute_hash "$full_path")
-        fi
+        current_hash=$(compute_hash "$full_path")
         checked=$((checked + 1))
 
         if [ "$current_hash" != "$stored_hash" ]; then
@@ -265,7 +260,7 @@ check_languages() {
     local declared=""
     if declare -f read_standards_config >/dev/null 2>&1; then
         read_standards_config "$PROJECT_ROOT" 2>/dev/null || true
-        declared=$(printf '%s\n' "$STD_LANGUAGES" | sort | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+        declared=$(printf '%s\n' $STD_LANGUAGES | sort | tr '\n' ' ' | sed 's/[[:space:]]*$//')
     fi
 
     if [ -z "$declared" ] && [ -z "$detected" ]; then
@@ -331,7 +326,7 @@ check_submodule() {
     fi
 
     local submodule_head=""
-    submodule_head=$(cd "$submodule_dir" && git rev-parse HEAD 2>/dev/null) || submodule_head=""
+    submodule_head=$(cd "$submodule_dir" && git rev-parse HEAD 2>/dev/null || true)
 
     if [ -n "$submodule_head" ]; then
         check_pass "Submodule" ".standards/ is a valid git repo"
@@ -399,7 +394,7 @@ check_gitignore() {
 # Main: run all checks
 # ---------------------------------------------------------------------------
 
-printf "\n%s\n" "${BOLD}Standards Health Check${NC}"
+printf "\n${BOLD}Standards Health Check${NC}\n"
 printf "=======================================\n\n"
 
 check_config
@@ -425,7 +420,7 @@ fi
 printf "  ${BOLD}Score: %d/%d (%d%%)${NC}\n" "$PASS" "$TOTAL" "$pct"
 
 if [ -n "$FIXES" ]; then
-    printf "\n  %s\n" "${BOLD}Fixes needed:${NC}"
+    printf "\n  ${BOLD}Fixes needed:${NC}\n"
     printf '%s\n' "$FIXES" | while IFS= read -r fix; do
         printf "    -> %s\n" "$fix"
     done
