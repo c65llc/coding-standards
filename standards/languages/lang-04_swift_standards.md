@@ -189,5 +189,5 @@ func createUser(email: String, name: String) throws -> User {
 
 - **SAST:** Use Xcode's built-in static analyzer. No major third-party SAST tool for Swift.
 - **Dependency scanning:** Enable GitHub Dependabot for SPM dependencies.
-- **Banned functions:** `NSExpression` with user input, `Process`/`NSTask` with unsanitized arguments.
+- **Banned functions:** See [sec-01_security_standards.md](../security/sec-01_security_standards.md) for the complete banned-functions list with language-specific examples.
 - **Secure random:** Use `SystemRandomNumberGenerator` or `SecRandomCopyBytes` for security contexts.

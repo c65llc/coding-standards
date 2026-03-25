@@ -211,5 +211,5 @@ function createUser(email: Email, name: string): User {
 - **SAST:** Use `eslint-plugin-security` in ESLint config.
 - **Dependency scanning:** Run `pnpm audit` (preferred), `npm audit`, or `yarn audit` in CI.
 - **Secrets scanning:** Use `detect-secrets` as a pre-commit hook.
-- **Banned functions:** `eval()`, `Function()`, `setTimeout(string)`, `setInterval(string)`, `document.write()`.
+- **Banned functions:** See [sec-01_security_standards.md](../security/sec-01_security_standards.md) for the complete banned-functions list with language-specific examples.
 - **Secure random:** Use `crypto.randomUUID()` or `crypto.getRandomValues()`, not `Math.random()`, for security contexts.

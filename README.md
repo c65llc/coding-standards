@@ -27,13 +27,13 @@ The installer sets up the following in your project:
 |-------|-------------|--------|
 | Cursor AI | `.cursorrules` | Supported |
 | GitHub Copilot | `.github/copilot-instructions.md` | Supported |
-| Claude Code / Aider | `.aiderrc` | Supported |
-| OpenAI Codex | `.codexrc` | Supported |
+| Claude Code / Aider | `CLAUDE.md`, `.aiderrc` + `.aider-instructions.md` | Supported |
+| OpenAI Codex | `AGENTS.md` | Supported |
 | Gemini CLI | `.gemini/GEMINI.md`, `.gemini/settings.json` | Supported |
 
 ## Supported Languages
 
-Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig
+Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby on Rails, Go, Elixir
 
 ## Feature Highlights
 

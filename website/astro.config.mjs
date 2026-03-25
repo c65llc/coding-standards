@@ -11,6 +11,7 @@ export default defineConfig({
       description: 'Unified coding standards for every AI coding assistant.',
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/c65llc/coding-standards' },
+        { icon: 'rss', label: 'RSS Feed', href: 'https://coding-standards.c65llc.com/rss.xml' },
       ],
       defaultLocale: 'root',
       locales: {
@@ -59,6 +60,15 @@ export default defineConfig({
           attrs: {
             property: 'og:image',
             content: 'https://coding-standards.c65llc.com/og-image.png',
+          },
+        },
+        {
+          tag: 'link',
+          attrs: {
+            rel: 'alternate',
+            type: 'application/rss+xml',
+            title: 'Coding Standards Blog',
+            href: 'https://coding-standards.c65llc.com/rss.xml',
           },
         },
       ],

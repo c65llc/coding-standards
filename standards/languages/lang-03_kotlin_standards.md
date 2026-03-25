@@ -174,5 +174,5 @@ fun createUser(email: String, name: String): User {
 
 - **SAST:** Use SpotBugs with Find Security Bugs plugin or detekt security ruleset in CI.
 - **Dependency scanning:** Run OWASP Dependency-Check (`gradle dependencyCheckAnalyze`).
-- **Banned functions:** `Runtime.exec()` with unsanitized string, `ObjectInputStream.readObject()` on untrusted data, `ScriptEngine.eval()`.
+- **Banned functions:** See [sec-01_security_standards.md](../security/sec-01_security_standards.md) for the complete banned-functions list with language-specific examples.
 - **Secure random:** Use `java.security.SecureRandom`, not `java.util.Random`, for security contexts.

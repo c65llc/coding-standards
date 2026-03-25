@@ -9,7 +9,7 @@ const agents = [
   { name: 'Cursor AI', config: '.cursorrules', icon: '{}' },
   { name: 'GitHub Copilot', config: 'copilot-instructions.md', icon: '<>' },
   { name: 'Claude Code', config: 'CLAUDE.md', icon: '>>'},
-  { name: 'OpenAI Codex', config: '.codexrc', icon: '()' },
+  { name: 'OpenAI Codex', config: 'AGENTS.md', icon: '()' },
   { name: 'Gemini CLI', config: 'GEMINI.md', icon: '//' },
 ];
 
@@ -24,6 +24,8 @@ const languages = [
   { name: 'Rust', ext: '.rs' },
   { name: 'Zig', ext: '.zig' },
   { name: 'Ruby', ext: '.rb' },
+  { name: 'Go', ext: '.go' },
+  { name: 'Elixir', ext: '.ex' },
 ];
 
 const features = [
@@ -67,6 +69,7 @@ const steps = [
     <meta property="og:image" content="https://coding-standards.c65llc.com/og-image.png" />
     <link rel="sitemap" href="/sitemap-index.xml" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="alternate" type="application/rss+xml" title="Coding Standards Blog" href="/rss.xml" />
   </head>
 
   <body>
@@ -77,6 +80,9 @@ const steps = [
         <div class="nav-links">
           <a href={docsUrl}>Docs</a>
           <a href={githubUrl} target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="/rss.xml" class="rss-link" title="RSS Feed" aria-label="RSS Feed">
+            <svg class="rss-icon" viewBox="0 0 24 24" fill="currentColor" width="16" height="16" aria-hidden="true"><circle cx="6.18" cy="17.82" r="2.18"/><path d="M4 4.44v2.83c7.03 0 12.73 5.7 12.73 12.73h2.83c0-8.59-6.97-15.56-15.56-15.56z"/><path d="M4 10.1v2.83c3.9 0 7.07 3.17 7.07 7.07h2.83c0-5.47-4.43-9.9-9.9-9.9z"/></svg>
+          </a>
         </div>
       </div>
     </nav>
@@ -114,7 +120,7 @@ const steps = [
     <section class="agents">
       <div class="container">
         <h2 class="section-title">Supported Agents</h2>
-        <p class="section-sub">First-class support for the five leading AI coding assistants.</p>
+        <p class="section-sub">First-class support for six leading AI coding assistants.</p>
         <div class="agent-grid">
           {agents.map((a) => (
             <div class="agent-card">
@@ -193,6 +199,8 @@ const steps = [
         <span>&copy; {new Date().getFullYear()} C65 LLC</span>
         <div class="footer-links">
           <a href={docsUrl}>Docs</a>
+          <a href="/blog/">Blog</a>
+          <a href="/rss.xml" title="RSS Feed">RSS</a>
           <a href={githubUrl} target="_blank" rel="noopener noreferrer">GitHub</a>
         </div>
       </div>
@@ -236,6 +244,9 @@ const steps = [
   .nav-links { display: flex; gap: 1.5rem; }
   .nav-links a { color: var(--sl-color-gray-2); font-size: 0.95rem; }
   .nav-links a:hover { color: var(--sl-color-white); text-decoration: none; }
+  .rss-link { display: inline-flex; align-items: center; }
+  .rss-icon { width: 16px; height: 16px; color: var(--sl-color-gray-2); transition: color 0.2s; }
+  .rss-link:hover .rss-icon { color: #f26522; }
 
   /* ---- Buttons ---- */
   .btn { display: inline-block; padding: 0.75rem 1.5rem; border-radius: var(--radius); font-weight: 600; font-size: 1rem; transition: background 0.2s, color 0.2s, border-color 0.2s; }

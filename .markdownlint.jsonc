@@ -14,5 +14,7 @@
   // Allow compact table separator style (|---|---|)
   "MD060": false,
   // Allow duplicate headings under different parents (Pattern/Rules sections)
-  "MD024": { "siblings_only": true }
+  "MD024": { "siblings_only": true },
+  // Block files in standards/shared/blocks/ are intentional headingless fragments
+  "MD041": false
 }
