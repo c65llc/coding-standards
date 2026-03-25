@@ -43,6 +43,8 @@ One repository of standards → automatically synced to every AI agent.
 | Architecture enforcement | No | Limited | Clean Architecture built-in |
 | Setup time | Hours | Hours per tool | 1 command, 5 minutes |
 | Staying updated | Manual | Manual per tool | Auto via git hooks |
+| Declarative config | No | No | `.standards.yml` |
+| Health check | No | No | `make doctor` |
 | Customizable | N/A | Per tool | Fork once, customize all |
 
 ## Key Benefits

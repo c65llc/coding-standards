@@ -78,35 +78,20 @@ sync_ai_agents() {
         return
     fi
 
-    # Read .standards-config for persisted settings
+    # Read project configuration (.standards.yml or legacy .standards-config)
     local ROLE="service"
     local DETECTED_LANGS=""
     local AGENTS_LIST=""
 
-    if [ -f "$PROJECT_ROOT/.standards-config" ]; then
-        # Parse .standards-config as key=value data (no shell execution for safety)
-        local cfg_role="" cfg_langs="" cfg_agents=""
-        while IFS='=' read -r raw_key raw_value; do
-            # Skip empty lines and comments
-            [[ -z "$raw_key" || "$raw_key" =~ ^[[:space:]]*# ]] && continue
-            # Trim whitespace
-            local key="${raw_key// /}"
-            local value="${raw_value// /}"
-            case "$key" in
-                STANDARDS_ROLE)      cfg_role="$value" ;;
-                STANDARDS_LANGUAGES) cfg_langs="$value" ;;
-                STANDARDS_AGENTS)    cfg_agents="$value" ;;
-            esac
-        done < "$PROJECT_ROOT/.standards-config"
-        ROLE="${cfg_role:-service}"
-        # Convert comma-separated to space-separated
-        DETECTED_LANGS=$(echo "${cfg_langs:-}" | tr ',' ' ')
-        AGENTS_LIST=$(echo "${cfg_agents:-}" | tr ',' ' ')
-    else
-        echo "⚠️  No .standards-config found. Running auto-detection (default role: service)."
-        ROLE="service"
-        DETECTED_LANGS=""
+    if ! read_standards_config "$PROJECT_ROOT"; then
+        echo "⚠️  No .standards.yml or .standards-config found. Running auto-detection (default role: service)."
+        STD_ROLE="service"
+        STD_LANGUAGES=""
+        STD_AGENTS=""
     fi
+    ROLE="$STD_ROLE"
+    DETECTED_LANGS="$STD_LANGUAGES"
+    AGENTS_LIST="$STD_AGENTS"
 
     # If no languages from config, try auto-detection
     if [ -z "$DETECTED_LANGS" ]; then
