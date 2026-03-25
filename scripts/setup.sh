@@ -207,6 +207,7 @@ setup_ai_agents() {
 
         echo "📝 Assembling $agent config..."
         if [ "$DRY_RUN" = true ]; then
+            local TEMP_ASSEMBLED
             TEMP_ASSEMBLED=$(mktemp)
             if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$TEMP_ASSEMBLED" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} 2>/dev/null; then
                 echo "  [dry-run] Would write: $OUTPUT_PATH"
@@ -518,13 +519,18 @@ if command -v git >/dev/null 2>&1; then
     fi
 
     if [ -n "$GIT_ALIASES_SCRIPT" ] && [ -f "$GIT_ALIASES_SCRIPT" ]; then
-        echo ""
-        echo "🔧 Setting up git aliases and configuration..."
-        echo "   (This configures global git settings and aliases for your system)"
-        if bash "$GIT_ALIASES_SCRIPT"; then
-            echo "✅ Git aliases and configuration set up"
+        if [ "$DRY_RUN" = true ]; then
+            echo ""
+            echo "  [dry-run] Would set up git aliases and configuration"
         else
-            echo "⚠️  Git setup had issues (non-fatal, continuing...)"
+            echo ""
+            echo "🔧 Setting up git aliases and configuration..."
+            echo "   (This configures global git settings and aliases for your system)"
+            if bash "$GIT_ALIASES_SCRIPT"; then
+                echo "✅ Git aliases and configuration set up"
+            else
+                echo "⚠️  Git setup had issues (non-fatal, continuing...)"
+            fi
         fi
     fi
 else

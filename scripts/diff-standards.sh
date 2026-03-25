@@ -202,8 +202,8 @@ for agent in $AGENTS_LIST; do
         printf "  ${GREEN}✅ Up to date${NC}\n"
         UNCHANGED=$((UNCHANGED + 1))
     else
-        ADDED=$(printf '%s\n' "$DIFF_OUTPUT" | grep -c '^+' || true)
-        REMOVED=$(printf '%s\n' "$DIFF_OUTPUT" | grep -c '^-' || true)
+        ADDED=$(printf '%s\n' "$DIFF_OUTPUT" | grep -c '^+[^+]' || true)
+        REMOVED=$(printf '%s\n' "$DIFF_OUTPUT" | grep -c '^-[^-]' || true)
         printf "  ${YELLOW}~ Changes: +%d/-%d lines${NC}\n" "$ADDED" "$REMOVED"
         # Print colored diff
         printf '%s\n' "$DIFF_OUTPUT" | while IFS= read -r line; do

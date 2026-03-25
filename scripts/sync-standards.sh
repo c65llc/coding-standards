@@ -210,28 +210,12 @@ sync_ai_agents() {
 
         # Checksum-guarded assembly: skip customized files, stage pending updates
         if [ "$DRY_RUN" = true ]; then
-            # In dry-run mode, show what would happen without writing
-            if [ -n "$CHECKSUMS_LIB" ]; then
-                local sa_rc=0
-                should_assemble "$OUTPUT_PATH" "$CHECKSUMS_PATH" 2>/dev/null || sa_rc=$?
-                if [ "$sa_rc" -eq 1 ]; then
-                    echo "  [dry-run] $agent config customized — would stage update to $PENDING_DIR/"
-                elif [ "$sa_rc" -eq 2 ]; then
-                    echo "  [dry-run] $agent config manually created — would skip (no assembly header)"
-                else
-                    if [ -f "$OUTPUT_PATH" ]; then
-                        echo "  [dry-run] Would re-assemble: $OUTPUT_PATH"
-                    else
-                        echo "  [dry-run] Would create: $OUTPUT_PATH"
-                    fi
-                fi
+            if [ -f "$OUTPUT_PATH" ]; then
+                echo "  [dry-run] Would re-assemble: $OUTPUT_PATH"
             else
-                if [ -f "$OUTPUT_PATH" ]; then
-                    echo "  [dry-run] Would re-assemble: $OUTPUT_PATH"
-                else
-                    echo "  [dry-run] Would create: $OUTPUT_PATH"
-                fi
+                echo "  [dry-run] Would create: $OUTPUT_PATH"
             fi
+            continue
         elif [ -n "$CHECKSUMS_LIB" ]; then
             local sa_rc=0
             should_assemble "$OUTPUT_PATH" "$CHECKSUMS_PATH" || sa_rc=$?
@@ -475,22 +459,22 @@ if [ -d "$PROJECT_ROOT/.standards" ]; then
 
     # Update submodule
     cd "$STANDARDS_DIR"
-    LOCAL=$(git rev-parse HEAD)
-    git fetch origin >/dev/null 2>&1
-    REMOTE=$(git rev-parse origin/main 2>/dev/null || git rev-parse origin/master 2>/dev/null)
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] Would fetch and pull .standards/ submodule"
+        UPDATED=true  # Assume updates for preview purposes
+    else
+        LOCAL=$(git rev-parse HEAD)
+        git fetch origin >/dev/null 2>&1
+        REMOTE=$(git rev-parse origin/main 2>/dev/null || git rev-parse origin/master 2>/dev/null)
 
-    if [ "$LOCAL" != "$REMOTE" ] && [ -n "$REMOTE" ]; then
-        if [ "$DRY_RUN" = true ]; then
-            echo "  [dry-run] Would pull latest standards (submodule has updates)"
-            UPDATED=false
-        else
+        if [ "$LOCAL" != "$REMOTE" ] && [ -n "$REMOTE" ]; then
             echo "📥 Pulling latest standards..."
             git pull origin main 2>/dev/null || git pull origin master 2>/dev/null
             UPDATED=true
+        else
+            echo "✅ Standards are up to date"
+            UPDATED=false
         fi
-    else
-        echo "✅ Standards are up to date"
-        UPDATED=false
     fi
     cd "$PROJECT_ROOT"
 elif [ -d "$SCRIPT_DIR/../standards" ]; then
@@ -540,15 +524,20 @@ else
 fi
 
 if [ -n "$GIT_ALIASES_SCRIPT" ] && [ -f "$GIT_ALIASES_SCRIPT" ] && command -v git >/dev/null 2>&1; then
-    # Always check for new aliases, not just when updated
-    # The setup script will skip existing aliases, so it's safe to run
-    echo ""
-    echo "🔧 Checking git aliases and configuration..."
-    echo "   (Ensuring all aliases are up to date)"
-    if bash "$GIT_ALIASES_SCRIPT" 2>/dev/null; then
-        echo "✅ Git aliases checked/updated"
+    if [ "$DRY_RUN" = true ]; then
+        echo ""
+        echo "  [dry-run] Would set up git aliases and configuration"
     else
-        echo "⚠️  Git aliases update had issues (non-fatal, continuing...)"
+        # Always check for new aliases, not just when updated
+        # The setup script will skip existing aliases, so it's safe to run
+        echo ""
+        echo "🔧 Checking git aliases and configuration..."
+        echo "   (Ensuring all aliases are up to date)"
+        if bash "$GIT_ALIASES_SCRIPT" 2>/dev/null; then
+            echo "✅ Git aliases checked/updated"
+        else
+            echo "⚠️  Git aliases update had issues (non-fatal, continuing...)"
+        fi
     fi
 fi
 
