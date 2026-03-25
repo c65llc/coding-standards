@@ -2,32 +2,7 @@
 
 ## 1. Per-Module Coverage Gates
 
-Instead of a single global coverage threshold, enforce coverage baselines per architectural layer. Inner layers (domain/core) hold the highest bar because they contain the most critical logic.
-
-### Recommended Baselines
-
-**95% is the absolute minimum for any module.** No layer is exempt.
-
-| Layer | Min Coverage | Rationale |
-|-------|-------------|-----------|
-| Domain / Core | 100% | Pure business logic, no external dependencies, highest risk |
-| Application / Shell | 95%+ | Orchestration logic, all use cases tested |
-| Infrastructure / Integration | 95%+ | External adapters — use test containers and mocks to reach threshold |
-
-### Enforcement
-
-Define per-module thresholds as Make variables. **The floor is 95% — projects may raise but never lower these values:**
-
-```makefile
-CORE_COV_MIN  ?= 100
-APP_COV_MIN   ?= 95
-INFRA_COV_MIN ?= 95
-
-coverage-check: ## Enforce per-module coverage baselines
-	# Run coverage tool per module, compare against threshold
-```
-
-A PR that drops any module below its coverage gate MUST NOT be merged.
+See [core-standards.md](../shared/core-standards.md) Section 4 for coverage requirements and gates.
 
 ## 2. Pure Render Logic
 
@@ -117,18 +92,4 @@ platform_paths module
 
 ## 6. Naming That Reinforces Architecture
 
-Use distinct naming prefixes for library/framework crates vs. app crates. This makes it immediately obvious which architectural layer a module belongs to.
-
-### Pattern
-
-| Prefix | Layer | Example |
-|--------|-------|---------|
-| Framework name (e.g., `lattice-`) | Internal libraries | `lattice-core`, `lattice-layout`, `lattice-shell` |
-| Product name (e.g., `trellis-`) | User-facing apps and tools | `trellis-seed`, Trellis desktop app |
-
-### Rules
-
-* Library crates use the framework prefix. They are reusable across different apps.
-* App crates use the product prefix. They are specific to a single deployable.
-* Tools that support the app (seed generators, migration scripts) use the product prefix.
-* This convention should be documented in the project's `CLAUDE.md` or README.
+See [core-standards.md](../shared/core-standards.md) Section 2 for naming conventions.
