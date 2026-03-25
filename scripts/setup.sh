@@ -54,6 +54,8 @@ map_languages_to_blocks() {
             swift)      BLOCKS+=("lang-swift.md") ;;
             dart)       BLOCKS+=("lang-dart.md") ;;
             zig)        BLOCKS+=("lang-zig.md") ;;
+            go)         BLOCKS+=("lang-go.md") ;;
+            elixir)     BLOCKS+=("lang-elixir.md") ;;
         esac
     done
     # Deduplicate and output

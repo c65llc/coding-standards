@@ -82,3 +82,13 @@ fi
 if [ -f "$PROJECT_ROOT/build.zig" ]; then
     echo "zig"
 fi
+
+# go
+if [ -f "$PROJECT_ROOT/go.mod" ]; then
+    echo "go"
+fi
+
+# elixir
+if [ -f "$PROJECT_ROOT/mix.exs" ]; then
+    echo "elixir"
+fi
