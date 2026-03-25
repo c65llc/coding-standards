@@ -21,6 +21,8 @@ make doctor                  # Run standards health check (audits config, agents
 make lint-standards          # Run standards compliance linter (common + language-specific checks)
 ```
 
+The standards-review composite GitHub Action lives at `.github/actions/standards-review/action.yml`. It runs `lint-standards.sh --format json` and posts structured PR comments. A ready-to-use workflow template is at `templates/standards-review.yml.example` — `setup.sh` copies it to `.github/workflows/standards-review.yml` in consumer projects automatically.
+
 There are no build steps, no test suites, and no application to run. The primary "tests" are `bash -n` syntax checks on shell scripts.
 
 ## Architecture
@@ -45,8 +47,9 @@ Template configs deployed to consumer projects during setup:
 ### Scripts (`scripts/`)
 
 All bash. Key scripts:
-- `setup.sh` — Installs standards into a target project, detects and configures AI agents
+- `setup.sh` — Installs standards into a target project, detects and configures AI agents; also copies the standards-review workflow template
 - `sync-standards.sh` — Pulls latest standards and updates agent configs in consumer projects
+- `lint-standards.sh` — Standards compliance linter; outputs text, JSON, or SARIF
 - `add-copilot-instructions-pr.sh` — Creates a PR to add Copilot instructions to a repo
 - `setup-git-aliases.sh` — Configures git aliases
 
