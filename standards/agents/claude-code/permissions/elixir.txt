@@ -1,0 +1,7 @@
+Bash(mix *)
+Bash(mix test *)
+Bash(mix format *)
+Bash(mix credo *)
+Bash(mix dialyzer *)
+Bash(iex *)
+Bash(elixir *)

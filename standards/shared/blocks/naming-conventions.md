@@ -7,3 +7,5 @@ JavaScript/TypeScript: `camelCase` variables/functions, `PascalCase` classes/com
 Java/Kotlin: `camelCase` methods/variables, `PascalCase` classes, `UPPER_SNAKE_CASE` constants, reverse-domain lowercase packages.
 Ruby: `snake_case` methods/variables/files, `PascalCase` classes/modules, `?` suffix predicates, `!` suffix dangerous methods.
 Rust/Zig: `snake_case` functions/variables, `PascalCase` types/structs/enums, `UPPER_SNAKE_CASE` constants.
+Go: `camelCase` unexported identifiers, `PascalCase` exported functions/types/constants; `ALL_CAPS` not used (Go uses `PascalCase` for exported constants); short lowercase package names without underscores.
+Elixir: `snake_case` functions/variables/atoms/files, `PascalCase` modules/aliases; `UPPER_SNAKE_CASE` not used (use module attributes `@name` instead); `?` suffix for predicates, `!` suffix for raising variants.
