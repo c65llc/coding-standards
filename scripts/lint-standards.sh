@@ -7,7 +7,7 @@
 #
 # Options:
 #   --format text   Human-readable color output (default)
-#   --format json   Machine-readable JSON array
+#   --format json   Machine-readable JSON object (timestamp, projectRoot, summary, results)
 #   --format sarif  SARIF 2.1.0 format for GitHub Code Scanning
 
 set -euo pipefail
@@ -285,7 +285,16 @@ output_sarif() {
 
         printf '            {\n'
         printf '              "id": "%s",\n' "$check_name"
-        printf '              "name": "%s",\n' "$(echo "$check_name" | sed 's|/|-|g; s|-\([a-z]\)|\U\1|g')"
+        local rule_name
+        rule_name=$(printf '%s' "$check_name" | tr '/' '-' | awk -F'-' '{
+            out = ""
+            for (i = 1; i <= NF; i++) {
+                if (i == 1) out = $i
+                else if (length($i) > 0) out = out toupper(substr($i, 1, 1)) substr($i, 2)
+            }
+            print out
+        }')
+        printf '              "name": "%s",\n' "$rule_name"
         printf '              "shortDescription": { "text": "Standards compliance check: %s" }\n' "$check_name"
         printf '            }'
     done

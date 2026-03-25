@@ -34,7 +34,9 @@ check_pattern() {
     local label="$1"
     local pattern="$2"
     local results
-    results=$(echo "$TS_JS_FILES" | xargs grep -nE "$pattern" 2>/dev/null \
+    results=$(while IFS= read -r file; do
+        grep -nE "$pattern" "$file" 2>/dev/null || true
+    done <<< "$TS_JS_FILES" \
         | grep -v '^\s*//' \
         | grep -v '^\s*\*' \
         | head -5 || true)

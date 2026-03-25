@@ -15,7 +15,7 @@ STRICT_MODE=""
 if [ -f "$PROJECT_ROOT/pyproject.toml" ]; then
     if grep -qE '^\[tool\.mypy\]' "$PROJECT_ROOT/pyproject.toml" 2>/dev/null; then
         MYPY_FOUND="pyproject.toml [tool.mypy]"
-        if grep -qE 'strict\s*=\s*true' "$PROJECT_ROOT/pyproject.toml" 2>/dev/null; then
+        if grep -iqE 'strict\s*=\s*true' "$PROJECT_ROOT/pyproject.toml" 2>/dev/null; then
             STRICT_MODE="strict = true"
         fi
         # Also check for strict-equivalent individual settings
@@ -32,7 +32,7 @@ fi
 # Check .mypy.ini
 if [ -z "$MYPY_FOUND" ] && [ -f "$PROJECT_ROOT/.mypy.ini" ]; then
     MYPY_FOUND=".mypy.ini"
-    if grep -qE '^strict\s*=\s*True' "$PROJECT_ROOT/.mypy.ini" 2>/dev/null; then
+    if grep -iqE '^strict\s*=\s*true' "$PROJECT_ROOT/.mypy.ini" 2>/dev/null; then
         STRICT_MODE="strict = True"
     fi
 fi
@@ -40,7 +40,7 @@ fi
 # Check mypy.ini
 if [ -z "$MYPY_FOUND" ] && [ -f "$PROJECT_ROOT/mypy.ini" ]; then
     MYPY_FOUND="mypy.ini"
-    if grep -qE '^strict\s*=\s*True' "$PROJECT_ROOT/mypy.ini" 2>/dev/null; then
+    if grep -iqE '^strict\s*=\s*true' "$PROJECT_ROOT/mypy.ini" 2>/dev/null; then
         STRICT_MODE="strict = True"
     fi
 fi
@@ -49,7 +49,7 @@ fi
 if [ -z "$MYPY_FOUND" ] && [ -f "$PROJECT_ROOT/setup.cfg" ]; then
     if grep -qE '^\[mypy\]' "$PROJECT_ROOT/setup.cfg" 2>/dev/null; then
         MYPY_FOUND="setup.cfg [mypy]"
-        if grep -qE '^strict\s*=\s*True' "$PROJECT_ROOT/setup.cfg" 2>/dev/null; then
+        if grep -iqE '^strict\s*=\s*true' "$PROJECT_ROOT/setup.cfg" 2>/dev/null; then
             STRICT_MODE="strict = True"
         fi
     fi

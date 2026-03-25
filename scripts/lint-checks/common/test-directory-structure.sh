@@ -1,5 +1,5 @@
 #!/bin/bash
-# Check: test directory structure mirrors source
+# Check: test directory exists and contains plausible test files
 # Receives: $1 = project root
 # Outputs: PASS|WARN|FAIL <check-name> <message>
 # Exit:    0=PASS, 1=FAIL, 2=WARN

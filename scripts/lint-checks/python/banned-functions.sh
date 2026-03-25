@@ -8,7 +8,7 @@ PROJECT_ROOT="${1:-.}"
 
 CHECK_NAME="python/banned-functions"
 
-# Find Python files (exclude tests, virtual environments, and caches)
+# Find Python files (exclude virtual environments and caches; test files are intentionally included)
 PYTHON_FILES=$(find "$PROJECT_ROOT" -name "*.py" \
     -not -path "*/.git/*" \
     -not -path "*/node_modules/*" \
@@ -31,7 +31,9 @@ check_pattern() {
     local label="$1"
     local pattern="$2"
     local results
-    results=$(echo "$PYTHON_FILES" | xargs grep -nE "$pattern" 2>/dev/null \
+    results=$(while IFS= read -r file; do
+        grep -nE "$pattern" "$file" 2>/dev/null || true
+    done <<< "$PYTHON_FILES" \
         | grep -v '^\s*#' \
         | head -5 || true)
     if [ -n "$results" ]; then
