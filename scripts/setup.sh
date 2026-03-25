@@ -33,7 +33,7 @@ done
 
 # Source checksum helpers
 if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
-    # shellcheck source=lib/checksums.sh
+    # shellcheck disable=SC1091
     source "$SCRIPT_DIR/lib/checksums.sh"
 fi
 

@@ -152,8 +152,10 @@ should_assemble() {
         return 0
     fi
 
+    local file_key
+    file_key=$(basename "$output_file")
     local stored_hash
-    stored_hash=$(read_stored_hash "$output_file" "$checksums_file")
+    stored_hash=$(read_stored_hash "$file_key" "$checksums_file")
 
     # File exists but was never recorded by us.
     if [ -z "$stored_hash" ]; then

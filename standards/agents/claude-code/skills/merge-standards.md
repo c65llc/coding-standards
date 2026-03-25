@@ -52,14 +52,14 @@ Standards sections are identified by `##` headers injected by the assembler: `##
 
 1. Update `.standards-checksums` with the new hash:
 
-```bash
-SENTINEL="<!-- BEGIN PROJECT-SPECIFIC"
-content=$(sed "/$SENTINEL/,\$d" "$file" | awk 'NF{found=1} found' | awk '{lines[NR]=$0} END{for(i=NR;i>=1;i--){if(lines[i]~/[^ \t]/){last=i;break}} for(i=1;i<=last;i++) print lines[i]}')
-hash=$(printf '%s' "$content" | shasum -a 256 | awk '{print $1}')
-```
+   ```bash
+   SENTINEL="<!-- BEGIN PROJECT-SPECIFIC"
+   content=$(sed "/$SENTINEL/,\$d" "$file" | awk 'NF{found=1} found' | awk '{lines[NR]=$0} END{for(i=NR;i>=1;i--){if(lines[i]~/[^ \t]/){last=i;break}} for(i=1;i<=last;i++) print lines[i]}')
+   hash=$(printf '%s' "$content" | shasum -a 256 | awk '{print $1}')
+   ```
 
-Replace the line matching this file in `.standards-checksums` with: `<hash>  <filename>`
+   Replace the line matching this file in `.standards-checksums` with: `<hash>  <filename>`
 
-2. Delete the consumed file from `.standards-pending/`.
+1. Delete the consumed file from `.standards-pending/`.
 
-3. After all files: report a summary — "Merged N files. Added X new rules, updated Y rules, preserved Z customizations, flagged W for review."
+1. After all files: report a summary — "Merged N files. Added X new rules, updated Y rules, preserved Z customizations, flagged W for review."

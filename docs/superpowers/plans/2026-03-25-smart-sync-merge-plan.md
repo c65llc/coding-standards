@@ -491,19 +491,18 @@ For each successfully merged file:
 
 1. Update `.standards-checksums` with the new hash. Compute it by running:
 
-```bash
-# Extract content above sentinel, strip trailing blank lines, hash
-SENTINEL="<!-- BEGIN PROJECT-SPECIFIC"
-content=$(sed "/$SENTINEL/,\$d" "$file" | sed -e :a -e '/^[[:space:]]*$/{ $d; N; ba; }')
-hash=$(printf '%s' "$content" | shasum -a 256 | awk '{print $1}')
-```
+   ```bash
+   # Extract content above sentinel, strip trailing blank lines, hash
+   SENTINEL="<!-- BEGIN PROJECT-SPECIFIC"
+   content=$(sed "/$SENTINEL/,\$d" "$file" | sed -e :a -e '/^[[:space:]]*$/{ $d; N; ba; }')
+   hash=$(printf '%s' "$content" | shasum -a 256 | awk '{print $1}')
+   ```
 
-Replace the line for this file in `.standards-checksums` with the new hash.
+   Replace the line for this file in `.standards-checksums` with the new hash.
 
-2. Delete the consumed file from `.standards-pending/`.
+1. Delete the consumed file from `.standards-pending/`.
 
-3. Report a summary: "Merged N files. Added X new rules, updated Y rules, preserved Z customizations, flagged W for review."
-```
+1. Report a summary: "Merged N files. Added X new rules, updated Y rules, preserved Z customizations, flagged W for review."
 
 - [ ] **Step 2: Commit**
 
@@ -596,7 +595,6 @@ Delete the consumed file from `.standards-pending/`. If the directory is now emp
 ## Regenerating Pending Files
 
 If `.standards-pending/` was lost (branch switch, `git clean`), re-run `sync-standards` to regenerate the pending files.
-```
 
 - [ ] **Step 2: Commit**
 
