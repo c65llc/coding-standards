@@ -10,6 +10,7 @@ PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ROLE="service"
 AGENTS_OVERRIDE=""
 LANGUAGES_OVERRIDE=""
+DRY_RUN=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -25,11 +26,57 @@ while [ $# -gt 0 ]; do
             LANGUAGES_OVERRIDE="$2"
             shift 2
             ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
         *)
             shift
             ;;
     esac
 done
+
+# Dry-run aware file operations
+dry_run_cp() {
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] Would copy: $1 → $2"
+    else
+        cp "$1" "$2"
+    fi
+}
+
+dry_run_mkdir() {
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] Would create directory: $1"
+    else
+        mkdir -p "$1"
+    fi
+}
+
+dry_run_write() {
+    local target="$1"
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] Would write: $target"
+        cat > /dev/null
+    else
+        cat > "$target"
+    fi
+}
+
+dry_run_append() {
+    local target="$1"
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] Would append to: $target"
+        cat > /dev/null
+    else
+        cat >> "$target"
+    fi
+}
+
+if [ "$DRY_RUN" = true ]; then
+    echo "🔍 DRY RUN — showing what would change (no files modified)"
+    echo ""
+fi
 
 # Source checksum helpers
 if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
@@ -154,12 +201,19 @@ setup_ai_agents() {
 
         # Create parent directories as needed
         case "$agent" in
-            copilot) mkdir -p "$PROJECT_ROOT/.github" ;;
-            gemini)  mkdir -p "$PROJECT_ROOT/.gemini" ;;
+            copilot) dry_run_mkdir "$PROJECT_ROOT/.github" ;;
+            gemini)  dry_run_mkdir "$PROJECT_ROOT/.gemini" ;;
         esac
 
         echo "📝 Assembling $agent config..."
-        if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$OUTPUT_PATH" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"}; then
+        if [ "$DRY_RUN" = true ]; then
+            TEMP_ASSEMBLED=$(mktemp)
+            if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$TEMP_ASSEMBLED" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} 2>/dev/null; then
+                echo "  [dry-run] Would write: $OUTPUT_PATH"
+            fi
+            rm -f "$TEMP_ASSEMBLED"
+            echo "✅ $agent config (dry-run)"
+        elif "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$OUTPUT_PATH" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"}; then
             echo "✅ $agent config assembled"
             if type compute_hash &>/dev/null; then
                 local new_hash
@@ -173,7 +227,9 @@ setup_ai_agents() {
 
         # Aider special handling: also copy aiderrc.template to .aiderrc
         if [ "$agent" = "aider" ] && [ -f "$AGENTS_DIR/aider/aiderrc.template" ]; then
-            if cp "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+            if [ "$DRY_RUN" = true ]; then
+                echo "  [dry-run] Would copy: $AGENTS_DIR/aider/aiderrc.template → $PROJECT_ROOT/.aiderrc"
+            elif cp "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
                 echo "   ✅ Aider .aiderrc installed"
                 if type compute_hash &>/dev/null; then
                     local rc_hash
@@ -198,14 +254,23 @@ setup_ai_agents() {
     fi
 
     # Claude Code settings.json and permissions (unchanged from original)
-    if [ ! -f "$PROJECT_ROOT/.claude/settings.json" ]; then
-        mkdir -p "$PROJECT_ROOT/.claude"
+    if [ ! -f "$PROJECT_ROOT/.claude/settings.json" ] || [ "$DRY_RUN" = true ]; then
+        if [ "$DRY_RUN" = false ]; then
+            mkdir -p "$PROJECT_ROOT/.claude"
+        fi
         local BUILD_SCRIPT="$SCRIPT_DIR/build-claude-settings.sh"
         local BASE_SETTINGS="$AGENTS_DIR/claude-code/settings.json.example"
         local PERMS_DIR="$AGENTS_DIR/claude-code/permissions"
         local DETECT_SCRIPT="$SCRIPT_DIR/detect-languages.sh"
 
-        if [ -x "$DETECT_SCRIPT" ] && [ -x "$BUILD_SCRIPT" ] && [ -d "$PERMS_DIR" ]; then
+        if [ "$DRY_RUN" = true ]; then
+            if [ -f "$PROJECT_ROOT/.claude/settings.json" ]; then
+                echo "ℹ️  .claude/settings.json already exists, skipping"
+            else
+                dry_run_mkdir "$PROJECT_ROOT/.claude"
+                echo "  [dry-run] Would write: $PROJECT_ROOT/.claude/settings.json"
+            fi
+        elif [ -x "$DETECT_SCRIPT" ] && [ -x "$BUILD_SCRIPT" ] && [ -d "$PERMS_DIR" ]; then
             if [ -n "$DETECTED_LANGS" ]; then
                 # shellcheck disable=SC2086
                 if "$BUILD_SCRIPT" "$BASE_SETTINGS" "$PERMS_DIR" $DETECTED_LANGS > "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null; then
@@ -246,7 +311,9 @@ setup_ai_agents() {
                         [ -f "$config_file" ] || continue
                         config_name="$(basename "$config_file")"
                         if [ ! -f "$PROJECT_ROOT/$config_name" ]; then
-                            if cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
+                            if [ "$DRY_RUN" = true ]; then
+                                echo "  [dry-run] Would copy: $config_file → $PROJECT_ROOT/$config_name"
+                            elif cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
                                 echo "   ✅ Installed $config_name ($lang)"
                             fi
                         fi
@@ -265,27 +332,24 @@ setup_ai_agents() {
     fi
 
     if [ -n "$GEMINI_SOURCE" ] && [ -f "$GEMINI_SOURCE/settings.json" ]; then
-        mkdir -p "$PROJECT_ROOT/.gemini"
+        dry_run_mkdir "$PROJECT_ROOT/.gemini"
+        local GEMINI_JSON_VALID=true
         # Validate JSON syntax before copying
         if command -v python3 >/dev/null 2>&1; then
             if ! python3 -m json.tool "$GEMINI_SOURCE/settings.json" >/dev/null 2>&1; then
                 echo "⚠️  Invalid JSON in Gemini settings.json, skipping..."
-            elif cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
-                echo "✅ Gemini CLI settings installed at .gemini/settings.json"
-            else
-                echo "⚠️  Failed to install Gemini settings (non-fatal, continuing...)"
+                GEMINI_JSON_VALID=false
             fi
         elif command -v jq >/dev/null 2>&1; then
             if ! jq empty "$GEMINI_SOURCE/settings.json" >/dev/null 2>&1; then
                 echo "⚠️  Invalid JSON in Gemini settings.json, skipping..."
-            elif cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
-                echo "✅ Gemini CLI settings installed at .gemini/settings.json"
-            else
-                echo "⚠️  Failed to install Gemini settings (non-fatal, continuing...)"
+                GEMINI_JSON_VALID=false
             fi
-        else
-            # No JSON validator available, copy without validation
-            if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
+        fi
+        if [ "$GEMINI_JSON_VALID" = true ]; then
+            if [ "$DRY_RUN" = true ]; then
+                echo "  [dry-run] Would copy: $GEMINI_SOURCE/settings.json → $PROJECT_ROOT/.gemini/settings.json"
+            elif cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
                 echo "✅ Gemini CLI settings installed at .gemini/settings.json"
             else
                 echo "⚠️  Failed to install Gemini settings (non-fatal, continuing...)"
@@ -294,43 +358,51 @@ setup_ai_agents() {
     fi
 
     # Write .standards.yml
-    cat > "$PROJECT_ROOT/.standards.yml" << STDYML
-# .standards.yml — Project standards configuration
-# Generated by coding-standards setup.sh
-version: 1
-$(if [ -n "$DETECTED_LANGS" ]; then
-    echo "languages:"
-    for lang in $DETECTED_LANGS; do echo "  - $lang"; done
-else
-    echo "languages: []"
-fi)
-$(if [ -n "$ASSEMBLED_AGENTS_LIST" ]; then
-    echo "agents:"
-    for agent in $(echo "$ASSEMBLED_AGENTS_LIST" | tr ',' ' '); do echo "  - $agent"; done
-else
-    echo "agents: []"
-fi)
-role: $ROLE
-coverage:
-  minimum: 95
-  domain: 100
-architecture: clean
-security: strict
-STDYML
-    echo "✅ .standards.yml created"
+    {
+        echo "# .standards.yml — Project standards configuration"
+        echo "# Generated by coding-standards setup.sh"
+        echo "version: 1"
+        if [ -n "$DETECTED_LANGS" ]; then
+            echo "languages:"
+            for lang in $DETECTED_LANGS; do echo "  - $lang"; done
+        else
+            echo "languages: []"
+        fi
+        if [ -n "$ASSEMBLED_AGENTS_LIST" ]; then
+            echo "agents:"
+            for agent in $(echo "$ASSEMBLED_AGENTS_LIST" | tr ',' ' '); do echo "  - $agent"; done
+        else
+            echo "agents: []"
+        fi
+        echo "role: $ROLE"
+        echo "coverage:"
+        echo "  minimum: 95"
+        echo "  domain: 100"
+        echo "architecture: clean"
+        echo "security: strict"
+    } | dry_run_write "$PROJECT_ROOT/.standards.yml"
+    if [ "$DRY_RUN" = false ]; then
+        echo "✅ .standards.yml created"
+    fi
 
     # Write initial checksums
-    if type compute_hash &>/dev/null && [ -n "$NEW_CHECKSUMS" ]; then
+    if [ "$DRY_RUN" = false ] && type compute_hash &>/dev/null && [ -n "$NEW_CHECKSUMS" ]; then
         echo "$NEW_CHECKSUMS" > "$PROJECT_ROOT/$CHECKSUMS_FILE"
         echo "✅ .standards-checksums created"
+    elif [ "$DRY_RUN" = true ] && [ -n "$NEW_CHECKSUMS" ]; then
+        echo "  [dry-run] Would write: $PROJECT_ROOT/$CHECKSUMS_FILE"
     fi
 
     # Install merge-standards skill
     local SKILL_SOURCE="$AGENTS_DIR/claude-code/skills/merge-standards.md"
     if [ -f "$SKILL_SOURCE" ]; then
-        mkdir -p "$PROJECT_ROOT/.claude/skills"
-        cp "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md"
-        echo "✅ /merge-standards skill installed"
+        dry_run_mkdir "$PROJECT_ROOT/.claude/skills"
+        if [ "$DRY_RUN" = true ]; then
+            echo "  [dry-run] Would copy: $SKILL_SOURCE → $PROJECT_ROOT/.claude/skills/merge-standards.md"
+        else
+            cp "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md"
+            echo "✅ /merge-standards skill installed"
+        fi
     fi
 }
 
@@ -365,8 +437,10 @@ else
 
     if [ -n "$CURSOR_COMMANDS_SOURCE" ] && [ -d "$CURSOR_COMMANDS_SOURCE" ]; then
         echo "📝 Setting up Cursor custom commands..."
-        mkdir -p "$PROJECT_ROOT/.cursor/commands"
-        if cp -r "$CURSOR_COMMANDS_SOURCE"/* "$PROJECT_ROOT/.cursor/commands/" 2>/dev/null; then
+        dry_run_mkdir "$PROJECT_ROOT/.cursor/commands"
+        if [ "$DRY_RUN" = true ]; then
+            echo "  [dry-run] Would copy: $CURSOR_COMMANDS_SOURCE/* → $PROJECT_ROOT/.cursor/commands/"
+        elif cp -r "$CURSOR_COMMANDS_SOURCE"/* "$PROJECT_ROOT/.cursor/commands/" 2>/dev/null; then
             echo "✅ Cursor commands installed"
             echo "⚠️  Please fully quit and restart Cursor to load custom commands"
         else
@@ -387,6 +461,8 @@ GIT_HOOKS_DIR="$PROJECT_ROOT/.git/hooks"
 
 if [ ! -d "$GIT_HOOKS_DIR" ]; then
     echo "⚠️  Not a git repository. Skipping git hooks setup."
+elif [ "$DRY_RUN" = true ]; then
+    echo "  [dry-run] Would write: $GIT_HOOKS_DIR/post-merge"
 else
     # Post-merge hook to sync standards
     cat > "$GIT_HOOKS_DIR/post-merge" << 'HOOK'
@@ -412,10 +488,14 @@ fi
 # Install standards review workflow template
 if [ -d "$STANDARDS_DIR/.github/actions/standards-review" ]; then
     if [ ! -f "$PROJECT_ROOT/.github/workflows/standards-review.yml" ]; then
-        mkdir -p "$PROJECT_ROOT/.github/workflows"
         if [ -f "$STANDARDS_DIR/templates/standards-review.yml.example" ]; then
-            cp "$STANDARDS_DIR/templates/standards-review.yml.example" "$PROJECT_ROOT/.github/workflows/standards-review.yml"
-            echo "✅ Standards review workflow installed at .github/workflows/standards-review.yml"
+            dry_run_mkdir "$PROJECT_ROOT/.github/workflows"
+            if [ "$DRY_RUN" = true ]; then
+                echo "  [dry-run] Would copy: $STANDARDS_DIR/templates/standards-review.yml.example → $PROJECT_ROOT/.github/workflows/standards-review.yml"
+            else
+                cp "$STANDARDS_DIR/templates/standards-review.yml.example" "$PROJECT_ROOT/.github/workflows/standards-review.yml"
+                echo "✅ Standards review workflow installed at .github/workflows/standards-review.yml"
+            fi
         fi
     fi
 fi
@@ -454,28 +534,32 @@ fi
 # Create .gitignore entries if needed
 if [ -f "$PROJECT_ROOT/.gitignore" ]; then
     if ! grep -q ".cursorrules.backup" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
-        echo ".cursorrules.backup" >> "$PROJECT_ROOT/.gitignore"
+        {
+            echo ".cursorrules.backup"
+        } | dry_run_append "$PROJECT_ROOT/.gitignore"
     fi
     if ! grep -q ".standards_tmp" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
         {
             echo ""
             echo "# Standards temporary files"
             echo ".standards_tmp/"
-        } >> "$PROJECT_ROOT/.gitignore"
+        } | dry_run_append "$PROJECT_ROOT/.gitignore"
     fi
     if ! grep -q "coverage/" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
         {
             echo ""
             echo "# Test coverage output"
             echo "coverage/"
-        } >> "$PROJECT_ROOT/.gitignore"
+        } | dry_run_append "$PROJECT_ROOT/.gitignore"
     fi
     if ! grep -q ".pre-standards-setup" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
-        echo "*.pre-standards-setup" >> "$PROJECT_ROOT/.gitignore"
+        {
+            echo "*.pre-standards-setup"
+        } | dry_run_append "$PROJECT_ROOT/.gitignore"
     fi
     # Note: .standards.yml should be committed (not gitignored) — it is the project's declared config.
     # Remove legacy .standards-config from gitignore if present (it was previously gitignored).
-    if grep -q "^\.standards-config$" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
+    if [ "$DRY_RUN" = false ] && grep -q "^\.standards-config$" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
         tmp_gitignore="${PROJECT_ROOT}/.gitignore.tmp.$$"
         if sed '/^\.standards-config$/d' "$PROJECT_ROOT/.gitignore" > "$tmp_gitignore" 2>/dev/null; then
             mv "$tmp_gitignore" "$PROJECT_ROOT/.gitignore"
@@ -484,24 +568,26 @@ if [ -f "$PROJECT_ROOT/.gitignore" ]; then
         fi
     fi
     if ! grep -q ".standards-pending" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
-        echo ".standards-pending/" >> "$PROJECT_ROOT/.gitignore"
+        {
+            echo ".standards-pending/"
+        } | dry_run_append "$PROJECT_ROOT/.gitignore"
     fi
 elif [ "$SCRIPT_DIR" != "$PROJECT_ROOT" ]; then
     # Create .gitignore if it doesn't exist (only for client projects, not standards repo itself)
-    cat > "$PROJECT_ROOT/.gitignore" << 'GITIGNORE'
-# Test coverage output
-coverage/
-
-# Standards temporary files
-.standards_tmp/
-.standards-pending/
-
-# Backup files
-.cursorrules.backup
-*.pre-standards-setup
-
-# Note: .standards.yml should be committed — it is the project's declared config.
-GITIGNORE
+    {
+        echo "# Test coverage output"
+        echo "coverage/"
+        echo ""
+        echo "# Standards temporary files"
+        echo ".standards_tmp/"
+        echo ".standards-pending/"
+        echo ""
+        echo "# Backup files"
+        echo ".cursorrules.backup"
+        echo "*.pre-standards-setup"
+        echo ""
+        echo "# Note: .standards.yml should be committed — it is the project's declared config."
+    } | dry_run_write "$PROJECT_ROOT/.gitignore"
 fi
 
 echo ""
