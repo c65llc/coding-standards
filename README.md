@@ -43,6 +43,7 @@ Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby
 - **Clean Architecture** -- Enforces domain-driven design across all languages.
 - **One-Command Setup** -- Install everything with a single command.
 - **Auto-Updating** -- Git hooks keep standards in sync whenever you pull.
+- **Standards Compliance Linter** -- `make lint-standards` checks commits, secrets, coverage, type safety, and banned functions across Python, TypeScript, Go, and Elixir. Outputs text, JSON, or SARIF for GitHub Code Scanning.
 - **GitHub Project Lifecycle** -- CLI-driven workflow connecting issues to Draft PRs via GitHub Projects V2.
 
 ## Documentation

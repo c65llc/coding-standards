@@ -18,6 +18,7 @@ make sync-standards          # Sync standards files and update .cursorrules
 make setup-agents            # Setup AI agent configurations
 make add-copilot-instructions # Create PR to add Copilot instructions
 make doctor                  # Run standards health check (audits config, agents, checksums, git hooks)
+make lint-standards          # Run standards compliance linter (common + language-specific checks)
 ```
 
 There are no build steps, no test suites, and no application to run. The primary "tests" are `bash -n` syntax checks on shell scripts.
