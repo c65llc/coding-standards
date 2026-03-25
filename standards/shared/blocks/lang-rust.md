@@ -1,5 +1,3 @@
-# Rust
-
 Use `cargo`. Commit `Cargo.lock` for applications; not for libraries. Rust 1.70+ stable.
 Format with `rustfmt` (`cargo fmt`). Lint with `cargo clippy -- -D warnings`.
 Add `#![deny(warnings)]` and `#![deny(missing_docs)]` to library crate roots.

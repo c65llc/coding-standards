@@ -1,5 +1,3 @@
-# JavaScript
-
 Use `pnpm` (preferred) or `npm`. Commit lock files. Pin Node.js version in `.nvmrc`.
 Format with `prettier` (line length 120). Lint with `eslint` + `eslint-config-prettier`.
 Use ES modules (`import`/`export`). Avoid CommonJS `require()`.

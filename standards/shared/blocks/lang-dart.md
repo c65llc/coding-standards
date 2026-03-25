@@ -1,5 +1,3 @@
-# Dart
-
 Use `pub`. `pubspec.yaml` for all dependencies. Pin versions for production. Dart 3.0+ (null safety required).
 Format with `dart format`. Analyze with `dart analyze` + `analysis_options.yaml`. No implicit `dynamic`.
 Use nullable types (`String?`) with null-aware operators. Use `!` only when safe.

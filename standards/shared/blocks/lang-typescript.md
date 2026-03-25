@@ -1,5 +1,3 @@
-# TypeScript
-
 Use `pnpm` (preferred) or `npm`. Commit lock files. TypeScript 5.0+ with strict mode.
 Format with `prettier` (line length 120). Lint with `eslint` + `@typescript-eslint`. Run `tsc --noEmit` in CI.
 No `any`; use `unknown` when type is uncertain. Explicit types on public APIs; infer locally.

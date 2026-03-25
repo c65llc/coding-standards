@@ -1,5 +1,3 @@
-# Kotlin
-
 Use Gradle with Kotlin DSL (`build.gradle.kts`). Kotlin 1.9+, JVM 17+. Use version catalogs.
 Format with `ktlint`. Run `detekt` for static analysis. Enable null-safety strict mode in compiler.
 Prefer `val` over `var`. Use `data class` for value objects and DTOs.

@@ -1,5 +1,3 @@
-# Git Workflow
-
 Conventional Commits: `type(scope): subject` — types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`, `ci`.
 Subject: imperative mood, ≤50 characters, no period.
 Branch naming: `type/description` in kebab-case (e.g., `feature/user-authentication`, `fix/email-validation`).

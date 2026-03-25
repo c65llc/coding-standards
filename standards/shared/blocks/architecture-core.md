@@ -1,5 +1,3 @@
-# Architecture Core
-
 Dependencies point inward only: Domain ← Application ← Infrastructure ← Apps.
 
 - **Domain:** Pure business logic. No external dependencies. Entities, value objects.

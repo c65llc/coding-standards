@@ -1,5 +1,3 @@
-# Swift
-
 Use Swift Package Manager (SPM). `Package.swift` for all dependencies. Swift 5.9+.
 Format with `swiftformat` or `swift-format`. Lint with `swiftlint`. Treat warnings as errors in release builds.
 Prefer `let` over `var`. Use `struct` for value types. Use `class` only when reference semantics needed.

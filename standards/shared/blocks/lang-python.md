@@ -1,5 +1,3 @@
-# Python
-
 Use `uv` for dependency management. Commit `uv.lock`. `pyproject.toml` for all projects.
 Format with `ruff format` (line length 100). Lint with `ruff check`. Never use `black` or `isort` separately.
 Type-check with `mypy` or `pyright` strict mode — zero errors required.

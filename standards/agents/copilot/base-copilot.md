@@ -2,8 +2,8 @@
 
 ## Behavior
 
-- Follow all standards documents in `standards/`. When in doubt, read the relevant file.
-- Detect the active language from file extension and apply the matching `standards/languages/lang-XX` standard.
+- Follow the standards assembled in this config file. The sections below are the authoritative rules for this project.
+- Detect the active language from file extension and apply the matching language-specific rules in the Language Standards section below.
 - Prefer simple, readable code over clever code. Apply SOLID principles.
 - Tone: terse, objective, professional — no filler.
 

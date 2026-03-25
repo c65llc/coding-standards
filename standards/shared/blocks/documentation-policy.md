@@ -1,5 +1,3 @@
-# Documentation Policy
-
 Document all public APIs with language-standard formats (JSDoc, docstrings, rustdoc, JavaDoc, YARD). Include parameters, return values, errors, and examples.
 Comments explain "why", never "what". Self-documenting code preferred.
 Every package and app must have a README: purpose, installation, usage, configuration, development.

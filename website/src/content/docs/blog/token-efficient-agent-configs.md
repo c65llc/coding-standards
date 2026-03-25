@@ -60,6 +60,6 @@ cd .standards && git pull
 ./scripts/setup.sh --role service
 ```
 
-The setup script detects your languages, assembles configs for all detected agents, and saves your selections to `.standards-config` for reproducible syncs. Project-specific customizations (anything below the `<!-- BEGIN PROJECT-SPECIFIC -->` marker) are preserved across re-assembly.
+The setup script detects your languages, assembles configs for all detected agents, and saves your selections to `.standards-config` for reproducible syncs. Project-specific customizations (anything below the `<!-- BEGIN PROJECT-SPECIFIC — DO NOT EDIT THIS LINE -->` marker) are preserved across re-assembly.
 
 New projects get this automatically via the [standard install process](/docs/getting-started/installation/).

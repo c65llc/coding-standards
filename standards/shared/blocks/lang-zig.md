@@ -1,5 +1,3 @@
-# Zig
-
 Use `zig build` with `build.zig`. Declare dependencies in `build.zig.zon`. Zig 0.11+ stable.
 Format with `zig fmt`. Enable all compiler warnings. Use `@setRuntimeSafety(true)` in debug builds.
 Pass allocators explicitly to all functions that allocate. Use `defer` for cleanup.

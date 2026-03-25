@@ -1,5 +1,3 @@
-# Security Summary
-
 P0/P1 block merge. P2 are warnings.
 
 P0 (Critical): Never build SQL from user input — use parameterized queries. Never pass user input to `eval()`, `exec()`, `system()`. Never commit credentials. Never deserialize untrusted data via native serialization. Never ship default credentials. Verify auth on every request.

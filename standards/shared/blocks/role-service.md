@@ -1,9 +1,7 @@
-# Role: Service / API
-
 Design around resources. Use RESTful conventions. Version APIs from the start (`/v1/`).
 Error responses: consistent structured JSON with error code, message, and details. Never 200 with error body.
 Never expose internal stack traces or DB errors to clients in production.
-Expose `/health` (liveness) and `/ready` (readiness) endpoints. No authentication required on health endpoints.
+Expose `/health` (liveness) and `/ready` (readiness) endpoints. Health endpoints are exempt from authentication but must be restricted to internal networks in production.
 Validate and sanitize all inputs at the API boundary before processing.
 Implement idempotency keys for non-idempotent operations (POST, PATCH).
 Apply rate limiting on all public-facing endpoints. Enforce HTTPS. Configure security headers.

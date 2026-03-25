@@ -1,5 +1,3 @@
-# Role: Library / Package
-
 Design the public API surface first. Keep it minimal and stable.
 Everything not explicitly `pub`/`export`ed is internal. Internal APIs may change without semver bump.
 Follow semantic versioning strictly: MAJOR breaking changes, MINOR backward-compatible additions, PATCH bug fixes.

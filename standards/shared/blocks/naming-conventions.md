@@ -1,5 +1,3 @@
-# Naming Conventions
-
 Use verbose, descriptive names. Avoid abbreviations. Functions are verbs. Classes are nouns.
 Boolean variables: `is_`, `has_`, `should_`, `can_` prefixes.
 Comments explain "why", never "what".

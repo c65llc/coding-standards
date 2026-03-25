@@ -1,5 +1,3 @@
-# Ruby on Rails
-
 All base Ruby standards apply. Rails 7.2+. Add `rubocop-rails` gem to `.rubocop.yml`.
 
 Model structure order (enforced by `Layout/ClassStructure`): inclusions → gem config → constants → attributes → enums → serializers → associations → nested attributes → scopes → validations → callbacks → public class methods → initializer → public methods → protected → private.

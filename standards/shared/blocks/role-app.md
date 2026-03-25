@@ -1,5 +1,3 @@
-# Role: Application (UI / Frontend)
-
 Separate data→view model transformations from view model→pixels rendering.
 View model functions are pure: data in, data out, no side effects, no framework imports. Test without a display server.
 Use a single source of truth for application state. State is immutable; produce new state, never mutate in place.

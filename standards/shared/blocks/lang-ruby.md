@@ -1,5 +1,3 @@
-# Ruby
-
 Use `bundler`. Commit `Gemfile.lock`. Pin exact versions for production. Ruby 3.2+. Use `mise` for version management.
 Lint and format with `rubocop`. Use `.rubocop.yml` with `NewCops: enable`. Run `rubocop -a` for safe auto-corrections.
 Add `# frozen_string_literal: true` to every file.

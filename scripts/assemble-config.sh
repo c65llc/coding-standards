@@ -135,7 +135,7 @@ trap 'rm -f "$TMPFILE"' EXIT
     # Base template
     cat "$BASE_TEMPLATE"
 
-    # Common blocks (no section header — they provide their own headings internally)
+    # Common blocks — assembler injects section headers, blocks contain only content
     for block in "${COMMON_BLOCKS[@]}"; do
         block_path="${BLOCKS_DIR}/${block}"
         if [ ! -f "$block_path" ]; then

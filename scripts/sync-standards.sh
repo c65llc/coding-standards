@@ -70,12 +70,24 @@ sync_ai_agents() {
     local AGENTS_LIST=""
 
     if [ -f "$PROJECT_ROOT/.standards-config" ]; then
-        # shellcheck disable=SC1091
-        source "$PROJECT_ROOT/.standards-config"
-        ROLE="${STANDARDS_ROLE:-service}"
+        # Parse .standards-config as key=value data (no shell execution for safety)
+        local cfg_role="" cfg_langs="" cfg_agents=""
+        while IFS='=' read -r raw_key raw_value; do
+            # Skip empty lines and comments
+            [[ -z "$raw_key" || "$raw_key" =~ ^[[:space:]]*# ]] && continue
+            # Trim whitespace
+            local key="${raw_key// /}"
+            local value="${raw_value// /}"
+            case "$key" in
+                STANDARDS_ROLE)      cfg_role="$value" ;;
+                STANDARDS_LANGUAGES) cfg_langs="$value" ;;
+                STANDARDS_AGENTS)    cfg_agents="$value" ;;
+            esac
+        done < "$PROJECT_ROOT/.standards-config"
+        ROLE="${cfg_role:-service}"
         # Convert comma-separated to space-separated
-        DETECTED_LANGS=$(echo "${STANDARDS_LANGUAGES:-}" | tr ',' ' ')
-        AGENTS_LIST=$(echo "${STANDARDS_AGENTS:-}" | tr ',' ' ')
+        DETECTED_LANGS=$(echo "${cfg_langs:-}" | tr ',' ' ')
+        AGENTS_LIST=$(echo "${cfg_agents:-}" | tr ',' ' ')
     else
         echo "⚠️  No .standards-config found. Running auto-detection (default role: service)."
         ROLE="service"

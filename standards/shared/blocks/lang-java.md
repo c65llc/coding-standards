@@ -1,5 +1,3 @@
-# Java
-
 Use Gradle (preferred) or Maven. Java 17+ (LTS). Use Gradle version catalogs.
 Format with `google-java-format` or `palantir-java-format` (line length 120). Run `checkstyle`, `spotbugs`, `error-prone` in CI.
 Use `record` (Java 14+) for value objects and DTOs. Use `sealed` classes/interfaces (Java 17+) for restricted hierarchies.

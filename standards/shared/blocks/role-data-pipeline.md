@@ -1,5 +1,3 @@
-# Role: Data Pipeline
-
 All persisted data formats must include a `version` field (integer, starting at 1).
 Increment version for structural changes that alter how existing fields are read. Additive changes (new optional fields) do not require a bump.
 Migration: read old format → convert in memory → write new format. Never delete source data.
