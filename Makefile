@@ -1,4 +1,4 @@
-.PHONY: help ls setup sync-standards check-standards update-standards setup-agents add-copilot-instructions website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task
+.PHONY: help ls setup sync-standards check-standards update-standards setup-agents add-copilot-instructions doctor website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task
 
 help: ## Show this help message
 	@echo "Standards Repository Management"
@@ -64,6 +64,8 @@ test-scripts: ## Test setup and sync scripts
 	@bash -n scripts/build-claude-settings.sh && echo "✅ build-claude-settings.sh syntax valid"
 	@echo "Testing assemble-config.sh..."
 	@bash -n scripts/assemble-config.sh && echo "✅ assemble-config.sh syntax valid"
+	@echo "Testing doctor.sh..."
+	@bash -n scripts/doctor.sh && echo "✅ doctor.sh syntax valid"
 	@echo "Testing lib/checksums.sh..."
 	@bash -n scripts/lib/checksums.sh && echo "✅ lib/checksums.sh syntax valid"
 	@echo "Testing sync-content.sh..."
@@ -98,6 +100,9 @@ add-copilot-instructions: ## Create PR to add GitHub Copilot custom instructions
 		echo "❌ add-copilot-instructions-pr.sh script not found"; \
 		exit 1; \
 	fi
+
+doctor: ## Run standards health check
+	@./scripts/doctor.sh
 
 website-dev: ## Start the website dev server
 	@cd website && npm run dev
