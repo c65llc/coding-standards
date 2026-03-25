@@ -9,7 +9,7 @@ const agents = [
   { name: 'Cursor AI', config: '.cursorrules', icon: '{}' },
   { name: 'GitHub Copilot', config: 'copilot-instructions.md', icon: '<>' },
   { name: 'Claude Code', config: 'CLAUDE.md', icon: '>>'},
-  { name: 'OpenAI Codex', config: '.codexrc', icon: '()' },
+  { name: 'OpenAI Codex', config: 'AGENTS.md', icon: '()' },
   { name: 'Gemini CLI', config: 'GEMINI.md', icon: '//' },
 ];
 
@@ -24,6 +24,8 @@ const languages = [
   { name: 'Rust', ext: '.rs' },
   { name: 'Zig', ext: '.zig' },
   { name: 'Ruby', ext: '.rb' },
+  { name: 'Go', ext: '.go' },
+  { name: 'Elixir', ext: '.ex' },
 ];
 
 const features = [
@@ -114,7 +116,7 @@ const steps = [
     <section class="agents">
       <div class="container">
         <h2 class="section-title">Supported Agents</h2>
-        <p class="section-sub">First-class support for the five leading AI coding assistants.</p>
+        <p class="section-sub">First-class support for six leading AI coding assistants.</p>
         <div class="agent-grid">
           {agents.map((a) => (
             <div class="agent-card">

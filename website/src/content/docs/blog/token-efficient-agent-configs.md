@@ -17,7 +17,7 @@ The setup script now assembles agent configs from three ingredients:
 
 2. **Content blocks** (~5-20 lines each) — atomic summaries of standards, stored in `standards/shared/blocks/`. Six common blocks (architecture, testing, security, naming, git, documentation) are always included. Language and role blocks are selected based on detection.
 
-3. **Language + role filtering** — `detect-languages.sh` identifies your project's languages (now with TypeScript, Rails, Java, and Kotlin sub-detection). You pick a project role (`--role service|library|app|data-pipeline`). Only relevant blocks are included.
+3. **Language + role filtering** — `detect-languages.sh` identifies your project's languages (13 supported, including Go and Elixir, with TypeScript, Rails, Java, and Kotlin sub-detection). You pick a project role (`--role service|library|app|data-pipeline`). Only relevant blocks are included.
 
 The result: a Python/TypeScript web service gets a ~130-line CLAUDE.md with everything the agent needs — no submodule traversal required.
 
@@ -26,7 +26,7 @@ The result: a Python/TypeScript web service gets a ~130-line CLAUDE.md with ever
 | Before | After |
 |--------|-------|
 | Agent reads 329-line config + traverses into 800+ lines of standards docs | Agent reads one ~130-line self-contained file |
-| All 11 language standards included regardless of project | Only detected languages included |
+| All 13 language standards included regardless of project | Only detected languages included |
 | Security rules duplicated across 6 agent configs | Single `security-summary.md` block assembled into each |
 | No `.cursorrules` template for consumer projects | Full Cursor template with assembly support |
 | Codex used obsolete `.codexrc` format | Migrated to `AGENTS.md` (current OpenAI Codex CLI) |

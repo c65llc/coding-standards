@@ -39,7 +39,7 @@ One repository of standards → automatically synced to every AI agent.
 |-----------|--------|-----------------|-----------------|
 | Single source of truth | No | No | Yes |
 | Multi-agent sync | No | Manual | Automatic |
-| Language coverage | Varies | Varies | 9 languages |
+| Language coverage | Varies | Varies | 13 languages |
 | Architecture enforcement | No | Limited | Clean Architecture built-in |
 | Setup time | Hours | Hours per tool | 1 command, 5 minutes |
 | Staying updated | Manual | Manual per tool | Auto via git hooks |
