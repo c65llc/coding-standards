@@ -2,6 +2,7 @@
 
 TDD is mandatory. Red → Green → Refactor. Write failing tests before implementation code.
 Coverage enforced in CI — blocks merge if violated:
+
 - Domain / Core: 100%
 - Application / Shell: 95%+
 - Infrastructure: 95%+

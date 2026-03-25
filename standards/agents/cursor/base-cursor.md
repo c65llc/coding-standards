@@ -13,15 +13,19 @@
 Use these keywords at the start of a prompt to trigger specific behavior.
 
 ### `@new-feature`
+
 Scaffold a vertical slice of functionality. Domain entity and logic first → Repository interface → DTO in Application. Wait for approval before generating Infrastructure or UI code.
 
 ### `@refactor`
+
 Improve existing code without changing behavior. Apply SOLID principles, extract large functions, fix naming conventions, remove magic numbers/strings.
 
 ### `@debug`
+
 Systematic diagnosis. Analyze error/stack trace → propose hypothesis → create reproduction test → implement fix.
 
 ### `@review`
+
 Audit code quality. Check architecture violations (Domain importing Infra), missing error handling, testing gaps, security issues (P0/P1).
 
 ## Custom Commands

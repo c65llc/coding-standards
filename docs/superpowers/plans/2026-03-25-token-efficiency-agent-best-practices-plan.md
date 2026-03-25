@@ -17,6 +17,7 @@
 ### Task 1: Create common content blocks
 
 **Files:**
+
 - Create: `standards/shared/blocks/architecture-core.md`
 - Create: `standards/shared/blocks/testing-policy.md`
 - Create: `standards/shared/blocks/security-summary.md`
@@ -140,6 +141,7 @@ token-efficient agent consumption."
 ### Task 2: Create language content blocks
 
 **Files:**
+
 - Create: `standards/shared/blocks/lang-python.md`
 - Create: `standards/shared/blocks/lang-typescript.md`
 - Create: `standards/shared/blocks/lang-javascript.md`
@@ -215,6 +217,7 @@ Java, Kotlin, Swift, Dart, Rust, Zig, Ruby, and Rails."
 ### Task 3: Create role content blocks
 
 **Files:**
+
 - Create: `standards/shared/blocks/role-service.md`
 - Create: `standards/shared/blocks/role-library.md`
 - Create: `standards/shared/blocks/role-app.md`
@@ -297,6 +300,7 @@ and data pipelines."
 ### Task 4: Create Claude Code base template
 
 **Files:**
+
 - Create: `standards/agents/claude-code/base-claude-code.md`
 - Reference: `standards/agents/claude-code/CLAUDE.md.template` (existing, to be replaced)
 
@@ -346,6 +350,7 @@ Replaces CLAUDE.md.template with a leaner base for block assembly."
 ### Task 5: Create Cursor base template
 
 **Files:**
+
 - Create: `standards/agents/cursor/base-cursor.md`
 - Reference: `/Users/donaldalbrecht/Projects/coding_standards/.cursorrules` (current live config)
 - Reference: `standards/architecture/arch-03_cursor_automation_standards.md` (interaction modes to absorb)
@@ -402,6 +407,7 @@ address_feedback from 183 to ~15 lines."
 ### Task 6: Create Copilot base template
 
 **Files:**
+
 - Create: `standards/agents/copilot/base-copilot.md`
 - Reference: `/Users/donaldalbrecht/Projects/coding_standards/.github/copilot-instructions.md` (current)
 
@@ -457,6 +463,7 @@ and workspace context strategy."
 ### Task 7: Create Gemini base template
 
 **Files:**
+
 - Create: `standards/agents/gemini/base-gemini.md`
 - Reference: `/Users/donaldalbrecht/Projects/coding_standards/.gemini/GEMINI.md` (current)
 
@@ -506,6 +513,7 @@ A-P-E workflow, checkpointing, safety constraints."
 ### Task 8: Create Aider base template
 
 **Files:**
+
 - Create: `standards/agents/aider/base-aider.md`
 - Reference: `/Users/donaldalbrecht/Projects/coding_standards/.aiderrc` (current)
 
@@ -584,6 +592,7 @@ standards content, respecting Aider's key-value config format."
 ### Task 9: Create Codex base template (AGENTS.md format)
 
 **Files:**
+
 - Create: `standards/agents/codex/base-codex.md`
 - Reference: `/Users/donaldalbrecht/Projects/coding_standards/.codexrc` (old format)
 
@@ -637,6 +646,7 @@ Includes sandbox awareness, approval mode guidance."
 ### Task 10: Update `detect-languages.sh` with sub-detection
 
 **Files:**
+
 - Modify: `scripts/detect-languages.sh`
 
 - [ ] **Step 1: Add TypeScript sub-detection**
@@ -695,6 +705,7 @@ separate keys alongside the parent language detection."
 ### Task 11: Create `assemble-config.sh` assembly script
 
 **Files:**
+
 - Create: `scripts/assemble-config.sh`
 
 This is the core new script that assembles an agent config from base template + blocks.
@@ -837,6 +848,7 @@ with section headers, preserves project-specific sections via sentinel markers."
 ### Task 12: Rewrite `setup.sh` for block assembly
 
 **Files:**
+
 - Modify: `scripts/setup.sh`
 
 This is the most complex task. The existing setup.sh (362 lines) needs significant restructuring to use block assembly instead of file copying.
@@ -907,6 +919,7 @@ map_languages_to_blocks() {
 Rewrite the function to use `assemble-config.sh` instead of file copying. For each agent, call the assembly script with the appropriate base template and blocks (common + language + role).
 
 The key change: instead of `cp "$AGENTS_DIR/copilot/..." "$PROJECT_ROOT/.github/..."`, call:
+
 ```bash
 "$SCRIPT_DIR/assemble-config.sh" "copilot" "$BLOCKS_DIR" "$BASE" "$OUTPUT" $LANG_BLOCKS "role-${ROLE}.md"
 ```
@@ -962,6 +975,7 @@ reproducible sync."
 ### Task 13: Update `sync-standards.sh` for assembly-based sync
 
 **Files:**
+
 - Modify: `scripts/sync-standards.sh`
 
 - [ ] **Step 1: Add `.standards-config` reading**
@@ -1016,6 +1030,7 @@ Warns about deprecated .codexrc."
 ### Task 14: Update Makefile test targets
 
 **Files:**
+
 - Modify: `Makefile`
 
 - [ ] **Step 1: Add assemble-config.sh to test-scripts target**
@@ -1041,6 +1056,7 @@ git commit -m "chore(makefile): add assemble-config.sh to test-scripts target"
 ### Task 15: Deduplicate arch-01
 
 **Files:**
+
 - Modify: `standards/architecture/arch-01_project_standards_and_architecture.md`
 - Reference: `standards/shared/core-standards.md`
 
@@ -1082,6 +1098,7 @@ cross-references to core-standards.md. Reduces 253→~40 lines."
 ### Task 16: Delete arch-03 and distribute its content
 
 **Files:**
+
 - Delete: `standards/architecture/arch-03_cursor_automation_standards.md`
 - Verify: Content is already absorbed into `standards/agents/cursor/base-cursor.md` (Task 5)
 - Modify: `standards/process/proc-04_agent_workflow_standards.md` (merge context handling)
@@ -1118,6 +1135,7 @@ Context handling → proc-04 agent workflow standards."
 ### Task 17: Trim arch-05 duplicated sections
 
 **Files:**
+
 - Modify: `standards/architecture/arch-05_resilient_architecture_patterns.md`
 
 - [ ] **Step 1: Read the full file**
@@ -1144,6 +1162,7 @@ with cross-references to core-standards.md. Keep unique patterns."
 ### Task 18: Extract git aliases from proc-02
 
 **Files:**
+
 - Create: `docs/reference/git-aliases.md`
 - Modify: `standards/process/proc-02_git_version_control_standards.md`
 
@@ -1158,6 +1177,7 @@ Move the alias catalog content to the new file with a title header.
 - [ ] **Step 3: Replace in proc-02 with cross-reference**
 
 Replace the extracted section with:
+
 ```markdown
 ### Git Aliases
 
@@ -1177,6 +1197,7 @@ proc-02 links to it."
 ### Task 19: Remove banned-functions lists from language docs
 
 **Files:**
+
 - Modify: `standards/languages/lang-01_python_standards.md`
 - Modify: `standards/languages/lang-06_typescript_standards.md`
 - Modify: `standards/languages/lang-08_rust_standards.md`
@@ -1189,6 +1210,7 @@ Identify inline banned-functions lists in each file.
 - [ ] **Step 2: Replace with cross-references**
 
 Replace each banned-functions list with:
+
 ```markdown
 See [sec-01_security_standards.md](../security/sec-01_security_standards.md) Section 4 for the complete banned-functions list with language-specific examples.
 ```
@@ -1206,6 +1228,7 @@ duplicating the lists."
 ### Task 20: Update this repo's own agent configs
 
 **Files:**
+
 - Delete: `.codexrc` (replace with `AGENTS.md`)
 - Create: `AGENTS.md` at repo root (Codex format for this repo)
 - Modify: `standards/README.md` (update to reflect new structure)
@@ -1269,6 +1292,7 @@ Document new blocks/ directory and assembly system in standards README."
 ### Task 21: Run full test suite
 
 **Files:**
+
 - Reference: `Makefile`
 
 - [ ] **Step 1: Run `make test-scripts`**
@@ -1294,6 +1318,7 @@ Test the assembly script end-to-end by assembling a Claude Code config for a hyp
 ```
 
 Verify:
+
 - Output file exists and is <150 lines
 - Contains base template content
 - Contains all 6 common blocks
@@ -1321,6 +1346,7 @@ Run the same assembly command again:
 ```
 
 Verify output is identical:
+
 ```bash
 diff /tmp/test-claude-md.md /tmp/test-claude-md-2.md
 ```

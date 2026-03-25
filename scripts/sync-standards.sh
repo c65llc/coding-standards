@@ -134,8 +134,7 @@ sync_ai_agents() {
         esac
 
         echo "📝 Re-assembling $agent config..."
-        # shellcheck disable=SC2086
-        if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$OUTPUT_PATH" ${BLOCK_ARGS[*]+"${BLOCK_ARGS[@]}"}; then
+        if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$OUTPUT_PATH" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"}; then
             echo "✅ $agent config synced"
         else
             echo "⚠️  Failed to sync $agent config (non-fatal, continuing...)"

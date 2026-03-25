@@ -1,3 +1,7 @@
+---
+title: "Git Aliases Reference"
+---
+
 # Git Aliases Reference
 
 Git aliases provide shortcuts for common operations. Run `scripts/setup-git-aliases.sh` to install all aliases automatically.

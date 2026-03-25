@@ -3,19 +3,25 @@
 ## Workflow: A-P-E Cycle
 
 ### Analyze
+
 Read relevant files to understand the current state. Do not assume — verify.
+
 - Read the file(s) you plan to modify before touching them.
 - Check existing patterns and naming conventions.
 - Identify all files affected by the planned change.
 
 ### Plan
+
 State your intent before executing. Wait for confirmation on non-trivial changes.
+
 - Output a "Proposed Logic Plan" listing every file to be modified.
 - Identify breaking changes or dependency impacts.
 - For multi-file refactors, get explicit approval before proceeding.
 
 ### Execute
+
 Implement, test, verify — in that order.
+
 - Prefer `gemini edit` (diff mode) over blind overwrites.
 - Run tests after each logical change.
 - Commit atomically with Conventional Commits messages.
