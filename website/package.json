@@ -12,9 +12,12 @@
   },
   "dependencies": {
     "@astrojs/rss": "^4.0.0",
-    "@astrojs/starlight": "^0.37.6",
-    "astro": "^5.0.0",
+    "@astrojs/starlight": "^0.38.1",
+    "astro": "^6.0.6",
     "sharp": "^0.34.5",
-    "starlight-blog": "^0.25.3"
+    "starlight-blog": "^0.26.1"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }
