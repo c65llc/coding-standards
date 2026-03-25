@@ -27,3 +27,4 @@ Instructions for OpenAI Codex CLI.
 - Do not add new dependencies without explaining why and listing alternatives considered.
 - Make minimal changes — touch only the files required to satisfy the task.
 - No secrets or credentials in any file; check before committing config files.
+- If sync-standards reports customized files, pending updates are in `.standards-pending/`. See `.standards/docs/reference/merge-standards-prompt.md` to merge.

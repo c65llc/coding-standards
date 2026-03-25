@@ -21,3 +21,4 @@
 - Do not include secrets or credentials — check `.gitignore` before `/add`-ing config files.
 - Before changing a public API or function signature, check all callers first.
 - Conventional Commits are required: `type(scope): subject`.
+- If sync-standards reports customized files, pending updates are in `.standards-pending/`. See `.standards/docs/reference/merge-standards-prompt.md` to merge.

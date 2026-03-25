@@ -19,6 +19,7 @@
   - Every `TODO`/`FIXME` in code must reference an issue number
 - **One task = one branch = one worktree = one PR.** Work is not done until a PR exists.
 - Never modify the root checkout from an automated agent session.
+- If sync-standards reports customized files, pending updates are in `.standards-pending/`. See `.standards/docs/reference/merge-standards-prompt.md` to merge.
 
 ## How to Work
 

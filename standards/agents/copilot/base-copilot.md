@@ -6,6 +6,7 @@
 - Detect the active language from file extension and apply the matching language-specific rules in the Language Standards section below.
 - Prefer simple, readable code over clever code. Apply SOLID principles.
 - Tone: terse, objective, professional — no filler.
+- If sync-standards reports customized files, pending updates are in `.standards-pending/`. See `.standards/docs/reference/merge-standards-prompt.md` to merge.
 
 ## Code Suggestions
 

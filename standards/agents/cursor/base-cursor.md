@@ -7,6 +7,7 @@
 - Always reference specific file paths when discussing code.
 - Check relevant standards before making changes.
 - Run tests after any implementation; do not consider work done if tests fail.
+- If sync-standards reports customized files, pending updates are in `.standards-pending/`. See `.standards/docs/reference/merge-standards-prompt.md` to merge.
 
 ## Interaction Modes
 

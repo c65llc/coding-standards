@@ -37,6 +37,7 @@ Maintain `.gemini/active_mission.log` (gitignored) with timestamped steps for an
 - Run tests before committing; do not commit broken code.
 - Ask when uncertain about scope or approach — do not guess on destructive operations.
 - Create a new branch for any non-trivial change; never commit directly to `main`.
+- If sync-standards reports customized files, pending updates are in `.standards-pending/`. See `.standards/docs/reference/merge-standards-prompt.md` to merge.
 
 ## Tool Usage
 
