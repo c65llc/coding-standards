@@ -51,6 +51,19 @@ Every agent gets a purpose-built base template with platform-specific best pract
 - **Aider** — two-file model (`.aiderrc` + `.aider-instructions.md`), diff mode guidance
 - **Codex** — new `AGENTS.md` format with sandbox awareness
 
+## Smart Sync: Customizations Survive Updates
+
+A common worry with generated configs: what happens when you improve your CLAUDE.md with `/claude-md-improver` or add project-specific conventions, then sync pulls new standards? Before, your changes would be overwritten.
+
+Now, `sync-standards` uses **checksum-based detection**. After assembling a config, the setup script records a SHA256 hash of the standards content. On the next sync, if the hash doesn't match — meaning you've customized the file — the sync **skips** that file and stages the update to `.standards-pending/` instead.
+
+To merge the pending update:
+
+- **Claude Code:** Run `/merge-standards` — an included skill that reads both versions, merges section-by-section (updating standards rules while preserving your additions), and shows a diff for approval.
+- **Any other agent:** Point it to `.standards/docs/reference/merge-standards-prompt.md` — the same merge instructions in a format any agent can follow.
+
+This works for all six agent configs, not just CLAUDE.md. Customize your `.cursorrules` or `GEMINI.md` and they'll be protected too.
+
 ## Try It
 
 Existing projects can pick up the new system by syncing their standards submodule:
@@ -60,6 +73,6 @@ cd .standards && git pull
 ./scripts/setup.sh --role service
 ```
 
-The setup script detects your languages, assembles configs for all detected agents, and saves your selections to `.standards-config` for reproducible syncs. Project-specific customizations (anything below the `<!-- BEGIN PROJECT-SPECIFIC — DO NOT EDIT THIS LINE -->` marker) are preserved across re-assembly.
+The setup script detects your languages, assembles configs for all detected agents, and saves your selections to `.standards-config` for reproducible syncs.
 
 New projects get this automatically via the [standard install process](/docs/getting-started/installation/).
