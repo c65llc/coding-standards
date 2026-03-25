@@ -211,8 +211,11 @@ for agent in $AGENTS_LIST; do
         # Print colored diff
         printf '%s\n' "$DIFF_OUTPUT" | while IFS= read -r line; do
             case "$line" in
+                # shellcheck disable=SC2059
                 +*) printf "${GREEN}%s${NC}\n" "$line" ;;
+                # shellcheck disable=SC2059
                 -*) printf "${RED}%s${NC}\n" "$line" ;;
+                # shellcheck disable=SC2059
                 @*) printf "${CYAN}%s${NC}\n" "$line" ;;
                 *)  printf "%s\n" "$line" ;;
             esac
@@ -227,17 +230,22 @@ done
 # ---------------------------------------------------------------------------
 
 printf "=======================================\n"
+# shellcheck disable=SC2059
 printf "  ${BOLD}Summary:${NC} "
+# shellcheck disable=SC2059
 printf "${GREEN}%d up to date${NC}  " "$UNCHANGED"
+# shellcheck disable=SC2059
 printf "${YELLOW}%d would change${NC}  " "$CHANGED"
+# shellcheck disable=SC2059
 printf "${GREEN}%d new${NC}  " "$NEW_FILES"
 if [ "$SKIPPED" -gt 0 ]; then
+    # shellcheck disable=SC2059
     printf "${YELLOW}%d skipped${NC}" "$SKIPPED"
 fi
 printf "\n\n"
 
 if [ "$CHANGED" -gt 0 ] || [ "$NEW_FILES" -gt 0 ]; then
-    printf "Run ${BOLD}make sync-standards${NC} to apply changes.\n\n"
+    printf "%s\n\n" "Run ${BOLD}make sync-standards${NC} to apply changes."
 fi
 
 exit 0
