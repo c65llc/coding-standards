@@ -187,3 +187,93 @@ should_assemble() {
         return 1
     fi
 }
+
+# ---------------------------------------------------------------------------
+# YAML Parsing Helpers (grep-based, no external deps)
+# ---------------------------------------------------------------------------
+
+# Read a simple scalar value from a YAML file
+# Usage: yaml_get "key" "file" → outputs value
+yaml_get() {
+    local key="$1"
+    local file="$2"
+    grep "^${key}:" "$file" 2>/dev/null | sed "s/^${key}:[[:space:]]*//" | sed 's/[[:space:]]*$//'
+}
+
+# Read a YAML list into a space-separated string
+# Usage: yaml_list "key" "file" → outputs "val1 val2 val3"
+yaml_list() {
+    local key="$1"
+    local file="$2"
+    # Handle both inline [a, b, c] and block list formats
+    local inline
+    inline=$(grep "^${key}:" "$file" 2>/dev/null | sed "s/^${key}:[[:space:]]*//" | sed 's/[[:space:]]*$//')
+    if [[ "$inline" == \[* ]]; then
+        # Inline format: [python, typescript]
+        echo "$inline" | tr -d '[]' | tr ',' '\n' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr '\n' ' '
+    else
+        # Block format:
+        #   - python
+        #   - typescript
+        awk "/^${key}:/{found=1;next} found && /^[[:space:]]*-/{gsub(/^[[:space:]]*-[[:space:]]*/,\"\"); print; next} found && /^[^[:space:]-]/{exit}" "$file" 2>/dev/null | tr '\n' ' '
+    fi
+}
+
+# Read a nested scalar value from a YAML file
+# Usage: yaml_nested_get "parent" "child" "file" → outputs value
+yaml_nested_get() {
+    local parent="$1"
+    local child="$2"
+    local file="$3"
+    awk "/^${parent}:/{found=1;next} found && /^[[:space:]]+${child}:/{gsub(/^[[:space:]]*${child}:[[:space:]]*/,\"\"); print; exit} found && /^[^[:space:]]/{exit}" "$file" 2>/dev/null | sed 's/[[:space:]]*$//'
+}
+
+# Read .standards.yml or fall back to .standards-config
+# Sets global variables: STD_LANGUAGES, STD_AGENTS, STD_ROLE, STD_VERSION, STD_COVERAGE_MIN, STD_COVERAGE_DOMAIN, STD_ARCHITECTURE, STD_SECURITY
+read_standards_config() {
+    local project_root="$1"
+    local yml="$project_root/.standards.yml"
+    local legacy="$project_root/.standards-config"
+
+    if [ -f "$yml" ]; then
+        STD_VERSION=$(yaml_get "version" "$yml")
+        STD_LANGUAGES=$(yaml_list "languages" "$yml")
+        STD_AGENTS=$(yaml_list "agents" "$yml")
+        STD_ROLE=$(yaml_get "role" "$yml")
+        STD_COVERAGE_MIN=$(yaml_nested_get "coverage" "minimum" "$yml")
+        STD_COVERAGE_DOMAIN=$(yaml_nested_get "coverage" "domain" "$yml")
+        STD_ARCHITECTURE=$(yaml_get "architecture" "$yml")
+        STD_SECURITY=$(yaml_get "security" "$yml")
+        # Defaults
+        STD_ROLE="${STD_ROLE:-service}"
+        STD_COVERAGE_MIN="${STD_COVERAGE_MIN:-95}"
+        STD_COVERAGE_DOMAIN="${STD_COVERAGE_DOMAIN:-100}"
+        STD_ARCHITECTURE="${STD_ARCHITECTURE:-clean}"
+        STD_SECURITY="${STD_SECURITY:-strict}"
+        return 0
+    elif [ -f "$legacy" ]; then
+        # Backward compat: read .standards-config key=value format
+        local cfg_role="" cfg_langs="" cfg_agents=""
+        while IFS='=' read -r raw_key raw_value; do
+            [[ -z "$raw_key" || "$raw_key" =~ ^[[:space:]]*# ]] && continue
+            local key="${raw_key// /}"
+            local value="${raw_value// /}"
+            case "$key" in
+                STANDARDS_ROLE)      cfg_role="$value" ;;
+                STANDARDS_LANGUAGES) cfg_langs="$value" ;;
+                STANDARDS_AGENTS)    cfg_agents="$value" ;;
+            esac
+        done < "$legacy"
+        STD_ROLE="${cfg_role:-service}"
+        STD_LANGUAGES=$(echo "${cfg_langs:-}" | tr ',' ' ')
+        STD_AGENTS=$(echo "${cfg_agents:-}" | tr ',' ' ')
+        STD_VERSION="1"
+        STD_COVERAGE_MIN="95"
+        STD_COVERAGE_DOMAIN="100"
+        STD_ARCHITECTURE="clean"
+        STD_SECURITY="strict"
+        return 0
+    else
+        return 1
+    fi
+}
