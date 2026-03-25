@@ -15,10 +15,18 @@ make lint                    # Lint markdown files (requires markdownlint)
 make format                  # Format markdown files (requires prettier)
 make setup                   # Run setup script to configure standards in a project
 make sync-standards          # Sync standards files and update .cursorrules
+make diff-standards          # Preview what sync-standards would change (no files modified)
 make setup-agents            # Setup AI agent configurations
 make add-copilot-instructions # Create PR to add Copilot instructions
 make doctor                  # Run standards health check (audits config, agents, checksums, git hooks)
 make lint-standards          # Run standards compliance linter (common + language-specific checks)
+```
+
+Use `--dry-run` with setup or sync to preview changes without modifying files:
+
+```bash
+./scripts/setup.sh --dry-run
+./scripts/sync-standards.sh --dry-run
 ```
 
 The standards-review composite GitHub Action lives at `.github/actions/standards-review/action.yml`. It runs `lint-standards.sh --format json` and posts structured PR comments. A ready-to-use workflow template is at `templates/standards-review.yml.example` — `setup.sh` copies it to `.github/workflows/standards-review.yml` in consumer projects automatically.
