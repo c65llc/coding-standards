@@ -31,6 +31,12 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+# Source checksum helpers
+if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
+    # shellcheck source=lib/checksums.sh
+    source "$SCRIPT_DIR/lib/checksums.sh"
+fi
+
 # Map detected languages to block filenames
 map_languages_to_blocks() {
     local BLOCKS=()
@@ -125,6 +131,7 @@ setup_ai_agents() {
     fi
 
     local ASSEMBLED_AGENTS_LIST=""
+    local NEW_CHECKSUMS=""
 
     for agent in $AGENTS_LIST; do
         local BASE_TEMPLATE="$AGENTS_DIR/$agent/base-$agent.md"
@@ -152,6 +159,11 @@ setup_ai_agents() {
         echo "📝 Assembling $agent config..."
         if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$OUTPUT_PATH" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"}; then
             echo "✅ $agent config assembled"
+            if type compute_hash &>/dev/null; then
+                local new_hash
+                new_hash=$(compute_hash "$OUTPUT_PATH")
+                NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$new_hash" "$NEW_CHECKSUMS")
+            fi
         else
             echo "⚠️  Failed to assemble $agent config (non-fatal, continuing...)"
             continue
@@ -161,6 +173,11 @@ setup_ai_agents() {
         if [ "$agent" = "aider" ] && [ -f "$AGENTS_DIR/aider/aiderrc.template" ]; then
             if cp "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
                 echo "   ✅ Aider .aiderrc installed"
+                if type compute_hash &>/dev/null; then
+                    local rc_hash
+                    rc_hash=$(shasum -a 256 "$PROJECT_ROOT/.aiderrc" | awk '{print $1}')
+                    NEW_CHECKSUMS=$(update_checksum_entry ".aiderrc" "$rc_hash" "$NEW_CHECKSUMS")
+                fi
             fi
         fi
 
@@ -283,6 +300,20 @@ STANDARDS_AGENTS=$ASSEMBLED_AGENTS_LIST
 STANDARDS_VERSION=2.0.0
 EOF
     echo "✅ .standards-config written"
+
+    # Write initial checksums
+    if type compute_hash &>/dev/null && [ -n "$NEW_CHECKSUMS" ]; then
+        echo "$NEW_CHECKSUMS" > "$PROJECT_ROOT/$CHECKSUMS_FILE"
+        echo "✅ .standards-checksums created"
+    fi
+
+    # Install merge-standards skill
+    local SKILL_SOURCE="$AGENTS_DIR/claude-code/skills/merge-standards.md"
+    if [ -f "$SKILL_SOURCE" ]; then
+        mkdir -p "$PROJECT_ROOT/.claude/skills"
+        cp "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md"
+        echo "✅ /merge-standards skill installed"
+    fi
 }
 
 echo "🔧 Setting up project standards..."
@@ -416,6 +447,9 @@ if [ -f "$PROJECT_ROOT/.gitignore" ]; then
     if ! grep -q ".standards-config" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
         echo ".standards-config" >> "$PROJECT_ROOT/.gitignore"
     fi
+    if ! grep -q ".standards-pending" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
+        echo ".standards-pending/" >> "$PROJECT_ROOT/.gitignore"
+    fi
 elif [ "$SCRIPT_DIR" != "$PROJECT_ROOT" ]; then
     # Create .gitignore if it doesn't exist (only for client projects, not standards repo itself)
     cat > "$PROJECT_ROOT/.gitignore" << 'GITIGNORE'
@@ -424,6 +458,7 @@ coverage/
 
 # Standards temporary files
 .standards_tmp/
+.standards-pending/
 
 # Backup files
 .cursorrules.backup
