@@ -208,14 +208,12 @@ for agent in $AGENTS_LIST; do
         REMOVED=$(printf '%s\n' "$DIFF_OUTPUT" | grep -c '^-[^-]' || true)
         # shellcheck disable=SC2059
         printf "  ${YELLOW}~ Changes: +%d/-%d lines${NC}\n" "$ADDED" "$REMOVED"
-        # Print colored diff
+        # Print colored diff (SC2059: colors in format strings are intentional)
+        # shellcheck disable=SC2059
         printf '%s\n' "$DIFF_OUTPUT" | while IFS= read -r line; do
             case "$line" in
-                # shellcheck disable=SC2059
                 +*) printf "${GREEN}%s${NC}\n" "$line" ;;
-                # shellcheck disable=SC2059
                 -*) printf "${RED}%s${NC}\n" "$line" ;;
-                # shellcheck disable=SC2059
                 @*) printf "${CYAN}%s${NC}\n" "$line" ;;
                 *)  printf "%s\n" "$line" ;;
             esac
