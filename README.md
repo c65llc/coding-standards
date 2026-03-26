@@ -44,6 +44,7 @@ Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby
 - **One-Command Setup** -- Install everything with a single command.
 - **Auto-Updating** -- Git hooks keep standards in sync whenever you pull.
 - **Standards Compliance Linter** -- `make lint-standards` checks commits, secrets, coverage, type safety, and banned functions across Python, TypeScript, Go, and Elixir. Outputs text, JSON, or SARIF for GitHub Code Scanning.
+- **Automated PR Review** -- A composite GitHub Action posts structured standards compliance results as a PR comment on every pull request. Installed automatically by `make setup`; blocks merge when checks fail.
 - **GitHub Project Lifecycle** -- CLI-driven workflow connecting issues to Draft PRs via GitHub Projects V2.
 
 ## Documentation

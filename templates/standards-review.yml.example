@@ -1,0 +1,28 @@
+# .github/workflows/standards-review.yml
+# Standards compliance review on pull requests.
+# Copied here by setup.sh — update path if .standards/ is at a different location.
+#
+# Note: For PRs from forks, GITHUB_TOKEN is read-only and the comment step
+# will be skipped. Consider using pull_request_target for fork support
+# (with appropriate security precautions).
+name: Standards Review
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  standards-review:
+    name: Standards Review
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for commit checks
+
+      - name: Run standards review
+        uses: ./.standards/.github/actions/standards-review
