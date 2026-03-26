@@ -1,4 +1,4 @@
-.PHONY: help ls setup sync-standards check-standards update-standards setup-agents add-copilot-instructions doctor website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task
+.PHONY: help ls setup sync-standards check-standards update-standards setup-agents add-copilot-instructions doctor lint-standards website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task
 
 help: ## Show this help message
 	@echo "Standards Repository Management"
@@ -72,6 +72,8 @@ test-scripts: ## Test setup and sync scripts
 	@bash -n website/scripts/sync-content.sh && echo "✅ sync-content.sh syntax valid"
 	@echo "Testing gh-task..."
 	@bash -n bin/gh-task && echo "✅ gh-task syntax valid"
+	@echo "Testing lint check scripts..."
+	@find scripts/lint-checks -name "*.sh" -exec bash -n {} \; && echo "✅ All lint check scripts syntax valid"
 
 test-bootstrap: ## Run functional tests on bootstrap scripts
 	@./scripts/test-bootstrap.sh
@@ -103,6 +105,9 @@ add-copilot-instructions: ## Create PR to add GitHub Copilot custom instructions
 
 doctor: ## Run standards health check
 	@./scripts/doctor.sh
+
+lint-standards: ## Run standards compliance linter
+	@./scripts/lint-standards.sh
 
 website-dev: ## Start the website dev server
 	@cd website && npm run dev
