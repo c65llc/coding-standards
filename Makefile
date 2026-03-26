@@ -1,4 +1,4 @@
-.PHONY: help ls setup sync-standards check-standards update-standards setup-agents add-copilot-instructions doctor lint-standards website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task
+.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor lint-standards website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task
 
 help: ## Show this help message
 	@echo "Standards Repository Management"
@@ -14,6 +14,9 @@ setup: ## Run setup script to configure standards in a project
 
 sync-standards: ## Sync standards files and update .cursorrules
 	@./scripts/sync-standards.sh
+
+diff-standards: ## Show what sync-standards would change
+	@./scripts/diff-standards.sh
 
 check-standards: ## Check if standards are up to date
 	@if [ -d ".standards" ]; then \
@@ -66,6 +69,8 @@ test-scripts: ## Test setup and sync scripts
 	@bash -n scripts/assemble-config.sh && echo "✅ assemble-config.sh syntax valid"
 	@echo "Testing doctor.sh..."
 	@bash -n scripts/doctor.sh && echo "✅ doctor.sh syntax valid"
+	@echo "Testing diff-standards.sh..."
+	@bash -n scripts/diff-standards.sh && echo "✅ diff-standards.sh syntax valid"
 	@echo "Testing lib/checksums.sh..."
 	@bash -n scripts/lib/checksums.sh && echo "✅ lib/checksums.sh syntax valid"
 	@echo "Testing sync-content.sh..."

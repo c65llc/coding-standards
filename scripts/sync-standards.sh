@@ -6,6 +6,63 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
+# Parse arguments
+DRY_RUN=false
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# Dry-run aware file operations
+dry_run_cp() {
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] Would copy: $1 → $2"
+    else
+        cp "$1" "$2"
+    fi
+}
+
+dry_run_mkdir() {
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] Would create directory: $1"
+    else
+        mkdir -p "$1"
+    fi
+}
+
+dry_run_write() {
+    local target="$1"
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] Would write: $target"
+        cat > /dev/null
+    else
+        cat > "$target"
+    fi
+}
+
+dry_run_append() {
+    local target="$1"
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] Would append to: $target"
+        cat > /dev/null
+    else
+        cat >> "$target"
+    fi
+}
+
+if [ "$DRY_RUN" = true ]; then
+    echo "🔍 DRY RUN — showing what would change (no files modified)"
+    echo ""
+fi
+
 # Source checksum helpers
 CHECKSUMS_LIB=""
 if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
@@ -147,12 +204,19 @@ sync_ai_agents() {
 
         # Create parent directories as needed
         case "$agent" in
-            copilot) mkdir -p "$PROJECT_ROOT/.github" ;;
-            gemini)  mkdir -p "$PROJECT_ROOT/.gemini" ;;
+            copilot) dry_run_mkdir "$PROJECT_ROOT/.github" ;;
+            gemini)  dry_run_mkdir "$PROJECT_ROOT/.gemini" ;;
         esac
 
         # Checksum-guarded assembly: skip customized files, stage pending updates
-        if [ -n "$CHECKSUMS_LIB" ]; then
+        if [ "$DRY_RUN" = true ]; then
+            if [ -f "$OUTPUT_PATH" ]; then
+                echo "  [dry-run] Would re-assemble: $OUTPUT_PATH"
+            else
+                echo "  [dry-run] Would create: $OUTPUT_PATH"
+            fi
+            continue
+        elif [ -n "$CHECKSUMS_LIB" ]; then
             local sa_rc=0
             should_assemble "$OUTPUT_PATH" "$CHECKSUMS_PATH" || sa_rc=$?
 
@@ -193,7 +257,9 @@ sync_ai_agents() {
 
         # Aider special handling: also sync aiderrc.template to .aiderrc
         if [ "$agent" = "aider" ] && [ -f "$AGENTS_DIR/aider/aiderrc.template" ]; then
-            if [ -n "$CHECKSUMS_LIB" ]; then
+            if [ "$DRY_RUN" = true ]; then
+                echo "  [dry-run] Would sync: $AGENTS_DIR/aider/aiderrc.template → $PROJECT_ROOT/.aiderrc"
+            elif [ -n "$CHECKSUMS_LIB" ]; then
                 # Checksum-protected: compare full-file hash
                 local stored_rc_hash
                 stored_rc_hash=$(read_stored_hash ".aiderrc" "$CHECKSUMS_PATH")
@@ -224,15 +290,19 @@ sync_ai_agents() {
     done
 
     # Write accumulated checksums atomically
-    if [ -n "$CHECKSUMS_LIB" ] && [ -n "$NEW_CHECKSUMS" ]; then
+    if [ "$DRY_RUN" = false ] && [ -n "$CHECKSUMS_LIB" ] && [ -n "$NEW_CHECKSUMS" ]; then
         echo "$NEW_CHECKSUMS" > "$CHECKSUMS_PATH"
     fi
 
     # Copy merge-standards skill if it exists and has changed
     local SKILL_SOURCE="$AGENTS_DIR/claude-code/skills/merge-standards.md"
     if [ -f "$SKILL_SOURCE" ]; then
-        mkdir -p "$PROJECT_ROOT/.claude/skills"
-        if ! cmp -s "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md" 2>/dev/null; then
+        dry_run_mkdir "$PROJECT_ROOT/.claude/skills"
+        if [ "$DRY_RUN" = true ]; then
+            if ! cmp -s "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md" 2>/dev/null; then
+                echo "  [dry-run] Would sync: $SKILL_SOURCE → $PROJECT_ROOT/.claude/skills/merge-standards.md"
+            fi
+        elif ! cmp -s "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md" 2>/dev/null; then
             cp "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md"
             echo "✅ /merge-standards skill synced"
         fi
@@ -240,7 +310,9 @@ sync_ai_agents() {
 
     # Add .standards-pending/ to .gitignore if not already present
     if [ -f "$PROJECT_ROOT/.gitignore" ] && ! grep -q ".standards-pending" "$PROJECT_ROOT/.gitignore" 2>/dev/null; then
-        echo ".standards-pending/" >> "$PROJECT_ROOT/.gitignore"
+        {
+            echo ".standards-pending/"
+        } | dry_run_append "$PROJECT_ROOT/.gitignore"
     fi
 
     # Codex: deprecation warning for old .codexrc
@@ -249,45 +321,50 @@ sync_ai_agents() {
         echo "   Your .codexrc has been preserved. Remove it when ready."
     fi
 
-    # Claude Code settings.json (unchanged from original — only create if missing)
+    # Claude Code settings.json (only create if missing)
     if [ ! -f "$PROJECT_ROOT/.claude/settings.json" ]; then
         if [ -f "$AGENTS_DIR/claude-code/settings.json.example" ]; then
-            echo "📝 Adding Claude Code settings..."
-            mkdir -p "$PROJECT_ROOT/.claude"
-            local BUILD_SCRIPT=""
-            local DETECT_SCRIPT=""
-            if [ -n "$STANDARDS_DIR" ]; then
-                DETECT_SCRIPT="$STANDARDS_DIR/scripts/detect-languages.sh"
-                BUILD_SCRIPT="$STANDARDS_DIR/scripts/build-claude-settings.sh"
-            fi
-            [ ! -x "$DETECT_SCRIPT" ] && DETECT_SCRIPT="$SCRIPT_DIR/detect-languages.sh"
-            [ ! -x "$BUILD_SCRIPT" ] && BUILD_SCRIPT="$SCRIPT_DIR/build-claude-settings.sh"
-
-            local BASE_SETTINGS="$AGENTS_DIR/claude-code/settings.json.example"
-            local PERMS_DIR="$AGENTS_DIR/claude-code/permissions"
-
-            if [ -x "$DETECT_SCRIPT" ] && [ -x "$BUILD_SCRIPT" ] && [ -d "$PERMS_DIR" ]; then
-                local SETTINGS_LANGS="$DETECTED_LANGS"
-                if [ -z "$SETTINGS_LANGS" ]; then
-                    SETTINGS_LANGS=$("$DETECT_SCRIPT" "$PROJECT_ROOT")
+            if [ "$DRY_RUN" = true ]; then
+                dry_run_mkdir "$PROJECT_ROOT/.claude"
+                echo "  [dry-run] Would write: $PROJECT_ROOT/.claude/settings.json"
+            else
+                echo "📝 Adding Claude Code settings..."
+                mkdir -p "$PROJECT_ROOT/.claude"
+                local BUILD_SCRIPT=""
+                local DETECT_SCRIPT=""
+                if [ -n "$STANDARDS_DIR" ]; then
+                    DETECT_SCRIPT="$STANDARDS_DIR/scripts/detect-languages.sh"
+                    BUILD_SCRIPT="$STANDARDS_DIR/scripts/build-claude-settings.sh"
                 fi
-                if [ -n "$SETTINGS_LANGS" ]; then
-                    # shellcheck disable=SC2086
-                    if "$BUILD_SCRIPT" "$BASE_SETTINGS" "$PERMS_DIR" $SETTINGS_LANGS > "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null; then
-                        echo "✅ Claude Code settings added at .claude/settings.json"
+                [ ! -x "$DETECT_SCRIPT" ] && DETECT_SCRIPT="$SCRIPT_DIR/detect-languages.sh"
+                [ ! -x "$BUILD_SCRIPT" ] && BUILD_SCRIPT="$SCRIPT_DIR/build-claude-settings.sh"
+
+                local BASE_SETTINGS="$AGENTS_DIR/claude-code/settings.json.example"
+                local PERMS_DIR="$AGENTS_DIR/claude-code/permissions"
+
+                if [ -x "$DETECT_SCRIPT" ] && [ -x "$BUILD_SCRIPT" ] && [ -d "$PERMS_DIR" ]; then
+                    local SETTINGS_LANGS="$DETECTED_LANGS"
+                    if [ -z "$SETTINGS_LANGS" ]; then
+                        SETTINGS_LANGS=$("$DETECT_SCRIPT" "$PROJECT_ROOT")
+                    fi
+                    if [ -n "$SETTINGS_LANGS" ]; then
                         # shellcheck disable=SC2086
-                        echo "   Detected languages: $(echo $SETTINGS_LANGS | tr '\n' ' ')"
+                        if "$BUILD_SCRIPT" "$BASE_SETTINGS" "$PERMS_DIR" $SETTINGS_LANGS > "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null; then
+                            echo "✅ Claude Code settings added at .claude/settings.json"
+                            # shellcheck disable=SC2086
+                            echo "   Detected languages: $(echo $SETTINGS_LANGS | tr '\n' ' ')"
+                        else
+                            cp "$BASE_SETTINGS" "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null
+                            echo "✅ Claude Code settings added at .claude/settings.json (base template)"
+                        fi
                     else
                         cp "$BASE_SETTINGS" "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null
-                        echo "✅ Claude Code settings added at .claude/settings.json (base template)"
+                        echo "✅ Claude Code settings added at .claude/settings.json"
                     fi
                 else
                     cp "$BASE_SETTINGS" "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null
                     echo "✅ Claude Code settings added at .claude/settings.json"
                 fi
-            else
-                cp "$BASE_SETTINGS" "$PROJECT_ROOT/.claude/settings.json" 2>/dev/null
-                echo "✅ Claude Code settings added at .claude/settings.json"
             fi
         fi
     fi
@@ -303,12 +380,16 @@ sync_ai_agents() {
                         [ -f "$config_file" ] || continue
                         config_name="$(basename "$config_file")"
                         if [ ! -f "$PROJECT_ROOT/$config_name" ]; then
-                            if cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
+                            if [ "$DRY_RUN" = true ]; then
+                                echo "  [dry-run] Would copy: $config_file → $PROJECT_ROOT/$config_name"
+                            elif cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
                                 echo "   ✅ Added $config_name ($lang)"
                             fi
                         elif ! cmp -s "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
                             if [ "$UPDATED" = true ]; then
-                                if cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
+                                if [ "$DRY_RUN" = true ]; then
+                                    echo "  [dry-run] Would update: $PROJECT_ROOT/$config_name"
+                                elif cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
                                     echo "   ✅ Updated $config_name ($lang)"
                                 fi
                             fi
@@ -328,7 +409,7 @@ sync_ai_agents() {
     fi
 
     if [ -n "$GEMINI_SOURCE" ] && [ -f "$GEMINI_SOURCE/settings.json" ]; then
-        mkdir -p "$PROJECT_ROOT/.gemini"
+        dry_run_mkdir "$PROJECT_ROOT/.gemini"
         # Validate JSON syntax before copying
         local JSON_VALID=true
         if command -v python3 >/dev/null 2>&1; then
@@ -345,14 +426,22 @@ sync_ai_agents() {
 
         if [ "$JSON_VALID" = true ]; then
             if [ ! -f "$PROJECT_ROOT/.gemini/settings.json" ]; then
-                echo "📝 Adding Gemini CLI settings (not yet configured)..."
-                if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
-                    echo "✅ Gemini CLI settings added at .gemini/settings.json"
+                if [ "$DRY_RUN" = true ]; then
+                    echo "  [dry-run] Would create: $PROJECT_ROOT/.gemini/settings.json"
+                else
+                    echo "📝 Adding Gemini CLI settings (not yet configured)..."
+                    if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
+                        echo "✅ Gemini CLI settings added at .gemini/settings.json"
+                    fi
                 fi
             elif [ "$UPDATED" = true ] || ! cmp -s "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
-                echo "📝 Updating Gemini CLI settings..."
-                if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
-                    echo "✅ Gemini CLI settings updated"
+                if [ "$DRY_RUN" = true ]; then
+                    echo "  [dry-run] Would update: $PROJECT_ROOT/.gemini/settings.json"
+                else
+                    echo "📝 Updating Gemini CLI settings..."
+                    if cp "$GEMINI_SOURCE/settings.json" "$PROJECT_ROOT/.gemini/settings.json" 2>/dev/null; then
+                        echo "✅ Gemini CLI settings updated"
+                    fi
                 fi
             fi
         fi
@@ -370,17 +459,22 @@ if [ -d "$PROJECT_ROOT/.standards" ]; then
 
     # Update submodule
     cd "$STANDARDS_DIR"
-    LOCAL=$(git rev-parse HEAD)
-    git fetch origin >/dev/null 2>&1
-    REMOTE=$(git rev-parse origin/main 2>/dev/null || git rev-parse origin/master 2>/dev/null)
-
-    if [ "$LOCAL" != "$REMOTE" ] && [ -n "$REMOTE" ]; then
-        echo "📥 Pulling latest standards..."
-        git pull origin main 2>/dev/null || git pull origin master 2>/dev/null
-        UPDATED=true
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] Would fetch and pull .standards/ submodule"
+        UPDATED=true  # Assume updates for preview purposes
     else
-        echo "✅ Standards are up to date"
-        UPDATED=false
+        LOCAL=$(git rev-parse HEAD)
+        git fetch origin >/dev/null 2>&1
+        REMOTE=$(git rev-parse origin/main 2>/dev/null || git rev-parse origin/master 2>/dev/null)
+
+        if [ "$LOCAL" != "$REMOTE" ] && [ -n "$REMOTE" ]; then
+            echo "📥 Pulling latest standards..."
+            git pull origin main 2>/dev/null || git pull origin master 2>/dev/null
+            UPDATED=true
+        else
+            echo "✅ Standards are up to date"
+            UPDATED=false
+        fi
     fi
     cd "$PROJECT_ROOT"
 elif [ -d "$SCRIPT_DIR/../standards" ]; then
@@ -404,8 +498,10 @@ fi
 
 if [ -n "$CURSOR_COMMANDS_SOURCE" ] && [ -d "$CURSOR_COMMANDS_SOURCE" ]; then
     echo "📝 Syncing Cursor custom commands..."
-    mkdir -p "$PROJECT_ROOT/.cursor/commands"
-    if cp -r "$CURSOR_COMMANDS_SOURCE"/* "$PROJECT_ROOT/.cursor/commands/" 2>/dev/null; then
+    dry_run_mkdir "$PROJECT_ROOT/.cursor/commands"
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] Would copy: $CURSOR_COMMANDS_SOURCE/* → $PROJECT_ROOT/.cursor/commands/"
+    elif cp -r "$CURSOR_COMMANDS_SOURCE"/* "$PROJECT_ROOT/.cursor/commands/" 2>/dev/null; then
         echo "✅ Cursor commands synced"
         echo "⚠️  Please fully quit and restart Cursor to load new commands"
     else
@@ -428,15 +524,20 @@ else
 fi
 
 if [ -n "$GIT_ALIASES_SCRIPT" ] && [ -f "$GIT_ALIASES_SCRIPT" ] && command -v git >/dev/null 2>&1; then
-    # Always check for new aliases, not just when updated
-    # The setup script will skip existing aliases, so it's safe to run
-    echo ""
-    echo "🔧 Checking git aliases and configuration..."
-    echo "   (Ensuring all aliases are up to date)"
-    if bash "$GIT_ALIASES_SCRIPT" 2>/dev/null; then
-        echo "✅ Git aliases checked/updated"
+    if [ "$DRY_RUN" = true ]; then
+        echo ""
+        echo "  [dry-run] Would set up git aliases and configuration"
     else
-        echo "⚠️  Git aliases update had issues (non-fatal, continuing...)"
+        # Always check for new aliases, not just when updated
+        # The setup script will skip existing aliases, so it's safe to run
+        echo ""
+        echo "🔧 Checking git aliases and configuration..."
+        echo "   (Ensuring all aliases are up to date)"
+        if bash "$GIT_ALIASES_SCRIPT" 2>/dev/null; then
+            echo "✅ Git aliases checked/updated"
+        else
+            echo "⚠️  Git aliases update had issues (non-fatal, continuing...)"
+        fi
     fi
 fi
 
