@@ -242,7 +242,7 @@ Never use these functions with untrusted input. If used with trusted input, add 
 |----------|-------------------------------|
 | Python | PyPI JSON API (`upload_time` field) |
 | JavaScript/TypeScript | npm registry API (`time` field) |
-| Ruby | RubyGems API (`version_created_at` field) |
+| Ruby | RubyGems versions API (`created_at` field) |
 | Java/Kotlin | Maven Central (`lastModified` / Sonatype API) |
 | Rust | crates.io API (`created_at` field) |
 | Swift | GitHub release / tag date |
