@@ -228,6 +228,27 @@ Never use these functions with untrusted input. If used with trusted input, add 
 - Pin major and minor versions in production dependencies.
 - Review and test dependency updates before merging.
 
+### Dependency Age Gate `[P1]`
+
+- **Never adopt a 3rd-party dependency version published less than 72 hours (3 days) ago.** This mitigates supply-chain attacks where malicious code is injected into a new release and detected/reverted within the first few days.
+- Applies to **all languages and package ecosystems** — PyPI, npm, crates.io, RubyGems, Maven Central, pub.dev, Swift packages, and Zig packages.
+- **CI enforcement:** Validate the publish date of every added or upgraded dependency against its registry. Block merges when any dependency version is younger than 3 days.
+- **Exception process:** Emergency security patches (e.g., a critical CVE fix) may bypass the age gate with:
+  1. Explicit approval from a team lead or security owner.
+  2. A documented justification in the PR description.
+  3. A follow-up review within 24 hours of the bypass.
+
+| Language | Registry / Publish Date Source |
+|----------|-------------------------------|
+| Python | PyPI JSON API (`upload_time` field) |
+| JavaScript/TypeScript | npm registry API (`time` field) |
+| Ruby | RubyGems versions API (`created_at` field) |
+| Java/Kotlin | Maven Central (`lastModified` / Sonatype API) |
+| Rust | crates.io API (`created_at` field) |
+| Swift | GitHub release / tag date |
+| Dart | pub.dev API (`published` field) |
+| Zig | Manual review of upstream commit/tag date |
+
 ## 6. Configuration Security
 
 ### Default Credentials `[P0]`

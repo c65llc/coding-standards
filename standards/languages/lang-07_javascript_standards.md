@@ -5,6 +5,7 @@
 * **Tool:** `pnpm` preferred, `npm` acceptable. Lock files committed.
 * **Version:** ES2022+ features. Use modern syntax.
 * **Config:** `.nvmrc` or `.node-version` to pin Node.js version.
+* **Age Gate:** Do not adopt any npm package version published less than 3 days ago. Verify publish date via npm registry API before upgrading. See `sec-01` §5 for exceptions.
 
 ## 2. Code Style
 

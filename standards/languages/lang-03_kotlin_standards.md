@@ -5,6 +5,7 @@
 * **Tool:** `Gradle` with Kotlin DSL. Use Kotlin 1.9+.
 * **Version:** Target JVM 17+ or Kotlin/Native, Kotlin/JS as appropriate.
 * **Dependencies:** Declare in `build.gradle.kts`. Use version catalogs.
+* **Age Gate:** Do not adopt any Maven Central artifact version published less than 3 days ago. Verify publish date before upgrading. See `sec-01` §5 for exceptions.
 
 ## 2. Code Style
 

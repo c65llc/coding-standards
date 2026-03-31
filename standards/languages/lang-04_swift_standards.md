@@ -5,6 +5,7 @@
 * **Tool:** Swift Package Manager (SPM). `Package.swift` for dependencies.
 * **Version:** Swift 5.9+ (use latest stable).
 * **Dependencies:** Declare in `Package.swift`. Pin versions or use ranges.
+* **Age Gate:** Do not adopt any Swift package version (tag/release) published less than 3 days ago. Verify the GitHub release date before upgrading. See `sec-01` §5 for exceptions.
 
 ## 2. Code Style
 

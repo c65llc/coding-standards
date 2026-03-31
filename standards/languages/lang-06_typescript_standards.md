@@ -5,6 +5,7 @@
 * **Tool:** `pnpm` preferred, `npm` acceptable. Lock files committed.
 * **Version:** TypeScript 5.0+. Use strict mode.
 * **Config:** `tsconfig.json` with strict compiler options.
+* **Age Gate:** Do not adopt any npm package version published less than 3 days ago. Verify publish date via npm registry API before upgrading. See `sec-01` §5 for exceptions.
 
 ## 2. Code Style
 
