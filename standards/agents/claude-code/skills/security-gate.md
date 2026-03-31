@@ -53,6 +53,7 @@ Scan the current project for security violations defined in `sec-01_security_sta
 ## Severity Reference
 
 From `sec-01`:
+
 - **P0**: SQL injection, command injection, hardcoded credentials, authentication bypass, default credentials
 - **P1**: XSS, CSRF, SSRF, template injection, weak randomness, insecure deserialization, missing auth checks, dependency age gate
 - **P2**: Missing rate limiting, verbose error messages, unpinned dependencies, weak TLS config

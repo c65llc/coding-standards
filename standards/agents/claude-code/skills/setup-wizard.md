@@ -103,6 +103,7 @@ Report the health score and any issues found.
 Report: "Project onboarded. Generated .standards.yml, assembled N agent configs, health score: X/Y."
 
 Suggest next steps:
+
 - "Run `make lint-standards` to check current compliance"
 - "Commit the generated files"
 - "See the standards-audit skill to run a full compliance check"

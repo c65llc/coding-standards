@@ -77,6 +77,7 @@ coverage:
 ## Test Convention Checks
 
 Also verify:
+
 - Test files mirror source structure: `src/domain/user.py` → `tests/domain/test_user.py`
 - Test names are descriptive: `test_should_raise_error_when_email_is_invalid`
 - Every bug fix PR includes a regression test

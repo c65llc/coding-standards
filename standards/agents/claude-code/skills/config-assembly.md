@@ -60,6 +60,7 @@ Generate agent configuration files by composing content blocks based on the proj
 ## Checksum System
 
 Generated configs are tracked in `.standards-checksums`. The assembler:
+
 - Computes SHA256 of the generated (non-custom) portion of the file
 - Compares against the stored hash
 - If hashes match → safe to overwrite (no customization)

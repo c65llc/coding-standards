@@ -64,7 +64,8 @@ Check that every 3rd-party dependency version in the project was published at le
 5. Report results:
    - **PASS**: "All N dependency versions are older than 72 hours."
    - **FAIL**: List each failing dependency with its name, version, publish date, and age. Example:
-     ```
+
+     ```text
      FAIL: axios@1.14.1 — published 2026-03-31T00:21Z (4 hours ago). Minimum age: 72 hours.
      ```
 

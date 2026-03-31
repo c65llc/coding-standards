@@ -19,6 +19,7 @@ Check that identifiers in the project follow the language-specific naming conven
 From `standards/shared/blocks/naming-conventions.md` and language-specific standards:
 
 ### Python (`lang-01`)
+
 - Functions/variables: `snake_case`
 - Classes: `PascalCase`
 - Constants: `UPPER_SNAKE_CASE`
@@ -26,18 +27,21 @@ From `standards/shared/blocks/naming-conventions.md` and language-specific stand
 - Private: `_leading_underscore`
 
 ### JavaScript/TypeScript (`lang-06`, `lang-07`)
+
 - Functions/variables: `camelCase`
 - Classes/components: `PascalCase`
 - Constants: `UPPER_SNAKE_CASE`
 - Files: `kebab-case.ts` (or `PascalCase.tsx` for components)
 
 ### Java/Kotlin (`lang-02`, `lang-03`)
+
 - Methods/variables: `camelCase`
 - Classes/interfaces: `PascalCase`
 - Constants: `UPPER_SNAKE_CASE`
 - Packages: `com.example.project` (reverse domain)
 
 ### Ruby (`lang-10`)
+
 - Methods/variables: `snake_case`
 - Classes/modules: `PascalCase`
 - Constants: `UPPER_SNAKE_CASE`
@@ -46,6 +50,7 @@ From `standards/shared/blocks/naming-conventions.md` and language-specific stand
 - Files: `snake_case.rb`
 
 ### Rust (`lang-08`)
+
 - Functions/variables: `snake_case`
 - Types/traits: `PascalCase`
 - Constants: `UPPER_SNAKE_CASE`
@@ -53,6 +58,7 @@ From `standards/shared/blocks/naming-conventions.md` and language-specific stand
 - Lifetimes: `'lowercase`
 
 ### Go (`lang-12`)
+
 - Exported: `PascalCase`
 - Unexported: `camelCase`
 - No `ALL_CAPS` for constants
@@ -60,22 +66,26 @@ From `standards/shared/blocks/naming-conventions.md` and language-specific stand
 - Files: `snake_case.go`
 
 ### Swift (`lang-04`)
+
 - Functions/variables: `camelCase`
 - Types/protocols: `PascalCase`
 - Files: `PascalCase.swift`
 
 ### Dart (`lang-05`)
+
 - Functions/variables: `camelCase`
 - Classes: `PascalCase`
 - Files: `snake_case.dart`
 - Constants: `camelCase` (Dart convention, not UPPER_SNAKE)
 
 ### Zig (`lang-09`)
+
 - Functions/variables: `camelCase`
 - Types: `PascalCase`
 - Constants: `UPPER_SNAKE_CASE`
 
 ### Elixir (`lang-13`)
+
 - Functions/variables: `snake_case`
 - Modules: `PascalCase`
 - Predicates: `function_name?`
