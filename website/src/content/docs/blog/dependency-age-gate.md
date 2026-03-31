@@ -52,9 +52,9 @@ A new **P1-severity rule** under Dependency & Supply Chain Security. P1 means th
 - A registry API reference table covering PyPI, npm, crates.io, RubyGems, Maven Central, pub.dev, Swift packages, and Zig
 - An exception process for emergency security patches (team lead approval + documented justification + 24-hour follow-up review)
 
-### All Language Standards (`lang-01` through `lang-11`)
+### Language Standards (`lang-01` through `lang-10`)
 
-Every language's Package Management section now includes an **Age Gate** bullet with the language-specific registry to check and a cross-reference to the full exception process in `sec-01`.
+The core language standards (`lang-01` through `lang-10`) now include an **Age Gate** bullet in their Package Management sections, with the language-specific registry to check and a cross-reference to the full exception process in `sec-01`. Ruby on Rails (`lang-11`) inherits the rule from its Ruby base standard (`lang-10`). Remaining standards, including Go and Elixir, will adopt the same rule in their next revision.
 
 ## Enforcing It in CI
 
