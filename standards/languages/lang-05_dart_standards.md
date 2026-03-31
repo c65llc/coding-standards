@@ -5,6 +5,7 @@
 * **Tool:** `pub` (Dart's package manager). `pubspec.yaml` for dependencies.
 * **Version:** Dart 3.0+ (null safety required).
 * **Dependencies:** Declare in `pubspec.yaml`. Pin versions for production.
+* **Age Gate:** Do not adopt any pub.dev package version published less than 3 days ago. Verify publish date via pub.dev API before upgrading. See `sec-01` §5 for exceptions.
 
 ## 2. Code Style
 

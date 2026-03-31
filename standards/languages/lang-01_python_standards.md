@@ -5,6 +5,7 @@
 * **Tool:** `uv` for dependency management, virtual environments, and Python version management. Prefer `uv` over `poetry` or naked `pip`. Lock files committed.
 * **Virtual Environments:** Always use isolated environments (`uv venv`). Never install globally.
 * **Requirements:** `pyproject.toml` for all projects. `requirements.txt` only for legacy compatibility.
+* **Age Gate:** Do not adopt any PyPI package version published less than 3 days ago. Verify publish date via PyPI API before upgrading. See `sec-01` §5 for exceptions.
 
 ## 2. Code Style
 

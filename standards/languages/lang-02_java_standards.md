@@ -5,6 +5,7 @@
 * **Tool:** `Maven` or `Gradle`. Prefer Gradle for modern projects.
 * **Version:** Java 17+ (LTS). Use `--enable-preview` only for evaluation.
 * **Dependencies:** Declare in `pom.xml` or `build.gradle`. Use dependency management BOMs.
+* **Age Gate:** Do not adopt any Maven Central artifact version published less than 3 days ago. Verify publish date before upgrading. See `sec-01` §5 for exceptions.
 
 ## 2. Code Style
 

@@ -5,6 +5,7 @@
 * **Gems:** `bundler`. `Gemfile.lock` committed. Pin exact versions for production dependencies.
 * **Ruby Version:** Ruby 3.2+. Use `mise` for version management. Specify version in `.ruby-version`.
 * **Config:** `Gemfile` for all projects. Group gems by environment (`:development`, `:test`, `:production`).
+* **Age Gate:** Do not adopt any gem version published less than 3 days ago. Verify publish date via RubyGems API before upgrading. See `sec-01` §5 for exceptions.
 
 ## 2. Code Style
 

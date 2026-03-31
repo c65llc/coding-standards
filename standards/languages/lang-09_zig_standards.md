@@ -5,6 +5,7 @@
 * **Tool:** `zig build`. `build.zig` for build configuration.
 * **Version:** Zig 0.11+ (use latest stable).
 * **Dependencies:** Use `build.zig.zon` for package dependencies.
+* **Age Gate:** Do not adopt any dependency version (commit/tag) published less than 3 days ago. Manually verify the upstream commit or tag date before upgrading. See `sec-01` §5 for exceptions.
 
 ## 2. Code Style
 

@@ -142,6 +142,13 @@ Coverage gates MUST be enforced in CI. A PR that drops coverage below 95% in any
 - Use ranges for development dependencies.
 - Regular dependency audits and updates.
 
+### Dependency Age Gate
+
+- **All 3rd-party dependency versions must be at least 3 days old before adoption.** Do not upgrade to or add a dependency version published less than 72 hours ago.
+- This applies to new dependencies and version upgrades alike.
+- CI should enforce age verification against the registry publish date.
+- Emergency security patches may bypass this gate with explicit team lead approval and documented justification.
+
 ### Dependency Rules
 
 - No circular dependencies between packages.

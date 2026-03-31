@@ -5,6 +5,7 @@
 * **Tool:** `cargo`. `Cargo.toml` for dependencies.
 * **Version:** Rust 1.70+ (use latest stable).
 * **Lock Files:** `Cargo.lock` committed for applications, not libraries.
+* **Age Gate:** Do not adopt any crate version published less than 3 days ago. Verify publish date via crates.io API before upgrading. See `sec-01` §5 for exceptions.
 
 ## 2. Code Style
 
