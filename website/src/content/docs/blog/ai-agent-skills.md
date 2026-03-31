@@ -53,7 +53,7 @@ Guided onboarding for new projects. Detects languages from manifest files, asks 
 
 **Skill:** `coverage-enforcer` | **Issue:** [#54](https://github.com/c65llc/coding-standards/issues/54)
 
-Enforces the layer-specific test coverage thresholds from the standards: 100% for domain/core, 95%+ for application and infrastructure, 80% minimum overall. Knows which coverage tool to use per language (coverage.py, c8, simplecov, tarpaulin, JaCoCo) and can break down coverage by architecture layer. Also checks test naming conventions and file mirroring.
+Enforces the layer-specific test coverage thresholds from the standards: 100% for domain/core, 95%+ for application and infrastructure, 95% minimum overall. Knows which coverage tool to use per language (coverage.py, c8, simplecov, tarpaulin, JaCoCo) and can break down coverage by architecture layer. Also checks test naming conventions and file mirroring.
 
 ### 7. Naming Convention
 

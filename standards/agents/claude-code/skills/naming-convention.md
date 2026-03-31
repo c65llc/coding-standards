@@ -78,7 +78,7 @@ From `standards/shared/blocks/naming-conventions.md` and language-specific stand
 - Files: `snake_case.dart`
 - Constants: `camelCase` (Dart convention, not UPPER_SNAKE)
 
-### Zig (`lang-09`)
+### Zig (`lang-09`, per `lang-09_zig_standards.md`)
 
 - Functions/variables: `camelCase`
 - Types: `PascalCase`

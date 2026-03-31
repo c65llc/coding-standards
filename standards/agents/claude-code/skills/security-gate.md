@@ -22,17 +22,13 @@ Scan the current project for security violations defined in `sec-01_security_sta
    .standards/scripts/detect-languages.sh
    ```
 
-2. For each detected language, scan for **banned functions** (P0 violations). These are defined in `standards/security/sec-01_security_standards.md` §4:
+2. For each detected language, scan for **banned functions** (P0 violations).
 
-   | Language | Banned Functions |
-   |----------|-----------------|
-   | Python | `eval()`, `exec()`, `pickle.loads()` (untrusted), `yaml.load()` (without SafeLoader), `os.system()`, `subprocess.call(..., shell=True)` |
-   | JavaScript/TypeScript | `eval()`, `Function()`, `setTimeout(string)`, `setInterval(string)`, `document.write()` |
-   | Ruby | `eval()`, `send()` with user input, `system()` with interpolation, `exec()` with interpolation |
-   | Java/Kotlin | `Runtime.exec()` with string concat, `ProcessBuilder` with unsanitized input |
-   | Rust | `std::process::Command` with unsanitized input in `unsafe` blocks |
+   - Treat `standards/security/sec-01_security_standards.md` §4 as the **single source of truth** for banned functions and insecure APIs.
+   - Open `sec-01` and locate the banned-function table; use that table (not this skill file) to determine which functions/APIs to search for in each language.
+   - Where available, also consult or run the language-specific checks in `scripts/lint-checks/*/banned-functions.sh` to understand the exact patterns enforced by automation.
 
-   Use `grep -rn` or language-specific AST tools to find violations. Exclude test files and vendored dependencies.
+   Using the canonical lists from `sec-01` and the `banned-functions.sh` scripts, search the codebase (for example, with `grep -rn` or language-specific AST tools) for these banned functions and patterns. Include tests in the scan; exclude vendored/third-party dependencies and generated code.
 
 3. Scan for **P1 patterns**:
    - **XSS**: `innerHTML`, `dangerouslySetInnerHTML`, `v-html` with dynamic data

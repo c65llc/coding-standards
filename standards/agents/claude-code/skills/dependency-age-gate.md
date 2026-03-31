@@ -55,11 +55,11 @@ Check that every 3rd-party dependency version in the project was published at le
    # pub.dev
    curl -s "https://pub.dev/api/packages/<package>" | jq -r '.versions[] | select(.version=="<version>") | .published'
 
-   # Maven Central (via search API)
-   curl -s "https://search.maven.org/solrsearch/select?q=g:<group>+AND+a:<artifact>+AND+v:<version>&rows=1&wt=json" | jq -r '.response.docs[0].timestamp'
+   # Maven Central (via search API) — returns epoch milliseconds, convert to ISO-8601
+   curl -s "https://search.maven.org/solrsearch/select?q=g:<group>+AND+a:<artifact>+AND+v:<version>&rows=1&wt=json" | jq -r '.response.docs[0].timestamp / 1000 | todateiso8601'
    ```
 
-4. Calculate the age of each version: `now - publish_date`. Flag any version younger than 72 hours.
+4. Normalize all publish dates to a common format (ISO-8601 or seconds since epoch) before computing ages. The examples above return ISO-8601 strings, except Maven Central which returns epoch milliseconds and must be converted (as shown). Calculate the age of each version: `now - publish_date`. Flag any version younger than 72 hours.
 
 5. Report results:
    - **PASS**: "All N dependency versions are older than 72 hours."

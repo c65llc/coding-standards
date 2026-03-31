@@ -25,12 +25,12 @@ Generate agent configuration files by composing content blocks based on the proj
 
    | Agent | Base Template | Output File |
    |-------|--------------|-------------|
-   | `claude-code` | `standards/agents/claude-code/base-claude-code.md` | `CLAUDE.md` |
-   | `cursor` | `standards/agents/cursor/base-cursor.md` | `.cursorrules` |
-   | `copilot` | `standards/agents/copilot/base-copilot.md` | `.github/copilot-instructions.md` |
-   | `gemini` | `standards/agents/gemini/base-gemini.md` | `.gemini/GEMINI.md` |
-   | `aider` | `standards/agents/aider/base-aider.md` | `.aider-instructions.md` |
-   | `codex` | `standards/agents/codex/base-codex.md` | `AGENTS.md` |
+   | `claude-code` | `.standards/standards/agents/claude-code/base-claude-code.md` | `CLAUDE.md` |
+   | `cursor` | `.standards/standards/agents/cursor/base-cursor.md` | `.cursorrules` |
+   | `copilot` | `.standards/standards/agents/copilot/base-copilot.md` | `.github/copilot-instructions.md` |
+   | `gemini` | `.standards/standards/agents/gemini/base-gemini.md` | `.gemini/GEMINI.md` |
+   | `aider` | `.standards/standards/agents/aider/base-aider.md` | `.aider-instructions.md` |
+   | `codex` | `.standards/standards/agents/codex/base-codex.md` | `AGENTS.md` |
 
 3. Run the assembly script for each agent:
 

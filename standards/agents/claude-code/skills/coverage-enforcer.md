@@ -23,13 +23,13 @@ From `standards/shared/blocks/testing-policy.md` and `.standards.yml`:
 | Domain/Core | 100% | Business logic must be fully tested |
 | Application/Shell | 95%+ | Orchestration layer, high confidence required |
 | Infrastructure | 95%+ | Integration points, high confidence required |
-| Overall minimum | 80% | Floor for project-wide coverage |
+| Overall minimum | 95% | Absolute floor per core standards |
 
 The `.standards.yml` can override these:
 
 ```yaml
 coverage:
-  minimum: 80    # project-wide floor
+  minimum: 95    # project-wide floor (must not go below 95%)
   domain: 100    # domain layer target
 ```
 
@@ -84,4 +84,4 @@ Also verify:
 
 ## After Check
 
-Report: "Coverage: domain X% (target 100%), application Y% (target 95%), infrastructure Z% (target 95%), overall W% (minimum 80%). N layers passing, M failing."
+Report: "Coverage: domain X% (target 100%), application Y% (target 95%), infrastructure Z% (target 95%), overall W% (minimum 95%). N layers passing, M failing."

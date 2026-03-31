@@ -40,8 +40,8 @@ Run the standards compliance linter against the current project and report resul
    ```
 
 4. Present results grouped by status:
-   - **FAIL** items first — these are blocking violations (map to P0/P1 severity)
-   - **WARN** items second — these are advisory (map to P2 severity)
+   - **FAIL** items first — these are blocking violations under the standards (typically merge-blocking)
+   - **WARN** items second — these are advisory/non-blocking unless the standards for this project say otherwise
    - **PASS** items last — only show count, not individual items
 
 5. For each FAIL or WARN, include:

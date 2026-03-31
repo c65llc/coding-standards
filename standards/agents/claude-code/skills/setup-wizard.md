@@ -66,7 +66,7 @@ agents:
   - cursor
 role: service
 coverage:
-  minimum: 80
+  minimum: 95
   domain: 100
 architecture: clean
 security: strict
