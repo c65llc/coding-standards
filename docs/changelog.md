@@ -12,22 +12,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-04-15
+
 ### Added
 
-- `.github/CODEOWNERS` — default code ownership (proc-03 compliance)
-- `.github/dependabot.yml` — automated dependency updates for npm and GitHub Actions (sec-01 compliance)
-- `docs/adr/0001-unified-standards-repository.md` — foundational architecture decision record (proc-01 compliance)
-- `standards/README.md` — directory structure and naming convention overview (proc-01 compliance)
-- `bin/README.md` — gh-task CLI overview with documentation links (proc-01 compliance)
-- Security checklist (P0/P1/P2) in PR template (sec-01 compliance)
-- Security standards sync in website build pipeline
-- Security section in website sidebar
-- "How It Works" page on website with architecture and sync pipeline details
-- Blog posts covering project release history
+- **Project governance & infrastructure**
+  - `.github/CODEOWNERS` — default code ownership (proc-03 compliance)
+  - `.github/dependabot.yml` — automated dependency updates for npm and GitHub Actions (sec-01 compliance)
+  - Security checklist (P0/P1/P2) in PR template (sec-01 compliance)
+- **Architecture & navigability docs**
+  - `docs/adr/0001-unified-standards-repository.md` — foundational architecture decision record (proc-01 compliance)
+  - `standards/README.md` — directory structure and naming convention overview (proc-01 compliance)
+  - `bin/README.md` — gh-task CLI overview with documentation links (proc-01 compliance)
+- **Website**
+  - "How It Works" page with architecture and sync pipeline details
+  - Security section in website sidebar
+  - Security standards sync in website build pipeline
+  - Blog posts covering project release history
+- **Drift detection**: `make doctor` gains `check_aiderrc_template_sync` — surfaces drift between root `.aiderrc` and the canonical `standards/agents/aider/aiderrc.template` (#34, #69)
+- **Antigravity Mission isolation** (#67, #72)
+  - `scripts/mission-set.sh <url>` / `scripts/mission-clear.sh` — atomic write/truncate of `.gemini/active_mission.log` with HTTPS-only validation
+  - `proc-04 § 5: Mission Isolation` — feature bracketing rules, lifecycle table (set/active/clear/stale), read protocol; renumbers prior § 5 to § 6
+  - `GEMINI.md > Active Mission Tracking` — read protocol all agents (Claude Code, Cursor, Aider, Codex, Gemini) follow before starting work
+- **Postgres MCP integration** (#67, #72)
+  - `.gemini/settings.json` ships a `postgres` MCP entry, opt-in via `POSTGRES_MCP_DATABASE_URL` env var; gracefully fails to start when env var unset
+  - `make doctor` gains `check_postgres_mcp` — warns when entry is present but env var is missing
+- **UI Change Validation protocol** (#68, #73)
+  - `proc-04 § 7: UI Change Validation` — file-extension trigger heuristic; render → screenshot → diff three-step workflow; human-gated comparison criteria (pixel-diff is too noisy to gate on); cross-agent invocation table
+  - `templates/assets-designs-README.md.example` — reference template projects copy when opting into the `assets/designs/` convention
+  - `standards/shared/blocks/role-app.md` — UI-validation requirement injected into every assembled `role: app` agent config via the existing block-assembly system
 
 ### Changed
 
+- `.aiderrc` re-synced with canonical `aiderrc.template`; drops 97 lines of stale inline P0/P1 security list now sourced via the block assembly system (#34, #69)
+- Default Aider model bumped to `claude-sonnet-4-6` (current Sonnet 4.6 family alias) (#70)
 - Restructured `CHANGELOG.md` with versioned release sections
+
+### Fixed
+
+- `standards-review` composite GitHub Action failed to load in consumer repos with `could not find expected ':'` YAML parse error. A Python heredoc inside a `run: |` block was indented at column 0, terminating the YAML literal block scalar so the parser interpreted Python as YAML. The formatter is now a sibling `format-results.py` invoked via `${{ github.action_path }}` (#64, #66)
 
 ## [0.5.0] - 2026-03-03
 
