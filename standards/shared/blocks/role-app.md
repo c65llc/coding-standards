@@ -7,3 +7,4 @@ Prefer `const` constructors and stateless components when possible.
 Touch targets: 44×44pt minimum (iOS), 48×48dp (Android). All interactive elements need accessible labels.
 Support keyboard navigation. Ensure focus order is logical. Maintain WCAG AA color contrast (4.5:1 normal text).
 Avoid synchronous work on the main/UI thread. Paginate or virtualize large lists.
+UI changes MUST be validated against reference designs in `assets/designs/<route-or-component>/<state>.png` — render, screenshot, diff. Human-gated approval; pixel-diff alone is too noisy to gate on. Full protocol in `proc-04 § 7 UI Change Validation`.
