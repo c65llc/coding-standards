@@ -9,8 +9,11 @@
       "trust": true
     },
     "postgres": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-postgres", "${POSTGRES_MCP_DATABASE_URL}"],
+      "command": "sh",
+      "args": [
+        "-lc",
+        "if [ -n \"${POSTGRES_MCP_DATABASE_URL:-}\" ]; then exec npx -y @modelcontextprotocol/server-postgres \"$POSTGRES_MCP_DATABASE_URL\"; else exit 0; fi"
+      ],
       "trust": true
     }
   }

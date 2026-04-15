@@ -8,18 +8,16 @@
 # Usage:
 #   ./scripts/mission-clear.sh
 
-set -e
+set -euo pipefail
 
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 LOG_FILE="$PROJECT_ROOT/.gemini/active_mission.log"
 
-if [ ! -f "$LOG_FILE" ]; then
-    echo "No active Mission to clear (log file missing): $LOG_FILE"
-    exit 0
-fi
-
-# Truncate rather than delete: keeps the path stable for readers, and the
-# file is gitignored anyway. An empty file = no active Mission.
+# Ensure the parent directory exists, then truncate (or create empty).
+# Truncate rather than delete: keeps the path stable so readers
+# (other agents checking for an active Mission) never error on missing
+# file. An empty file unambiguously means "no active Mission".
+mkdir -p "$(dirname "$LOG_FILE")"
 : > "$LOG_FILE"
 
 echo "✅ Active Mission cleared: $LOG_FILE"

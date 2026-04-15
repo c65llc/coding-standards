@@ -399,12 +399,40 @@ check_aiderrc_template_sync() {
 
 check_postgres_mcp() {
     local settings="$PROJECT_ROOT/.gemini/settings.json"
-    [ ! -f "$settings" ] && return  # No gemini settings — skip
+    if [ ! -f "$settings" ]; then
+        check_pass "Postgres MCP" "No .gemini/settings.json; check skipped"
+        return
+    fi
 
-    # Cheap detection: grep for "postgres" key in mcpServers. We don't parse
-    # JSON here to avoid a jq/python hard dependency for a nice-to-have check.
-    if ! grep -q '"postgres"' "$settings" 2>/dev/null; then
-        return  # Postgres MCP not configured — nothing to verify
+    # Detect "postgres" specifically as a key under mcpServers. Use python3
+    # for accuracy when available (handles arbitrary nesting / whitespace);
+    # fall back to a tightened grep otherwise.
+    local has_postgres="false"
+    if command -v python3 >/dev/null 2>&1; then
+        if python3 -c "
+import json, sys
+try:
+    cfg = json.load(open('$settings'))
+except Exception:
+    sys.exit(1)
+sys.exit(0 if 'postgres' in cfg.get('mcpServers', {}) else 1)
+" 2>/dev/null; then
+            has_postgres="true"
+        fi
+    else
+        # Fallback: collapse whitespace, then anchor pattern to mcpServers
+        # block. Imperfect (won't survive deeply nested mcpServers values
+        # containing the literal "postgres" elsewhere) but better than a
+        # bare grep.
+        if tr -d '\n\r' < "$settings" 2>/dev/null | \
+            grep -qE '"mcpServers"[[:space:]]*:[[:space:]]*\{[^{}]*"postgres"[[:space:]]*:'; then
+            has_postgres="true"
+        fi
+    fi
+
+    if [ "$has_postgres" = "false" ]; then
+        check_pass "Postgres MCP" "Postgres MCP not configured; check skipped"
+        return
     fi
 
     if [ -n "${POSTGRES_MCP_DATABASE_URL:-}" ]; then

@@ -11,7 +11,7 @@
 # Example:
 #   ./scripts/mission-set.sh https://antigravity.google.com/missions/abc123
 
-set -e
+set -euo pipefail
 
 MISSION_URL="${1:-}"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"

@@ -159,7 +159,7 @@ Full convention (feature bracketing, lifecycle, what "stale" looks like) is docu
 export POSTGRES_MCP_DATABASE_URL="postgresql://user:pass@host:5432/dbname"
 ```
 
-When the env var is unset, the MCP server fails to start and Gemini continues without it (the `npx -y @modelcontextprotocol/server-postgres` invocation requires a connection string). When set, Gemini gains live introspection of your schema for migration validation, query writing, and constraint checks.
+When the env var is unset, the MCP server's launcher exits cleanly (`exit 0`) and Gemini continues without it. The launcher is a `sh -lc` wrapper that conditionally execs `npx -y @modelcontextprotocol/server-postgres` only when `POSTGRES_MCP_DATABASE_URL` is non-empty — robust across Gemini CLI versions that may or may not natively expand `${...}` inside JSON args. When set, Gemini gains live introspection of your schema for migration validation, query writing, and constraint checks.
 
 **Remove the entire `"postgres"` block from `.gemini/settings.json`** if your project does not use Postgres. Future Gemini parser versions may reject unreachable MCP servers more strictly.
 
