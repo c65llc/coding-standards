@@ -4,10 +4,15 @@ import json
 import sys
 
 raw = sys.argv[1] if len(sys.argv) > 1 else "{}"
+results = []
 try:
-    results = json.loads(raw).get("results", [])
+    data = json.loads(raw)
+    if isinstance(data, dict):
+        raw_results = data.get("results", [])
+        if isinstance(raw_results, list):
+            results = raw_results
 except (json.JSONDecodeError, ValueError):
-    results = []
+    pass
 
 icons = {"PASS": ":white_check_mark:", "WARN": ":warning:", "FAIL": ":x:"}
 for r in results:
