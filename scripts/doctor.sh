@@ -363,7 +363,35 @@ check_git_hooks() {
 }
 
 # ---------------------------------------------------------------------------
-# Check 7: .gitignore entries
+# Check 7: .aiderrc matches canonical aiderrc.template
+# ---------------------------------------------------------------------------
+
+check_aiderrc_template_sync() {
+    local aiderrc="$PROJECT_ROOT/.aiderrc"
+    [ ! -f "$aiderrc" ] && return  # No .aiderrc — nothing to compare
+
+    local template=""
+    if [ -f "$PROJECT_ROOT/standards/agents/aider/aiderrc.template" ]; then
+        template="$PROJECT_ROOT/standards/agents/aider/aiderrc.template"
+    elif [ -f "$PROJECT_ROOT/.standards/standards/agents/aider/aiderrc.template" ]; then
+        template="$PROJECT_ROOT/.standards/standards/agents/aider/aiderrc.template"
+    fi
+
+    if [ -z "$template" ]; then
+        check_warn "Aider Template" "aiderrc.template not found, cannot verify .aiderrc sync" ""
+        return
+    fi
+
+    if cmp -s "$aiderrc" "$template" 2>/dev/null; then
+        check_pass "Aider Template" ".aiderrc matches aiderrc.template"
+    else
+        check_warn "Aider Template" ".aiderrc has drifted from aiderrc.template" \
+            "Run: make sync-standards  (or accept customization and update .standards-checksums)"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Check 8: .gitignore entries
 # ---------------------------------------------------------------------------
 
 check_gitignore() {
@@ -408,6 +436,7 @@ check_checksums
 check_languages
 check_submodule
 check_git_hooks
+check_aiderrc_template_sync
 check_gitignore
 
 # ---------------------------------------------------------------------------
