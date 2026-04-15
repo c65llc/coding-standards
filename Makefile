@@ -79,6 +79,8 @@ test-scripts: ## Test setup and sync scripts
 	@bash -n bin/gh-task && echo "✅ gh-task syntax valid"
 	@echo "Testing lint check scripts..."
 	@find scripts/lint-checks -name "*.sh" -exec bash -n {} \; && echo "✅ All lint check scripts syntax valid"
+	@echo "Testing format-results.py..."
+	@./scripts/test-format-results.sh
 
 test-bootstrap: ## Run functional tests on bootstrap scripts
 	@./scripts/test-bootstrap.sh

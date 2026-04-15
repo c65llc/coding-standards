@@ -85,24 +85,7 @@ runs:
 
           # Parse JSON results array using python3 (available on all GitHub-hosted runners)
           if command -v python3 >/dev/null 2>&1; then
-            python3 - "$LINT_RESULTS" <<'PYEOF'
-import sys, json
-
-raw = sys.argv[1] if len(sys.argv) > 1 else "{}"
-try:
-    data = json.loads(raw)
-    results = data.get("results", [])
-except (json.JSONDecodeError, ValueError):
-    results = []
-
-icons = {"PASS": ":white_check_mark:", "WARN": ":warning:", "FAIL": ":x:"}
-for r in results:
-    status = r.get("status", "")
-    check = r.get("check", "")
-    message = r.get("message", "").replace("|", "\\|").replace("\n", " ")
-    icon = icons.get(status, ":grey_question:")
-    print(f"| {icon} {status} | {check} | {message} |")
-PYEOF
+            python3 "${{ github.action_path }}/format-results.py" "$LINT_RESULTS"
           fi
 
           printf "\n---\n"
