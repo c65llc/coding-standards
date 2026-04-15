@@ -1,0 +1,64 @@
+# `assets/designs/`
+
+Reference designs for UI changes. Agents working on UI files compare their rendered output against these references — see `proc-04 § UI Change Validation` for the full protocol.
+
+## Layout
+
+```
+assets/designs/
+  <route-or-component>/
+    <state>.png            ← canonical reference (PNG preferred for diffability)
+    <state>.svg            ← optional vector source
+    <state>.figma.url      ← single-line file containing the Figma node URL
+    NOTES.md               ← optional: known caveats, design intent, breakpoints
+```
+
+**Naming**:
+
+- `<route-or-component>` matches the path or component name as it appears in the codebase. Examples:
+  - `assets/designs/login-page/` for `/login`
+  - `assets/designs/PrimaryButton/` for a reusable component
+  - `assets/designs/checkout-flow/step-2/` for nested routes
+- `<state>` describes the visual state. Common values:
+  - `default` — initial render, no interaction
+  - `loading`, `error`, `empty` — async states
+  - `mobile`, `tablet`, `desktop` — breakpoint-specific
+  - `hover`, `focus`, `active`, `disabled` — interaction states
+  - `dark` / `light` — theme variants
+
+## What to commit
+
+- ✅ PNG references (the canonical comparison artifact)
+- ✅ SVG sources where available (better diffs when intent changes)
+- ✅ `.figma.url` files pointing back to the source-of-truth Figma node
+- ❌ Do not commit raw `.fig` / `.sketch` files (binary, large, no diff)
+- ❌ Do not commit auto-generated screenshots from the agent's runs (those are output, not reference)
+
+## Workflow
+
+When you change a UI file:
+
+1. Identify the corresponding `assets/designs/<route-or-component>/` directory. If none exists for new UI, create one and add the reference design before merging.
+2. Have the agent render the change (dev server + browser agent — Antigravity Browser, Playwright MCP, or Cursor's built-in browser).
+3. Have the agent screenshot the rendered output and compare against the reference.
+4. **Comparison is human-reviewed.** The agent surfaces the diff (side-by-side, overlay, or per-region delta) and explains what changed. A human approves whether the change matches design intent. Pixel-diff alone is too noisy to gate on (font rendering, anti-aliasing, sub-pixel layout drift).
+
+## When to update the reference
+
+When the design *intent* changes (designer ships a new mock, accessibility audit changes spacing, etc.):
+
+1. Update the reference PNG/SVG/Figma URL in this directory in the same PR as the UI change.
+2. Note the change in the PR body so reviewers know the diff is intentional.
+3. Update `NOTES.md` if the change requires explanation (e.g., "Reduced primary CTA size to meet WCAG 2.5.5 target-size requirements").
+
+## Cross-agent invocation
+
+| Agent | Tool to render + screenshot |
+|---|---|
+| Google Antigravity | Browser Agent (built-in) |
+| Claude Code | Playwright MCP server (`@modelcontextprotocol/server-playwright`) |
+| Cursor | Built-in browser tool |
+| Aider | Manual screenshot + paste; no native browser tool |
+| Codex | Same — manual; project should expose a `/snapshot` HTTP endpoint per `proc-04 § Devloop Pattern` |
+
+Projects exposing the [Devloop Pattern](../standards/process/proc-04_agent_workflow_standards.md) `GET /snapshot` endpoint can normalize this across agents — every agent calls the same HTTP endpoint regardless of its built-in capabilities.

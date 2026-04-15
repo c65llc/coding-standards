@@ -217,6 +217,61 @@ Agents MUST create GitHub Issues (or the project's configured tracker) when they
 
 **Agents must NOT silently defer work.** If something needs to be done, it needs to be tracked. Check `CLAUDE.md`, `README.md`, or `.github/CONTRIBUTING.md` for the project's configured tracking tool. Default is GitHub Issues.
 
+## 7. UI Change Validation
+
+For projects with a graphical interface, agents that modify UI files MUST validate the rendered output against a reference design before claiming the change is complete. This complements the [Devloop Pattern](#4-devloop-pattern-ui-projects) — devloop enables agents to *iterate*; UI Change Validation enforces that the iteration converges on design intent.
+
+### When the protocol triggers
+
+Agents SHOULD apply this protocol when modifying any of the following file extensions:
+
+| Stack | Extensions |
+|---|---|
+| Web | `*.tsx`, `*.jsx`, `*.vue`, `*.svelte`, `*.html`, `*.css`, `*.scss` |
+| Mobile / desktop | `*.dart`, `*.swift`, `*.kt` (Compose), `*.xaml` |
+| Style tokens | `tokens.json`, `theme.*`, design-system source files |
+
+For changes that don't trip a heuristic (e.g., copy edits in a Markdown-driven CMS), the PR author MAY opt in by writing `ui-validation: required` in the PR body.
+
+### The three-step workflow
+
+1. **Render.** Spin up the dev server (or use the project's `/rebuild` devloop endpoint).
+2. **Capture.** Take a screenshot of the changed surface using the agent's browser tool — see "Cross-agent invocation" below.
+3. **Compare.** Diff the screenshot against the reference design in `assets/designs/<route-or-component>/<state>.png`.
+
+### Comparison criteria
+
+**The agent surfaces the diff; a human approves whether intent is met.** Pixel-diff alone is not gating: font rendering, anti-aliasing, sub-pixel layout, and OS-level smoothing produce noise that swamps real design changes. Use one of:
+
+- **Side-by-side**: reference and rendered output adjacent. Best for layout-driven changes.
+- **Overlay**: rendered output 50% opacity over reference. Best for spacing and alignment.
+- **Per-region delta**: cropped diffs for changed components only. Best for token / theme changes that touch many pages.
+
+The agent's output is a **diff artifact + a summary of what changed**. Approval is human-gated unless the project explicitly opts into pixel-diff gating (rare; document the threshold in `assets/designs/NOTES.md`).
+
+### Cross-agent invocation
+
+| Agent | Browser tool |
+|---|---|
+| Google Antigravity | Built-in Browser Agent |
+| Claude Code | Playwright MCP server (`@modelcontextprotocol/server-playwright`) |
+| Cursor | Built-in browser tool |
+| Aider, Codex | No native browser — projects exposing the [Devloop](#4-devloop-pattern-ui-projects) `GET /snapshot` endpoint normalize this across all agents |
+
+### `assets/designs/` directory convention
+
+Reference designs live in `assets/designs/<route-or-component>/<state>.{png,svg}`. Each project SHOULD include a copy of the [`templates/assets-designs-README.md.example`](https://github.com/c65llc/coding-standards/blob/main/templates/assets-designs-README.md.example) template at `assets/designs/README.md` to document its specific naming conventions and breakpoint coverage.
+
+The directory is **opt-in per project** — `setup.sh` does not auto-create it. Add it manually when the project takes on UI work.
+
+### Updating the reference
+
+When design intent changes (designer ships a new mock, accessibility audit changes spacing, etc.):
+
+1. Update the reference in the same PR as the UI change.
+2. Note the intentional reference change in the PR body so reviewers know the diff is expected.
+3. Update `assets/designs/NOTES.md` if the change requires explanation (e.g., "Reduced primary CTA size to meet WCAG 2.5.5 target-size requirements").
+
 ## Context Handling Across Layers
 
 When agent work spans multiple architectural layers:
