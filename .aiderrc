@@ -1,120 +1,25 @@
-# Aider (Claude Code) Configuration
-# This file configures Aider to follow project standards
+# Aider configuration. Canonical source: standards/agents/aider/aiderrc.template.
+# Generated/synced by sync-standards.sh; `make doctor` reports drift.
+# See .aider-instructions.md for coding standards and behavioral rules.
 
-# Model configuration
-model = claude-3-5-sonnet-20241022
+model = claude-sonnet-4-6
+read = .aider-instructions.md
+auto-lint = true
+show-diffs = true
 
-# File inclusion/exclusion
-exclude = [
+# Files to exclude from Aider context
+file-ignore = [
     "*.pyc",
     "__pycache__",
     ".git",
-    ".venv",
-    "venv",
     "node_modules",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".ruff_cache",
+    ".standards_tmp",
+    "coverage",
     "dist",
     "build",
-    ".standards_tmp",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+    ".venv",
+    "venv",
 ]
-
-# Code style and standards
-# Reference project standards in standards/ directory
-code_style = "Follow project standards in standards/ directory"
-
-# Architecture rules
-architecture_rules = """
-Follow Clean Architecture principles:
-- Domain layer: No external dependencies
-- Application layer: Depends only on Domain
-- Infrastructure layer: Depends on Application and Domain
-- Apps layer: Depends on all inner layers
-
-Reference: standards/architecture/arch-01_project_standards_and_architecture.md
-"""
-
-# Language-specific standards
-language_standards = """
-Apply language-specific standards from:
-- Python: standards/languages/lang-01_python_standards.md
-- Java: standards/languages/lang-02_java_standards.md
-- Kotlin: standards/languages/lang-03_kotlin_standards.md
-- Swift: standards/languages/lang-04_swift_standards.md
-- Dart: standards/languages/lang-05_dart_standards.md
-- TypeScript: standards/languages/lang-06_typescript_standards.md
-- JavaScript: standards/languages/lang-07_javascript_standards.md
-- Rust: standards/languages/lang-08_rust_standards.md
-- Zig: standards/languages/lang-09_zig_standards.md
-- Ruby: standards/languages/lang-10_ruby_standards.md
-- Ruby on Rails: standards/languages/lang-11_ruby_on_rails_standards.md
-"""
-
-# Testing requirements
-testing_standards = """
-- Domain: 100% test coverage
-- Application: 90%+ test coverage
-- Infrastructure: 80%+ test coverage
-- Mirror source structure in tests
-- Use descriptive test names
-
-Reference: standards/shared/core-standards.md
-"""
-
-# Git commit format
-commit_format = "conventional"
-commit_types = ["feat", "fix", "refactor", "test", "docs", "chore", "perf", "ci"]
-
-# Documentation requirements
-documentation_standards = """
-- Update code documentation for public APIs
-- Create ADRs for architectural decisions
-- Update CHANGELOG.md for user-facing changes
-
-Reference: standards/process/proc-01_documentation_standards.md
-"""
-
-# Error handling
-error_handling = """
-- Fail fast: Validate inputs at boundaries
-- Typed errors: Custom error classes in Domain layer
-- Error propagation: Let errors bubble up
-- Structured logging with context
-
-Reference: standards/shared/core-standards.md
-"""
-
-# Security standards
-security_standards = """
-P0 (Critical — must block merge):
-- Hardcoded secrets, API keys, or credentials in source code
-- SQL injection via string concatenation
-- Command injection via eval/exec/system with untrusted input
-- Insecure deserialization of untrusted data
-- Authentication bypass patterns
-- Default credentials in production configs
-
-P1 (High — must block merge):
-- Missing CSRF protection on state-changing endpoints
-- XSS via unsanitized user input in HTML output
-- SSRF via unvalidated URL inputs
-- Missing authorization checks on endpoints
-- Sensitive data in logs or error messages
-- HTTP dependencies (non-HTTPS)
-- Missing security headers (CSP, HSTS)
-- Insecure random for security contexts (tokens, keys)
-
-Reference: standards/security/sec-01_security_standards.md
-"""
-
-# Response style
-response_style = """
-- Tone: Terse, objective, professional
-- Code-focused: No conversational filler
-- Iterative: Output interface/structure first, confirm, then implement
-- Reference files: Always reference specific file paths
-"""
-
-
-
