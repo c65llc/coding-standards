@@ -2,7 +2,7 @@
 # Generated/synced by sync-standards.sh; `make doctor` reports drift.
 # See .aider-instructions.md for coding standards and behavioral rules.
 
-model = claude-sonnet-4-20250514
+model = claude-sonnet-4-6
 read = .aider-instructions.md
 auto-lint = true
 show-diffs = true
@@ -20,4 +20,6 @@ file-ignore = [
     ".pytest_cache",
     ".ruff_cache",
     ".mypy_cache",
+    ".venv",
+    "venv",
 ]

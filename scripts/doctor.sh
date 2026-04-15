@@ -368,7 +368,10 @@ check_git_hooks() {
 
 check_aiderrc_template_sync() {
     local aiderrc="$PROJECT_ROOT/.aiderrc"
-    [ ! -f "$aiderrc" ] && return  # No .aiderrc — nothing to compare
+    if [ ! -f "$aiderrc" ]; then
+        check_pass "Aider Template" "No .aiderrc present; check skipped"
+        return
+    fi
 
     local template=""
     if [ -f "$PROJECT_ROOT/standards/agents/aider/aiderrc.template" ]; then

@@ -20,4 +20,6 @@ file-ignore = [
     ".pytest_cache",
     ".ruff_cache",
     ".mypy_cache",
+    ".venv",
+    "venv",
 ]
