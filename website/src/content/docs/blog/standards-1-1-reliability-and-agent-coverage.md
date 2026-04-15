@@ -5,7 +5,7 @@ authors:
   - name: C65 LLC
 ---
 
-Standards 1.1 is a maintenance-and-maturity release. Most prior posts have been about *adding* something — a new linter, a new skill, a new framework. This release is about the layer underneath: the governance, infrastructure, and drift-prevention that make the project trustworthy as a long-running dependency.
+Standards 1.1 is a maintenance-and-maturity release. Most prior posts have been about *adding* something — a new linter, a new skill, a new framework. This release is about the layer underneath: the governance, infrastructure, and drift-prevention that make the project trustworthy as a long-running dependency. It also closes a gap that was overdue: cross-agent coordination conventions for [Google Antigravity](https://antigravity.google.com), so Missions and design-fidelity reviews work the same way whether the agent in front of you is Antigravity, Claude Code, Cursor, Aider, or Codex.
 
 ## Project governance you can grep
 
@@ -51,11 +51,31 @@ The website itself caught up in this release:
 - The build pipeline now **syncs security standards into the rendered docs automatically**, so the website can't drift from the canonical files.
 - The blog backfilled posts covering release history back to 0.1.
 
-## What's next
+## Antigravity Mission isolation
 
-Two scoped successors from the [#9 Antigravity audit](https://github.com/c65llc/coding-standards/issues/9#issuecomment-4253926070) are still in flight:
+[Google Antigravity](https://antigravity.google.com) groups work into Missions — long-running, agent-driven tasks scoped to a feature or fix. The problem when multiple agents touch the same project: Claude Code, Cursor, and Aider have no native concept of an active Mission, so they don't know whether their work is in scope or scope creep.
 
-- [#67 — Antigravity Mission isolation workflow + Postgres MCP](https://github.com/c65llc/coding-standards/issues/67)
-- [#68 — Antigravity browser-agent UI validation protocol + `/assets/designs` convention](https://github.com/c65llc/coding-standards/issues/68)
+1.1 ships a cross-agent advisory mechanism — `.gemini/active_mission.log` — and two helper scripts:
 
-If you're using Google Antigravity in a production context and have opinions on either, the issues are open.
+```bash
+./scripts/mission-set.sh https://antigravity.google.com/missions/<id>   # at start
+./scripts/mission-clear.sh                                              # on completion
+```
+
+Other agents check the log before starting work; if a Mission is active, they reference it in commits and avoid expanding scope. The full convention (feature bracketing, lifecycle, what "stale" looks like — i.e. a non-empty log more than ~7 days old) lives in `proc-04 § 5`, with the read protocol mirrored in `GEMINI.md` so every agent that consumes the standards picks it up automatically.
+
+Alongside it, `.gemini/settings.json` ships a Postgres MCP entry — opt-in via `POSTGRES_MCP_DATABASE_URL` env var. When set, Gemini gets live schema introspection for migration and query work; when unset, the server fails to start gracefully and Gemini continues without it. `make doctor` warns when the entry is present but the env var is missing.
+
+## Browser-agent UI validation
+
+Antigravity, Claude Code (via Playwright MCP), and Cursor all have browser tools that can render and screenshot a UI. Until now there was no convention for *what to compare it against* — agents would render, agree it looked "fine", and merge. 1.1 introduces `assets/designs/` as a per-project reference directory, plus `proc-04 § 7: UI Change Validation` defining the protocol:
+
+1. **Render** via dev server or the project's [Devloop](/standards/process/proc-04_agent_workflow_standards/#4-devloop-pattern-ui-projects) `/rebuild` endpoint.
+2. **Capture** the rendered output with the agent's browser tool.
+3. **Compare** against `assets/designs/<route-or-component>/<state>.png`.
+
+The deliberate non-default: **pixel-diff is not the gate.** Font rendering, anti-aliasing, and sub-pixel layout drift swamp real changes. The agent surfaces the diff (side-by-side, overlay, or per-region delta) and a written summary; a human approves whether the change matches design intent. Pixel-diff gating is opt-in for projects that want to enforce it, with thresholds documented in `assets/designs/NOTES.md`.
+
+The `assets/designs/` directory is **opt-in per project** — `setup.sh` doesn't auto-create it. Projects taking on UI work add it manually and copy in `templates/assets-designs-README.md.example`, which documents naming conventions, common state vocabulary (`default`, `loading`, `error`, `mobile`, `dark`, etc.), and the cross-agent invocation table.
+
+For agents without native browser tools (Aider, Codex), the protocol relies on the project's [Devloop](/standards/process/proc-04_agent_workflow_standards/#4-devloop-pattern-ui-projects) `GET /snapshot` HTTP endpoint to normalize capture across all agents.
