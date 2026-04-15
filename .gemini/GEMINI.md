@@ -123,11 +123,45 @@ When working with this repository, agents must follow the A-P-E (Analyze, Plan, 
 When starting work on this repository:
 
 1. Read `.gemini/GEMINI.md` (this file) to understand architecture and constraints
-2. Review `standards/architecture/arch-01_project_standards_and_architecture.md` for core principles
-3. Check `.cursorrules` for Cursor AI integration patterns
-4. Use checkpointing via Gemini CLI before attempting any refactors
-5. Do not proceed with multi-file edits without first outputting a 'Proposed Logic Plan'
-6. Verify changes don't break existing integrations
+2. **Check for an active Antigravity Mission** — see "Active Mission Tracking" below
+3. Review `standards/architecture/arch-01_project_standards_and_architecture.md` for core principles
+4. Check `.cursorrules` for Cursor AI integration patterns
+5. Use checkpointing via Gemini CLI before attempting any refactors
+6. Do not proceed with multi-file edits without first outputting a 'Proposed Logic Plan'
+7. Verify changes don't break existing integrations
+
+## 🚀 Active Mission Tracking
+
+**Read protocol for all agents (Claude Code, Cursor, Aider, Codex, Gemini):**
+
+Before starting work in this repo, check whether an Antigravity Mission is in flight:
+
+```bash
+[ -s .gemini/active_mission.log ] && head -1 .gemini/active_mission.log
+```
+
+If a Mission URL is present, you are working under that Mission's scope. Reference it in commit messages and avoid scope creep beyond its stated goals. If the file is empty or absent, no Mission is active — proceed under standard issue/PR tracking.
+
+**Set/clear the Mission** with the helper scripts:
+
+```bash
+./scripts/mission-set.sh https://antigravity.google.com/missions/<id>   # at start
+./scripts/mission-clear.sh                                              # on completion
+```
+
+Full convention (feature bracketing, lifecycle, what "stale" looks like) is documented in `standards/process/proc-04_agent_workflow_standards.md` § 5.
+
+## 🐘 Postgres MCP (opt-in)
+
+`.gemini/settings.json` ships a `postgres` MCP server entry that gives Gemini real-time schema validation during database work. It is **opt-in via env var**:
+
+```bash
+export POSTGRES_MCP_DATABASE_URL="postgresql://user:pass@host:5432/dbname"
+```
+
+When the env var is unset, the MCP server's launcher exits cleanly (`exit 0`) and Gemini continues without it. The launcher is a `sh -lc` wrapper that conditionally execs `npx -y @modelcontextprotocol/server-postgres` only when `POSTGRES_MCP_DATABASE_URL` is non-empty — robust across Gemini CLI versions that may or may not natively expand `${...}` inside JSON args. When set, Gemini gains live introspection of your schema for migration validation, query writing, and constraint checks.
+
+**Remove the entire `"postgres"` block from `.gemini/settings.json`** if your project does not use Postgres. Future Gemini parser versions may reject unreachable MCP servers more strictly.
 
 ## 📝 Change Workflow
 
