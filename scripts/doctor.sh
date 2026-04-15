@@ -394,7 +394,29 @@ check_aiderrc_template_sync() {
 }
 
 # ---------------------------------------------------------------------------
-# Check 8: .gitignore entries
+# Check 8: Postgres MCP env var (if Postgres MCP is configured)
+# ---------------------------------------------------------------------------
+
+check_postgres_mcp() {
+    local settings="$PROJECT_ROOT/.gemini/settings.json"
+    [ ! -f "$settings" ] && return  # No gemini settings — skip
+
+    # Cheap detection: grep for "postgres" key in mcpServers. We don't parse
+    # JSON here to avoid a jq/python hard dependency for a nice-to-have check.
+    if ! grep -q '"postgres"' "$settings" 2>/dev/null; then
+        return  # Postgres MCP not configured — nothing to verify
+    fi
+
+    if [ -n "${POSTGRES_MCP_DATABASE_URL:-}" ]; then
+        check_pass "Postgres MCP" "POSTGRES_MCP_DATABASE_URL is set"
+    else
+        check_warn "Postgres MCP" "Postgres MCP entry present but POSTGRES_MCP_DATABASE_URL unset" \
+            "Set: export POSTGRES_MCP_DATABASE_URL=postgresql://...  (or remove the postgres block from .gemini/settings.json)"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Check 9: .gitignore entries
 # ---------------------------------------------------------------------------
 
 check_gitignore() {
@@ -440,6 +462,7 @@ check_languages
 check_submodule
 check_git_hooks
 check_aiderrc_template_sync
+check_postgres_mcp
 check_gitignore
 
 # ---------------------------------------------------------------------------
