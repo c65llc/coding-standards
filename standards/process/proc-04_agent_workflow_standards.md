@@ -223,15 +223,15 @@ For projects with a graphical interface, agents that modify UI files MUST valida
 
 ### When the protocol triggers
 
-Agents SHOULD apply this protocol when modifying any of the following file extensions:
+Agents SHOULD apply this protocol when modifying files matching any of the following patterns:
 
-| Stack | Extensions |
+| Stack | Patterns (globs) |
 |---|---|
-| Web | `*.tsx`, `*.jsx`, `*.vue`, `*.svelte`, `*.html`, `*.css`, `*.scss` |
-| Mobile / desktop | `*.dart`, `*.swift`, `*.kt` (Compose), `*.xaml` |
-| Style tokens | `tokens.json`, `theme.*`, design-system source files |
+| Web | `**/*.tsx`, `**/*.jsx`, `**/*.vue`, `**/*.svelte`, `**/*.html`, `**/*.css`, `**/*.scss` |
+| Mobile / desktop | `**/*.dart`, `**/*.swift`, `**/*.kt` (Compose), `**/*.xaml` |
+| Style tokens / theme | `**/tokens.json`, `**/theme.*`, `**/design-tokens/**`, `**/*.tokens.{json,yml,yaml}` |
 
-For changes that don't trip a heuristic (e.g., copy edits in a Markdown-driven CMS), the PR author MAY opt in by writing `ui-validation: required` in the PR body.
+Patterns are globs evaluated against repo-relative file paths. For changes that don't trip a pattern (e.g., copy edits in a Markdown-driven CMS that affect rendered UI), the PR author MAY opt in by writing `ui-validation: required` in the PR body.
 
 ### The three-step workflow
 

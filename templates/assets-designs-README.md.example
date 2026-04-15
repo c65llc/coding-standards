@@ -61,4 +61,4 @@ When the design *intent* changes (designer ships a new mock, accessibility audit
 | Aider | Manual screenshot + paste; no native browser tool |
 | Codex | Same — manual; project should expose a `/snapshot` HTTP endpoint per `proc-04 § Devloop Pattern` |
 
-Projects exposing the [Devloop Pattern](../standards/process/proc-04_agent_workflow_standards.md) `GET /snapshot` endpoint can normalize this across agents — every agent calls the same HTTP endpoint regardless of its built-in capabilities.
+Projects exposing the [Devloop Pattern](https://github.com/c65llc/coding-standards/blob/main/standards/process/proc-04_agent_workflow_standards.md#4-devloop-pattern-ui-projects) `GET /snapshot` endpoint can normalize this across agents — every agent calls the same HTTP endpoint regardless of its built-in capabilities.
