@@ -7,20 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-04-15
+
 ### Added
-- `.github/CODEOWNERS` — default code ownership (proc-03 compliance)
-- `.github/dependabot.yml` — automated dependency updates for npm and GitHub Actions (sec-01 compliance)
-- `docs/adr/0001-unified-standards-repository.md` — foundational architecture decision record (proc-01 compliance)
-- `standards/README.md` — directory structure and naming convention overview (proc-01 compliance)
-- `bin/README.md` — gh-task CLI overview with documentation links (proc-01 compliance)
-- Security checklist (P0/P1/P2) in PR template (sec-01 compliance)
-- Security standards sync in website build pipeline
-- Security section in website sidebar
-- "How It Works" page on website with architecture and sync pipeline details
-- Blog posts covering project release history
+- **Project governance & infrastructure**
+  - `.github/CODEOWNERS` — default code ownership (proc-03 compliance)
+  - `.github/dependabot.yml` — automated dependency updates for npm and GitHub Actions (sec-01 compliance)
+  - Security checklist (P0/P1/P2) in PR template (sec-01 compliance)
+- **Architecture & navigability docs**
+  - `docs/adr/0001-unified-standards-repository.md` — foundational architecture decision record (proc-01 compliance)
+  - `standards/README.md` — directory structure and naming convention overview (proc-01 compliance)
+  - `bin/README.md` — gh-task CLI overview with documentation links (proc-01 compliance)
+- **Website**
+  - "How It Works" page with architecture and sync pipeline details
+  - Security section in website sidebar
+  - Security standards sync in website build pipeline
+  - Blog posts covering project release history
+- **Drift detection**: `make doctor` gains `check_aiderrc_template_sync` — surfaces drift between root `.aiderrc` and the canonical `standards/agents/aider/aiderrc.template` (#34, #69)
 
 ### Changed
+- `.aiderrc` re-synced with canonical `aiderrc.template`; drops 97 lines of stale inline P0/P1 security list now sourced via the block assembly system (#34, #69)
+- Default Aider model bumped to `claude-sonnet-4-6` (current Sonnet 4.6 family alias) (#70)
 - Restructured `CHANGELOG.md` with versioned release sections
+
+### Fixed
+- `standards-review` composite GitHub Action failed to load in consumer repos with `could not find expected ':'` YAML parse error. A Python heredoc inside a `run: |` block was indented at column 0, terminating the YAML literal block scalar so the parser interpreted Python as YAML. The formatter is now a sibling `format-results.py` invoked via `${{ github.action_path }}` (#64, #66)
 
 ## [0.5.0] - 2026-03-03
 
