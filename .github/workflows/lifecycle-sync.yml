@@ -35,7 +35,7 @@ jobs:
         
       - name: Get PR details
         id: pr
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -80,7 +80,7 @@ jobs:
       
       - name: Update project status
         if: steps.pr.outputs.issue_number != ''
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           PROJECT_ID: ${{ inputs.project_id }}
           STATUS_FIELD_ID: ${{ inputs.status_field_id }}
