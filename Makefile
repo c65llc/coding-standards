@@ -1,4 +1,4 @@
-.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor lint-standards website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task
+.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor lint-standards website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe
 
 help: ## Show this help message
 	@echo "Standards Repository Management"
@@ -88,7 +88,10 @@ test-bootstrap: ## Run functional tests on bootstrap scripts
 test-gh-task: ## Run comprehensive tests on gh-task CLI
 	@./scripts/test-gh-task.sh
 
-test: test-scripts test-bootstrap test-gh-task ## Run all tests
+test-setup-safe: ## Run functional tests on safe-setup behavior (1.2)
+	@./scripts/test-setup-safe.sh
+
+test: test-scripts test-bootstrap test-gh-task test-setup-safe ## Run all tests
 
 setup-agents: ## Setup AI agent configurations (Copilot, Aider, Codex)
 	@if [ -d ".standards" ]; then \
