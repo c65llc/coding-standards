@@ -20,7 +20,9 @@ make_project() {
     local name="$1"
     local dir="$TMPDIR_BASE/$name"
     mkdir -p "$dir"
-    (cd "$dir" && git init -q && git commit -q --allow-empty -m "init")
+    (cd "$dir" && git init -q \
+        && git -c user.email="test@test.local" -c user.name="Test" \
+               commit -q --allow-empty -m "init")
     echo "$dir"
 }
 
