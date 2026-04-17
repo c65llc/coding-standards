@@ -103,6 +103,34 @@ else
     fail "unused-agent configs installed (cursorrules or aiderrc present)"
 fi
 
+echo -n "Test 10: {{PROJECT_NAME}} resolves from package.json... "
+proj=$(make_project "vars-pkg-json")
+cat > "$proj/package.json" <<'EOF'
+{ "name": "acme-widget", "version": "1.0.0" }
+EOF
+result=$(bash -c "source '$REPO_ROOT/scripts/lib/template-vars.sh' && resolve_project_name '$proj'")
+if [ "$result" = "acme-widget" ]; then pass; else fail "got: $result"; fi
+
+echo -n "Test 11: {{PROJECT_NAME}} falls back to directory name... "
+proj=$(make_project "fallback-dirname")
+result=$(bash -c "source '$REPO_ROOT/scripts/lib/template-vars.sh' && resolve_project_name '$proj'")
+if [ "$result" = "fallback-dirname" ]; then pass; else fail "got: $result"; fi
+
+echo -n "Test 12: assembled CLAUDE.md has no literal {{vars}}... "
+proj=$(make_project "no-literal-vars")
+cat > "$proj/package.json" <<'EOF'
+{ "name": "testproj" }
+EOF
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+if [ -f "$proj/CLAUDE.md" ] && ! grep -q "{{" "$proj/CLAUDE.md"; then
+    pass
+else
+    fail "CLAUDE.md contains literal {{...}} or was not written"
+fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"
