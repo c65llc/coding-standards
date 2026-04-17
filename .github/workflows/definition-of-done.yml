@@ -241,7 +241,7 @@ jobs:
       
     steps:
       - name: Check PR details
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.gh_token || secrets.GITHUB_TOKEN }}
           script: |
@@ -298,7 +298,7 @@ jobs:
       
     steps:
       - name: Generate summary
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.gh_token || secrets.GITHUB_TOKEN }}
           script: |
