@@ -75,6 +75,11 @@ if [ -n "$CHECKSUMS_LIB" ]; then
     source "$CHECKSUMS_LIB"
 fi
 
+if [ -f "$SCRIPT_DIR/lib/assembly.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/lib/assembly.sh"
+fi
+
 # Map detected languages to block filenames (shared with setup.sh)
 map_languages_to_blocks() {
     local BLOCKS=()
@@ -209,51 +214,25 @@ sync_ai_agents() {
         esac
 
         # Checksum-guarded assembly: skip customized files, stage pending updates
-        if [ "$DRY_RUN" = true ]; then
-            if [ -f "$OUTPUT_PATH" ]; then
-                echo "  [dry-run] Would re-assemble: $OUTPUT_PATH"
-            else
-                echo "  [dry-run] Would create: $OUTPUT_PATH"
-            fi
-            continue
-        elif [ -n "$CHECKSUMS_LIB" ]; then
-            local sa_rc=0
-            should_assemble "$OUTPUT_PATH" "$CHECKSUMS_PATH" || sa_rc=$?
+        local rc=0
+        assemble_agent_config_guarded \
+            "$agent" "$ASSEMBLE_SCRIPT" "$BLOCKS_DIR" "$BASE_TEMPLATE" \
+            "$OUTPUT_PATH" "$CHECKSUMS_PATH" "$DRY_RUN" \
+            ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} || rc=$?
 
-            if [ "$sa_rc" -eq 1 ]; then
-                # File has been customized — assemble to temp and stage as pending
-                local TEMP_ASSEMBLED
-                TEMP_ASSEMBLED=$(mktemp)
-                if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$TEMP_ASSEMBLED" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} 2>/dev/null; then
-                    write_pending "$OUTPUT_PATH" "$agent"
-                    cp "$TEMP_ASSEMBLED" "$PROJECT_ROOT/$PENDING_DIR/$(basename "$OUTPUT_PATH")"
-                fi
-                rm -f "$TEMP_ASSEMBLED"
-                echo "⚠️  $agent config customized — update staged to $PENDING_DIR/"
-            elif [ "$sa_rc" -eq 2 ]; then
-                # Manual file without assembly header — already backed up by should_assemble
-                echo "⚠️  $agent config was manually created — skipping, backup in $PENDING_DIR/"
-            else
-                # Safe to assemble
-                echo "📝 Re-assembling $agent config..."
-                if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$OUTPUT_PATH" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"}; then
-                    echo "✅ $agent config synced"
+        case "$rc" in
+            0)
+                echo "✅ $agent config synced"
+                if [ "$DRY_RUN" = false ]; then
                     local new_hash
                     new_hash=$(compute_hash "$OUTPUT_PATH")
                     NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$new_hash" "$NEW_CHECKSUMS")
-                else
-                    echo "⚠️  Failed to sync $agent config (non-fatal, continuing...)"
                 fi
-            fi
-        else
-            # Fallback: no checksum library available — assemble unconditionally
-            echo "📝 Re-assembling $agent config..."
-            if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$OUTPUT_PATH" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"}; then
-                echo "✅ $agent config synced"
-            else
-                echo "⚠️  Failed to sync $agent config (non-fatal, continuing...)"
-            fi
-        fi
+                ;;
+            1) echo "⚠️  $agent config customized — update staged to $PENDING_DIR/" ;;
+            2) echo "⚠️  $agent config was manually created — skipping, backup in $PENDING_DIR/" ;;
+            3) echo "⚠️  Failed to sync $agent config (non-fatal, continuing...)" ;;
+        esac
 
         # Aider special handling: also sync aiderrc.template to .aiderrc
         if [ "$agent" = "aider" ] && [ -f "$AGENTS_DIR/aider/aiderrc.template" ]; then

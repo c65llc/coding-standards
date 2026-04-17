@@ -39,6 +39,20 @@ else
     fail "assemble_agent_config_guarded not defined after sourcing lib/assembly.sh"
 fi
 
+echo -n "Test 3: sync-standards still passes shellcheck/syntax after refactor... "
+if bash -n "$REPO_ROOT/scripts/sync-standards.sh" 2>/dev/null; then
+    pass
+else
+    fail "sync-standards.sh has syntax errors"
+fi
+
+echo -n "Test 4: sync-standards references assembly lib... "
+if grep -q "lib/assembly.sh" "$REPO_ROOT/scripts/sync-standards.sh"; then
+    pass
+else
+    fail "sync-standards.sh does not source lib/assembly.sh"
+fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"
