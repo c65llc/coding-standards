@@ -177,10 +177,25 @@ setup_ai_agents() {
 
     # Determine which agents to set up
     local AGENTS_LIST
-    if [ -n "$AGENTS_OVERRIDE" ]; then
-        AGENTS_LIST=$(echo "$AGENTS_OVERRIDE" | tr ',' ' ')
+    if [ -n "$AGENTS_OVERRIDE" ] && [ "$AGENTS_OVERRIDE" != "detect" ]; then
+        if [ "$AGENTS_OVERRIDE" = "all" ]; then
+            AGENTS_LIST="claude-code cursor copilot gemini codex aider"
+        else
+            AGENTS_LIST=$(echo "$AGENTS_OVERRIDE" | tr ',' ' ')
+        fi
     else
-        AGENTS_LIST="claude-code cursor copilot gemini codex aider"
+        # Default: detect agents already in use in the project.
+        # Use the pre-detection snapshot captured before .cursor/commands was installed.
+        AGENTS_LIST="${PRE_DETECTED_AGENTS:-}"
+        DETECTED_AGENTS="$AGENTS_LIST"
+        if [ -z "$AGENTS_LIST" ]; then
+            echo "ℹ️  No agent configs detected. Pass --agents <list> or --agents all to install."
+            echo "   Detected agents: (none)"
+            echo "   Available: claude-code, cursor, copilot, gemini, codex, aider"
+            AGENTS_LIST=""
+        else
+            echo "ℹ️  Detected agents: $AGENTS_LIST"
+        fi
     fi
 
     local ASSEMBLED_AGENTS_LIST=""
@@ -440,6 +455,16 @@ else
     else
         echo "❌ Error: Could not find standards directory"
         exit 1
+    fi
+
+    # Detect agents early — before .cursor/commands install modifies the filesystem.
+    # This snapshot is used by setup_ai_agents() when --agents detect (default).
+    if [ -z "$AGENTS_OVERRIDE" ] || [ "$AGENTS_OVERRIDE" = "detect" ]; then
+        if [ -f "$SCRIPT_DIR/lib/detect-agents.sh" ]; then
+            # shellcheck disable=SC1091
+            source "$SCRIPT_DIR/lib/detect-agents.sh"
+            PRE_DETECTED_AGENTS=$(detect_installed_agents "$PROJECT_ROOT")
+        fi
     fi
 
     # Copy Cursor custom commands if they exist

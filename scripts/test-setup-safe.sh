@@ -79,6 +79,30 @@ fi
 echo -n "Test 6: setup.sh stages pending AGENTS.md in .standards-pending/... "
 if [ "$pass_pending" = true ]; then pass; else fail "no pending AGENTS.md written"; fi
 
+echo -n "Test 7: detect-agents returns claude-code when CLAUDE.md exists... "
+proj=$(make_project "detect-claude")
+touch "$proj/CLAUDE.md"
+result=$(bash -c "source '$REPO_ROOT/scripts/lib/detect-agents.sh' && detect_installed_agents '$proj'")
+if echo "$result" | grep -qw "claude-code"; then pass; else fail "got: $result"; fi
+
+echo -n "Test 8: detect-agents returns empty for greenfield project... "
+proj=$(make_project "detect-empty")
+result=$(bash -c "source '$REPO_ROOT/scripts/lib/detect-agents.sh' && detect_installed_agents '$proj'")
+if [ -z "$(echo "$result" | tr -d '[:space:]')" ]; then pass; else fail "got: $result"; fi
+
+echo -n "Test 9: setup.sh --agents detect installs only detected agents... "
+proj=$(make_project "detect-only")
+touch "$proj/CLAUDE.md"
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+(cd "$proj" && "$SETUP" --agents detect --languages typescript >/dev/null 2>&1) || true
+if [ ! -f "$proj/.cursorrules" ] && [ ! -f "$proj/.aiderrc" ]; then
+    pass
+else
+    fail "unused-agent configs installed (cursorrules or aiderrc present)"
+fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"
