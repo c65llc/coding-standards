@@ -1,4 +1,4 @@
-.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor lint-standards website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe
+.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor merge-standards lint-standards website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe
 
 help: ## Show this help message
 	@echo "Standards Repository Management"
@@ -115,6 +115,13 @@ add-copilot-instructions: ## Create PR to add GitHub Copilot custom instructions
 
 doctor: ## Run standards health check
 	@./scripts/doctor.sh
+
+merge-standards: ## Print the pending merge plan for manual / CLI review
+	@if [ -f .standards-pending/MERGE_PLAN.md ]; then \
+		cat .standards-pending/MERGE_PLAN.md; \
+	else \
+		echo "No pending standards updates. (.standards-pending/MERGE_PLAN.md not found)"; \
+	fi
 
 lint-standards: ## Run standards compliance linter
 	@./scripts/lint-standards.sh
