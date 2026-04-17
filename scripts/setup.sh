@@ -11,6 +11,7 @@ ROLE="service"
 AGENTS_OVERRIDE=""
 LANGUAGES_OVERRIDE=""
 DRY_RUN=false
+INSTALL_WORKFLOW=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -28,6 +29,10 @@ while [ $# -gt 0 ]; do
             ;;
         --dry-run)
             DRY_RUN=true
+            shift
+            ;;
+        --workflow)
+            INSTALL_WORKFLOW=true
             shift
             ;;
         *)
@@ -527,7 +532,7 @@ HOOK
 fi
 
 # Install standards review workflow template
-if [ -d "$STANDARDS_DIR/.github/actions/standards-review" ]; then
+if [ "$INSTALL_WORKFLOW" = true ] && [ -d "$STANDARDS_DIR/.github/actions/standards-review" ]; then
     if [ ! -f "$PROJECT_ROOT/.github/workflows/standards-review.yml" ]; then
         if [ -f "$STANDARDS_DIR/templates/standards-review.yml.example" ]; then
             dry_run_mkdir "$PROJECT_ROOT/.github/workflows"
@@ -539,6 +544,8 @@ if [ -d "$STANDARDS_DIR/.github/actions/standards-review" ]; then
             fi
         fi
     fi
+elif [ -d "$STANDARDS_DIR/.github/actions/standards-review" ] && [ ! -f "$PROJECT_ROOT/.github/workflows/standards-review.yml" ]; then
+    echo "ℹ️  standards-review workflow available. To install: ./setup.sh --workflow"
 fi
 
 # Set up git aliases (global configuration)

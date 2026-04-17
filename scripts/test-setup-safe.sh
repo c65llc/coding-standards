@@ -131,6 +131,26 @@ else
     fail "CLAUDE.md contains literal {{...}} or was not written"
 fi
 
+echo -n "Test 13: setup.sh does NOT install standards-review.yml by default... "
+proj=$(make_project "no-workflow")
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+ln -s "$REPO_ROOT/.github"   "$proj/.standards/.github"
+ln -s "$REPO_ROOT/templates" "$proj/.standards/templates"
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+if [ ! -f "$proj/.github/workflows/standards-review.yml" ]; then pass; else fail "workflow installed without --workflow"; fi
+
+echo -n "Test 14: setup.sh --workflow DOES install standards-review.yml... "
+proj=$(make_project "with-workflow")
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+ln -s "$REPO_ROOT/.github"   "$proj/.standards/.github"
+ln -s "$REPO_ROOT/templates" "$proj/.standards/templates"
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript --workflow >/dev/null 2>&1) || true
+if [ -f "$proj/.github/workflows/standards-review.yml" ]; then pass; else fail "workflow not installed with --workflow"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"
