@@ -71,6 +71,19 @@ assemble_agent_config_guarded() {
             fi
             ;;
         2)
+            # File exists with no assembly header and no stored hash — user-created file.
+            # should_assemble already wrote a .bak copy; now also assemble the new content
+            # into .standards-pending/ so the operator can review and merge.
+            local tmp
+            tmp=$(mktemp)
+            if "$assemble_script" "$agent" "$blocks_dir" "$base_template" \
+                "$tmp" ${blocks[@]+"${blocks[@]}"} 2>/dev/null; then
+                mkdir -p "$PENDING_DIR"
+                cp "$tmp" "$PENDING_DIR/$(basename "$output_path")"
+                rm -f "$tmp"
+            else
+                rm -f "$tmp"
+            fi
             return 2
             ;;
     esac

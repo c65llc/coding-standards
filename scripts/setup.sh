@@ -83,6 +83,10 @@ if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
     # shellcheck disable=SC1091
     source "$SCRIPT_DIR/lib/checksums.sh"
 fi
+if [ -f "$SCRIPT_DIR/lib/assembly.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/lib/assembly.sh"
+fi
 
 # Map detected languages to block filenames
 map_languages_to_blocks() {
@@ -181,6 +185,7 @@ setup_ai_agents() {
 
     local ASSEMBLED_AGENTS_LIST=""
     local NEW_CHECKSUMS=""
+    PENDING_LIST=""
 
     for agent in $AGENTS_LIST; do
         local BASE_TEMPLATE="$AGENTS_DIR/$agent/base-$agent.md"
@@ -206,25 +211,35 @@ setup_ai_agents() {
         esac
 
         echo "📝 Assembling $agent config..."
-        if [ "$DRY_RUN" = true ]; then
-            local TEMP_ASSEMBLED
-            TEMP_ASSEMBLED=$(mktemp)
-            if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$TEMP_ASSEMBLED" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} 2>/dev/null; then
-                echo "  [dry-run] Would write: $OUTPUT_PATH"
-            fi
-            rm -f "$TEMP_ASSEMBLED"
-            echo "✅ $agent config (dry-run)"
-        elif "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$OUTPUT_PATH" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"}; then
-            echo "✅ $agent config assembled"
-            if type compute_hash &>/dev/null; then
-                local new_hash
-                new_hash=$(compute_hash "$OUTPUT_PATH")
-                NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$new_hash" "$NEW_CHECKSUMS")
-            fi
-        else
-            echo "⚠️  Failed to assemble $agent config (non-fatal, continuing...)"
-            continue
-        fi
+        local CHECKSUMS_PATH="$PROJECT_ROOT/$CHECKSUMS_FILE"
+        local rc=0
+        assemble_agent_config_guarded \
+            "$agent" "$ASSEMBLE_SCRIPT" "$BLOCKS_DIR" "$BASE_TEMPLATE" \
+            "$OUTPUT_PATH" "$CHECKSUMS_PATH" "$DRY_RUN" \
+            ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} || rc=$?
+
+        case "$rc" in
+            0)
+                echo "✅ $agent config assembled"
+                if [ "$DRY_RUN" = false ] && type compute_hash &>/dev/null; then
+                    local new_hash
+                    new_hash=$(compute_hash "$OUTPUT_PATH")
+                    NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$new_hash" "$NEW_CHECKSUMS")
+                fi
+                ;;
+            1)
+                echo "⚠️  $agent config already exists and differs — staged to $PENDING_DIR/"
+                PENDING_LIST="${PENDING_LIST:+$PENDING_LIST }$(basename "$OUTPUT_PATH")"
+                ;;
+            2)
+                echo "⚠️  $agent config was manually created — backup in $PENDING_DIR/"
+                PENDING_LIST="${PENDING_LIST:+$PENDING_LIST }$(basename "$OUTPUT_PATH")"
+                ;;
+            3)
+                echo "⚠️  Failed to assemble $agent config (non-fatal, continuing...)"
+                continue
+                ;;
+        esac
 
         # Aider special handling: also copy aiderrc.template to .aiderrc
         if [ "$agent" = "aider" ] && [ -f "$AGENTS_DIR/aider/aiderrc.template" ]; then

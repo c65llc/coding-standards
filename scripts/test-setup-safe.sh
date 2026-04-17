@@ -53,6 +53,32 @@ else
     fail "sync-standards.sh does not source lib/assembly.sh"
 fi
 
+echo -n "Test 5: setup.sh preserves pre-existing AGENTS.md (no clobber)... "
+proj=$(make_project "preserve-agents")
+cat > "$proj/AGENTS.md" <<'EOF'
+# My Custom AGENTS.md
+This content must survive setup.sh.
+EOF
+# Stage a fake .standards/ checkout pointing at our repo so setup.sh can find templates.
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+ln -s "$REPO_ROOT/.gemini"   "$proj/.standards/.gemini" 2>/dev/null || true
+(cd "$proj" && "$SETUP" --agents codex --languages typescript >/dev/null 2>&1) || true
+if grep -q "must survive setup.sh" "$proj/AGENTS.md" 2>/dev/null; then
+    pass
+else
+    fail "AGENTS.md was clobbered by setup.sh"
+fi
+if [ -f "$proj/.standards-pending/AGENTS.md" ]; then
+    pass_pending=true
+else
+    pass_pending=false
+fi
+
+echo -n "Test 6: setup.sh stages pending AGENTS.md in .standards-pending/... "
+if [ "$pass_pending" = true ]; then pass; else fail "no pending AGENTS.md written"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"
