@@ -32,6 +32,13 @@ echo ""
 echo -n "Test 1: setup.sh exists and is executable... "
 if [ -x "$SETUP" ]; then pass; else fail "$SETUP not executable"; fi
 
+echo -n "Test 2: lib/assembly.sh exposes assemble_agent_config_guarded... "
+if bash -c "source '$REPO_ROOT/scripts/lib/assembly.sh' && type assemble_agent_config_guarded" >/dev/null 2>&1; then
+    pass
+else
+    fail "assemble_agent_config_guarded not defined after sourcing lib/assembly.sh"
+fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"
