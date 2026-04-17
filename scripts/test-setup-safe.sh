@@ -151,6 +151,30 @@ ln -s "$REPO_ROOT/templates" "$proj/.standards/templates"
 (cd "$proj" && "$SETUP" --agents claude-code --languages typescript --workflow >/dev/null 2>&1) || true
 if [ -f "$proj/.github/workflows/standards-review.yml" ]; then pass; else fail "workflow not installed with --workflow"; fi
 
+echo -n "Test 15: MERGE_PLAN.md is written when pending files exist... "
+proj=$(make_project "merge-plan")
+cat > "$proj/AGENTS.md" <<'EOF'
+# Existing AGENTS.md (customized)
+EOF
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+(cd "$proj" && "$SETUP" --agents codex --languages typescript >/dev/null 2>&1) || true
+if [ -f "$proj/.standards-pending/MERGE_PLAN.md" ] \
+   && grep -q "AGENTS.md" "$proj/.standards-pending/MERGE_PLAN.md"; then
+    pass
+else
+    fail "MERGE_PLAN.md missing or does not list AGENTS.md"
+fi
+
+echo -n "Test 16: MERGE_PLAN.md NOT written when no pending files... "
+proj=$(make_project "no-merge-plan")
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+(cd "$proj" && "$SETUP" --agents codex --languages typescript >/dev/null 2>&1) || true
+if [ ! -f "$proj/.standards-pending/MERGE_PLAN.md" ]; then pass; else fail "unexpected MERGE_PLAN.md"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

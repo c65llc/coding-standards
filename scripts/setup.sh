@@ -203,7 +203,7 @@ setup_ai_agents() {
         fi
     fi
 
-    local ASSEMBLED_AGENTS_LIST=""
+    ASSEMBLED_AGENTS_LIST=""
     local NEW_CHECKSUMS=""
     PENDING_LIST=""
 
@@ -498,6 +498,18 @@ else
     echo ""
     echo "🤖 Setting up AI agent configurations..."
     setup_ai_agents "$STANDARDS_DIR" "$SCRIPT_DIR" "$PROJECT_ROOT"
+
+    # Emit MERGE_PLAN.md if setup staged any pending updates.
+    if [ -f "$SCRIPT_DIR/lib/merge-plan.sh" ] && [ -n "${PENDING_LIST:-}" ]; then
+        # shellcheck disable=SC1091
+        source "$SCRIPT_DIR/lib/merge-plan.sh"
+        write_merge_plan "$PROJECT_ROOT" "$PENDING_LIST" "${DETECTED_AGENTS:-}" "${ASSEMBLED_AGENTS_LIST:-}"
+        echo ""
+        echo "📋 Pending updates staged. See .standards-pending/MERGE_PLAN.md or run:"
+        echo "   Claude Code: /merge-standards"
+        echo "   Cursor:      /merge-standards"
+        echo "   CLI:         make merge-standards"
+    fi
 fi
 
 # Set up git hooks
