@@ -2,7 +2,11 @@
 # Assemble a single self-contained agent config from a base template + content blocks.
 #
 # Usage:
-#   assemble-config.sh <agent> <blocks-dir> <base-template> <output-file> [block1 block2 ...]
+#   assemble-config.sh [--project-root <path>] <agent> <blocks-dir> <base-template> <output-file> [block1 block2 ...]
+#
+# Options:
+#   --project-root <path> — Explicit consumer project root for template-var resolution.
+#                           Falls back to git rev-parse on output-file's dir, then pwd.
 #
 # Arguments:
 #   agent         — Agent name (claude-code, cursor, copilot, gemini, aider, codex)
@@ -12,6 +16,23 @@
 #   block1...     — Additional block filenames (lang-python.md, role-service.md, etc.)
 
 set -e
+
+# ---------------------------------------------------------------------------
+# Option parsing (before positional args)
+# ---------------------------------------------------------------------------
+
+PROJECT_ROOT_OVERRIDE=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --project-root)
+            PROJECT_ROOT_OVERRIDE="$2"
+            shift 2
+            ;;
+        --) shift; break ;;
+        -*) break ;;
+        *)  break ;;
+    esac
+done
 
 # ---------------------------------------------------------------------------
 # Argument validation
@@ -193,5 +214,20 @@ trap 'rm -f "$TMPFILE"' EXIT
 # Atomic move to final destination
 mv "$TMPFILE" "$OUTPUT_FILE"
 trap - EXIT
+
+# Resolve template variables ({{PROJECT_NAME}} etc.) in place.
+_TV_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/template-vars.sh"
+if [ -f "$_TV_LIB" ]; then
+    # shellcheck disable=SC1090,SC1091
+    source "$_TV_LIB"
+    # Prefer explicit override (passed by callers writing to temp files in pending/),
+    # then try git rev-parse on the output file's directory, then fall back to pwd.
+    if [ -n "$PROJECT_ROOT_OVERRIDE" ]; then
+        _TV_ROOT="$PROJECT_ROOT_OVERRIDE"
+    else
+        _TV_ROOT="$(git -C "$(dirname "$OUTPUT_FILE")" rev-parse --show-toplevel 2>/dev/null || pwd)"
+    fi
+    resolve_template_vars "$OUTPUT_FILE" "$_TV_ROOT"
+fi
 
 echo "[$AGENT] Assembled config written to: $OUTPUT_FILE"
