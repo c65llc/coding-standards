@@ -8,7 +8,8 @@
 #   write_merge_plan <project_root> <pending_list> <detected_agents> <requested_agents>
 #
 # pending_list: space-separated basenames staged in .standards-pending/
-# detected_agents / requested_agents: space-separated agent names
+# detected_agents: space-separated agent names (as emitted by detect_installed_agents)
+# requested_agents: space- or comma-separated (ASSEMBLED_AGENTS_LIST uses commas)
 write_merge_plan() {
     local root="$1"
     local pending_list="$2"
