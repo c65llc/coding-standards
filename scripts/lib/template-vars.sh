@@ -30,6 +30,12 @@ resolve_project_name() {
     printf '%s' "$name"
 }
 
+# Escape a string for safe use as a sed replacement value.
+# Handles \, &, and the | delimiter used in resolve_template_vars.
+_escape_sed_replacement() {
+    printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'
+}
+
 # Usage: resolve_template_vars <file> <project_root>
 # Rewrites the file in place.
 resolve_template_vars() {
@@ -39,12 +45,14 @@ resolve_template_vars() {
 
     local project_name
     project_name=$(resolve_project_name "$root")
+    local project_name_escaped
+    project_name_escaped=$(_escape_sed_replacement "$project_name")
 
     # POSIX-safe in-place edit (macOS/BSD compatible)
     local tmp
     tmp=$(mktemp)
     sed \
-        -e "s|{{PROJECT_NAME}}|${project_name}|g" \
+        -e "s|{{PROJECT_NAME}}|${project_name_escaped}|g" \
         -e "s|{{PROJECT_OVERVIEW}}|<!-- TODO(standards): one-paragraph project overview goes here. Run /merge-standards to fill. -->|g" \
         -e "s|{{KEY_COMMANDS}}|<!-- TODO(standards): list key build/test/run commands. Run /merge-standards to fill. -->|g" \
         "$file" > "$tmp" && mv "$tmp" "$file"

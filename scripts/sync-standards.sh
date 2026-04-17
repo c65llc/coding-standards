@@ -75,10 +75,12 @@ if [ -n "$CHECKSUMS_LIB" ]; then
     source "$CHECKSUMS_LIB"
 fi
 
-if [ -f "$SCRIPT_DIR/lib/assembly.sh" ]; then
-    # shellcheck disable=SC1091
-    source "$SCRIPT_DIR/lib/assembly.sh"
+if [ ! -f "$SCRIPT_DIR/lib/assembly.sh" ]; then
+    echo "Error: required library 'assembly.sh' not found at $SCRIPT_DIR/lib/assembly.sh" >&2
+    exit 1
 fi
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/assembly.sh"
 
 # Map detected languages to block filenames (shared with setup.sh)
 map_languages_to_blocks() {

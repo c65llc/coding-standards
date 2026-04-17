@@ -194,6 +194,43 @@ else
     fail "multi-agent list not rendered as separate bullets"
 fi
 
+echo -n "Test 18: {{PROJECT_NAME}} resolves safely for scoped npm name... "
+proj=$(make_project "scoped-name")
+cat > "$proj/package.json" <<'EOF'
+{ "name": "@acme/widget" }
+EOF
+result=$(bash -c "source '$REPO_ROOT/scripts/lib/template-vars.sh' && resolve_project_name '$proj'")
+if [ "$result" = "@acme/widget" ]; then pass; else fail "got: $result"; fi
+
+echo -n "Test 19: template-vars handles & in project name without sed breakage... "
+proj=$(make_project "amp-name")
+# Simulate a dirname-fallback case by removing package.json and renaming dir
+mv "$proj" "$TMPDIR_BASE/a&b"
+proj="$TMPDIR_BASE/a&b"
+tmpfile=$(mktemp)
+printf '# {{PROJECT_NAME}} — Guide\n' > "$tmpfile"
+bash -c "source '$REPO_ROOT/scripts/lib/template-vars.sh' && resolve_template_vars '$tmpfile' '$proj'"
+if grep -q "^# a&b — Guide$" "$tmpfile"; then pass; else fail "got: $(cat "$tmpfile")"; fi
+rm -f "$tmpfile"
+
+echo -n "Test 20: template vars resolve from project root even when assembling to pending/... "
+proj=$(make_project "pending-vars")
+cat > "$proj/package.json" <<'EOF'
+{ "name": "pending-proj" }
+EOF
+cat > "$proj/CLAUDE.md" <<'EOF'
+# Existing CLAUDE.md
+EOF
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+if [ -f "$proj/.standards-pending/CLAUDE.md" ] && grep -q "^# pending-proj — Claude Code Guide$" "$proj/.standards-pending/CLAUDE.md" && ! grep -q "{{" "$proj/.standards-pending/CLAUDE.md"; then
+    pass
+else
+    fail "pending CLAUDE.md did not resolve {{PROJECT_NAME}} from consumer project"
+fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

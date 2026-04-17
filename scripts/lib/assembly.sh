@@ -47,9 +47,15 @@ assemble_agent_config_guarded() {
     local sa_rc=0
     should_assemble "$output_path" "$checksums_path" || sa_rc=$?
 
+    # Derive the pending directory relative to the consumer project root (not cwd).
+    local _project_root
+    _project_root="$(dirname "$checksums_path")"
+    local _pending_dir="$_project_root/$PENDING_DIR"
+
     case "$sa_rc" in
         0)
-            if "$assemble_script" "$agent" "$blocks_dir" "$base_template" \
+            if "$assemble_script" --project-root "$_project_root" \
+                "$agent" "$blocks_dir" "$base_template" \
                 "$output_path" ${blocks[@]+"${blocks[@]}"}; then
                 return 0
             else
@@ -59,10 +65,11 @@ assemble_agent_config_guarded() {
         1)
             local tmp
             tmp=$(mktemp)
-            if "$assemble_script" "$agent" "$blocks_dir" "$base_template" \
+            if "$assemble_script" --project-root "$_project_root" \
+                "$agent" "$blocks_dir" "$base_template" \
                 "$tmp" ${blocks[@]+"${blocks[@]}"} 2>/dev/null; then
-                write_pending "$output_path" "$agent"
-                cp "$tmp" "$PENDING_DIR/$(basename "$output_path")"
+                mkdir -p "$_pending_dir"
+                cp "$tmp" "$_pending_dir/$(basename "$output_path")"
                 rm -f "$tmp"
                 return 1
             else
@@ -76,15 +83,17 @@ assemble_agent_config_guarded() {
             # into .standards-pending/ so the operator can review and merge.
             local tmp
             tmp=$(mktemp)
-            if "$assemble_script" "$agent" "$blocks_dir" "$base_template" \
+            if "$assemble_script" --project-root "$_project_root" \
+                "$agent" "$blocks_dir" "$base_template" \
                 "$tmp" ${blocks[@]+"${blocks[@]}"} 2>/dev/null; then
-                mkdir -p "$PENDING_DIR"
-                cp "$tmp" "$PENDING_DIR/$(basename "$output_path")"
+                mkdir -p "$_pending_dir"
+                cp "$tmp" "$_pending_dir/$(basename "$output_path")"
                 rm -f "$tmp"
+                return 2
             else
                 rm -f "$tmp"
+                return 3
             fi
-            return 2
             ;;
     esac
 }
