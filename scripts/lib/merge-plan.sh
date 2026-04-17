@@ -51,7 +51,7 @@ write_merge_plan() {
         echo ""
         echo "## Agents written this run"
         echo ""
-        for a in $requested; do echo "- $a"; done
+        for a in $(echo "$requested" | tr ',' ' '); do echo "- $a"; done
         echo ""
         echo "## Open questions for your LLM"
         echo ""

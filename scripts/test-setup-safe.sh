@@ -175,6 +175,25 @@ ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
 (cd "$proj" && "$SETUP" --agents codex --languages typescript >/dev/null 2>&1) || true
 if [ ! -f "$proj/.standards-pending/MERGE_PLAN.md" ]; then pass; else fail "unexpected MERGE_PLAN.md"; fi
 
+echo -n "Test 17: MERGE_PLAN.md renders comma-separated agents as separate bullets... "
+proj=$(make_project "multi-agent")
+cat > "$proj/AGENTS.md" <<'EOF'
+# Existing AGENTS.md (customized)
+EOF
+cat > "$proj/CLAUDE.md" <<'EOF'
+# Existing CLAUDE.md (customized)
+EOF
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+(cd "$proj" && "$SETUP" --agents claude-code,codex --languages typescript >/dev/null 2>&1) || true
+plan="$proj/.standards-pending/MERGE_PLAN.md"
+if [ -f "$plan" ] && grep -q "^- claude-code$" "$plan" && grep -q "^- codex$" "$plan" && ! grep -q "claude-code,codex" "$plan"; then
+    pass
+else
+    fail "multi-agent list not rendered as separate bullets"
+fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"
