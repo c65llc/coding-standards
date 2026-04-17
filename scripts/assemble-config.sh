@@ -197,7 +197,7 @@ trap - EXIT
 # Resolve template variables ({{PROJECT_NAME}} etc.) in place.
 _TV_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/template-vars.sh"
 if [ -f "$_TV_LIB" ]; then
-    # shellcheck disable=SC1091
+    # shellcheck disable=SC1090,SC1091
     source "$_TV_LIB"
     # Assembler is sometimes invoked from inside a project; prefer that root.
     _TV_ROOT="$(git -C "$(dirname "$OUTPUT_FILE")" rev-parse --show-toplevel 2>/dev/null || pwd)"
