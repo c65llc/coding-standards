@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `lang-04_swift_standards.md § 14`: Build & Project Generation (Apple platforms) — XcodeGen/Tuist as project source of truth, code-signing rules (set `DEVELOPMENT_TEAM`, never disable signing at `base`), CI override pattern, and a diagnostic checklist for "code is unsigned" device-install failures.
+
 ## [1.1.0] - 2026-04-15
 
 ### Added
