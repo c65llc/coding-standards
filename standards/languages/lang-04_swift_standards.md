@@ -257,3 +257,23 @@ When a build looks correctly configured in Xcode but the device rejects it:
 2. **Confirm `xcodegen generate` ran since the last spec change.** UI edits without a corresponding `project.yml` change get overwritten on regen.
 3. **Check `base` vs. per-config settings.** A `NO` at base overrides any device-specific config.
 4. **Run `codesign -dvv <path-to-built-.app>` on the build product.** "code object is not signed at all" confirms the binary is unsigned regardless of UI state.
+
+### 14.5 Re-enabling signing surfaces latent target-config gaps
+
+Disabling signing at `base` doesn't only break device installs — it also masks per-target configuration that the build system would otherwise reject. Common gap: a unit-test or extension target with no `Info.plist` and no `GENERATE_INFOPLIST_FILE: YES`. The signing pass needs a plist to embed the signature; with signing turned off it never runs the check, and the build silently succeeds. The moment signing is re-enabled, xcodebuild fails with:
+
+> Cannot code sign because the target does not have an Info.plist file and one is not being generated automatically.
+
+**Implication:** when re-enabling signing on an existing project, run `xcodebuild test` (not just `xcodebuild build`) against every scheme — every target that participates in the build must independently satisfy signing prerequisites. For test bundles and other auxiliary targets that don't need a hand-authored plist, set `GENERATE_INFOPLIST_FILE: YES` on the target's settings:
+
+```yaml
+targets:
+  MyAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES   # required once signing is enabled
+        BUNDLE_LOADER: $(TEST_HOST)
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/MyApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MyApp
+```
