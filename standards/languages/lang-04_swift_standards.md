@@ -192,3 +192,88 @@ func createUser(email: String, name: String) throws -> User {
 - **Dependency scanning:** Enable GitHub Dependabot for SPM dependencies.
 - **Banned functions:** See [sec-01_security_standards.md](../security/sec-01_security_standards.md) for the complete banned-functions list with language-specific examples.
 - **Secure random:** Use `SystemRandomNumberGenerator` or `SecRandomCopyBytes` for security contexts.
+
+## 14. Build & Project Generation (Apple platforms)
+
+For app targets (iOS/macOS/tvOS/watchOS/visionOS), the `.xcodeproj` is a build artifact, not a source file. Treat a declarative project spec as the source of truth, and set code-signing build settings deliberately so device builds work the first time.
+
+### 14.1 Project file generation
+
+* **Tool:** Use [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`project.yml`) or [Tuist](https://github.com/tuist/tuist) (`Project.swift`) for any project with more than one target. Hand-maintained `.xcodeproj` files cause merge conflicts and silent setting drift.
+* **Source of truth:** `project.yml` (or `Project.swift`) is checked in; the generated `.xcodeproj` is **gitignored**. Never edit build settings in the Xcode UI — regeneration overwrites them.
+* **Regenerate before build:** CI and local `make build` targets must run `xcodegen generate` (or `tuist generate`) before invoking `xcodebuild`, so the project file always matches the spec.
+
+### 14.2 Code signing — the rules
+
+These settings are easy to get wrong, and the failure modes are confusing (UI looks correct, device install still fails). Follow these rules:
+
+1. **Set `DEVELOPMENT_TEAM` to the 10-character Apple Developer Team ID.** Team IDs are public identifiers (visible in App Store listings); safe to commit. With `CODE_SIGN_STYLE: Automatic` (the recommended default), an empty `DEVELOPMENT_TEAM` prevents Xcode from resolving a signing identity and the build product ends up unsigned. Manual signing (explicit `PROVISIONING_PROFILE_SPECIFIER` / `CODE_SIGN_IDENTITY`) can still produce a signed device build without `DEVELOPMENT_TEAM`, but if you're using Automatic signing, set it.
+2. **Use `CODE_SIGN_STYLE: Automatic`** for app targets unless you have a specific reason to manage profiles manually (e.g., enterprise distribution). Automatic signing handles simulator and device correctly with a valid team.
+3. **Never set `CODE_SIGNING_ALLOWED: NO` or `CODE_SIGNING_REQUIRED: NO` at the `base` settings level.** Base settings apply to **every** configuration and **every** destination — including device builds, where they produce an unsigned binary that iOS rejects with a "code is unsigned" error at install time. The Xcode UI will still show "Automatic" signing while the build silently skips it.
+4. **If a CI lane genuinely needs unsigned simulator builds** (e.g., a hosted runner without keychain access), scope the override to that configuration only — never the base — and document why:
+
+   ```yaml
+   # project.yml — XcodeGen example
+   configs:
+     Debug: debug
+     Release: release
+     DebugCI: debug      # CI-only config, simulator builds without keychain
+   settings:
+     base:
+       DEVELOPMENT_TEAM: ABCDE12345
+       CODE_SIGN_STYLE: Automatic
+     configs:
+       DebugCI:
+         CODE_SIGNING_ALLOWED: NO
+         CODE_SIGNING_REQUIRED: NO
+   ```
+
+   Prefer the simpler path: provision the CI runner with a signing identity (e.g., via `apple-actions/import-codesign-certs`) and keep one signing posture across all configurations.
+
+### 14.3 Minimal correct app-target spec
+
+```yaml
+# project.yml
+settings:
+  base:
+    SWIFT_VERSION: "<latest stable>"   # match the toolchain (Xcode → Swift version)
+    DEVELOPMENT_TEAM: ABCDE12345        # 10-char Apple Developer Team ID
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  MyApp:
+    type: application
+    platform: iOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.myapp
+```
+
+### 14.4 Diagnostic checklist for "code is unsigned" / device-install failures
+
+When a build looks correctly configured in Xcode but the device rejects it:
+
+1. **Inspect the generated `.xcodeproj`, not the UI.** Run `find . -name project.pbxproj -path '*.xcodeproj/*' -exec grep -HE 'DEVELOPMENT_TEAM|CODE_SIGN' {} +` from the repo root — verify `DEVELOPMENT_TEAM` is set and no `CODE_SIGNING_ALLOWED = NO` lines appear. (Avoid relying on a bare `*.xcodeproj/project.pbxproj` glob: it fails silently on nested layouts and on shells that error when the glob has zero matches.)
+2. **Confirm `xcodegen generate` ran since the last spec change.** UI edits without a corresponding `project.yml` change get overwritten on regen.
+3. **Check `base` vs. per-config settings.** A `NO` at base overrides any device-specific config.
+4. **Run `codesign -dvv <path-to-built-.app>` on the build product.** "code object is not signed at all" confirms the binary is unsigned regardless of UI state.
+
+### 14.5 Re-enabling signing surfaces latent target-config gaps
+
+Disabling signing at `base` doesn't only break device installs — it also masks per-target configuration that the build system would otherwise reject. Common gap: a unit-test or extension target with no `Info.plist` and no `GENERATE_INFOPLIST_FILE: YES`. The signing pass needs a plist to embed the signature; with signing turned off it never runs the check, and the build silently succeeds. The moment signing is re-enabled, xcodebuild fails with:
+
+> Cannot code sign because the target does not have an Info.plist file and one is not being generated automatically.
+
+**Implication:** when re-enabling signing on an existing project, run `xcodebuild test` (not just `xcodebuild build`) against every scheme — every target that participates in the build must independently satisfy signing prerequisites. For test bundles and other auxiliary targets that don't need a hand-authored plist, set `GENERATE_INFOPLIST_FILE: YES` on the target's settings:
+
+```yaml
+targets:
+  MyAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES   # required once signing is enabled
+        BUNDLE_LOADER: $(TEST_HOST)
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/MyApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MyApp
+```
