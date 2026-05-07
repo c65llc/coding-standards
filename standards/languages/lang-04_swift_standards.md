@@ -199,7 +199,7 @@ For app targets (iOS/macOS/tvOS/watchOS/visionOS), the `.xcodeproj` is a build a
 
 ### 14.1 Project file generation
 
-* **Tool:** Use [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`project.yml`) or Tuist for any project with more than one target. Hand-maintained `.xcodeproj` files cause merge conflicts and silent setting drift.
+* **Tool:** Use [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`project.yml`) or [Tuist](https://github.com/tuist/tuist) (`Project.swift`) for any project with more than one target. Hand-maintained `.xcodeproj` files cause merge conflicts and silent setting drift.
 * **Source of truth:** `project.yml` (or `Project.swift`) is checked in; the generated `.xcodeproj` is **gitignored**. Never edit build settings in the Xcode UI — regeneration overwrites them.
 * **Regenerate before build:** CI and local `make build` targets must run `xcodegen generate` (or `tuist generate`) before invoking `xcodebuild`, so the project file always matches the spec.
 
@@ -207,7 +207,7 @@ For app targets (iOS/macOS/tvOS/watchOS/visionOS), the `.xcodeproj` is a build a
 
 These settings are easy to get wrong, and the failure modes are confusing (UI looks correct, device install still fails). Follow these rules:
 
-1. **Set `DEVELOPMENT_TEAM` to the 10-character Apple Developer Team ID.** Team IDs are public identifiers (visible in App Store listings); safe to commit. Empty `DEVELOPMENT_TEAM` makes device builds unsigned.
+1. **Set `DEVELOPMENT_TEAM` to the 10-character Apple Developer Team ID.** Team IDs are public identifiers (visible in App Store listings); safe to commit. With `CODE_SIGN_STYLE: Automatic` (the recommended default), an empty `DEVELOPMENT_TEAM` prevents Xcode from resolving a signing identity and the build product ends up unsigned. Manual signing (explicit `PROVISIONING_PROFILE_SPECIFIER` / `CODE_SIGN_IDENTITY`) can still produce a signed device build without `DEVELOPMENT_TEAM`, but if you're using Automatic signing, set it.
 2. **Use `CODE_SIGN_STYLE: Automatic`** for app targets unless you have a specific reason to manage profiles manually (e.g., enterprise distribution). Automatic signing handles simulator and device correctly with a valid team.
 3. **Never set `CODE_SIGNING_ALLOWED: NO` or `CODE_SIGNING_REQUIRED: NO` at the `base` settings level.** Base settings apply to **every** configuration and **every** destination — including device builds, where they produce an unsigned binary that iOS rejects with a "code is unsigned" error at install time. The Xcode UI will still show "Automatic" signing while the build silently skips it.
 4. **If a CI lane genuinely needs unsigned simulator builds** (e.g., a hosted runner without keychain access), scope the override to that configuration only — never the base — and document why:
@@ -236,7 +236,7 @@ These settings are easy to get wrong, and the failure modes are confusing (UI lo
 # project.yml
 settings:
   base:
-    SWIFT_VERSION: "5.9"
+    SWIFT_VERSION: "<latest stable>"   # match the toolchain (Xcode → Swift version)
     DEVELOPMENT_TEAM: ABCDE12345        # 10-char Apple Developer Team ID
     CODE_SIGN_STYLE: Automatic
     ENABLE_USER_SCRIPT_SANDBOXING: YES
@@ -253,7 +253,7 @@ targets:
 
 When a build looks correctly configured in Xcode but the device rejects it:
 
-1. **Inspect the generated `.xcodeproj`, not the UI.** `grep -E "DEVELOPMENT_TEAM|CODE_SIGN" *.xcodeproj/project.pbxproj | sort -u` — verify `DEVELOPMENT_TEAM` is set and no `CODE_SIGNING_ALLOWED = NO` lines appear.
+1. **Inspect the generated `.xcodeproj`, not the UI.** Run `find . -name project.pbxproj -path '*.xcodeproj/*' -exec grep -HE 'DEVELOPMENT_TEAM|CODE_SIGN' {} +` from the repo root — verify `DEVELOPMENT_TEAM` is set and no `CODE_SIGNING_ALLOWED = NO` lines appear. (Avoid relying on a bare `*.xcodeproj/project.pbxproj` glob: it fails silently on nested layouts and on shells that error when the glob has zero matches.)
 2. **Confirm `xcodegen generate` ran since the last spec change.** UI edits without a corresponding `project.yml` change get overwritten on regen.
 3. **Check `base` vs. per-config settings.** A `NO` at base overrides any device-specific config.
 4. **Run `codesign -dvv <path-to-built-.app>` on the build product.** "code object is not signed at all" confirms the binary is unsigned regardless of UI state.
