@@ -8,7 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - `lang-04_swift_standards.md § 14`: Build & Project Generation (Apple platforms) — XcodeGen/Tuist as project source of truth, code-signing rules (set `DEVELOPMENT_TEAM`, never disable signing at `base`), CI override pattern, a diagnostic checklist for "code is unsigned" device-install failures, and a note (§14.5) on latent target-config gaps that surface when re-enabling signing (e.g. test targets requiring `GENERATE_INFOPLIST_FILE: YES`).
+
+## [1.2.0] - 2026-04-16
+
+### Changed — Safe setup (breaking for setup.sh defaults)
+
+- **`setup.sh` no longer clobbers existing agent configs.** Every assembly now routes through `should_assemble()`; customized files are staged as `.standards-pending/<file>` instead of overwritten. Applies to `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `.aider-instructions.md`.
+- **`--agents` defaults to `detect`** (was: install all six). Setup now probes for existing config files (`CLAUDE.md`, `.cursorrules`, etc.) and installs only for agents already in use. Escape hatches: `--agents all`, `--agents claude-code,cursor`, or explicit comma-separated list.
+- **`--workflow` gates the `standards-review.yml` install.** Previously copied unconditionally when missing; now opt-in. When skipped, setup prints the hint: `To install: ./setup.sh --workflow`.
+- **Template variables in `CLAUDE.md` are now resolved.** `{{PROJECT_NAME}}` is filled from `package.json` / `Cargo.toml` / `pyproject.toml` / directory name. `{{PROJECT_OVERVIEW}}` and `{{KEY_COMMANDS}}` are rewritten to `<!-- TODO(standards): -->` markers the merge skill fills in — never shipped as literal `{{...}}`.
+
+### Added
+
+- **`scripts/lib/assembly.sh`** — shared `assemble_agent_config_guarded()` used by both `setup.sh` and `sync-standards.sh`. First-run and re-sync now behave identically.
+- **`scripts/lib/detect-agents.sh`** — `detect_installed_agents()` probe used by `--agents detect`.
+- **`scripts/lib/template-vars.sh`** — `resolve_project_name`, `resolve_template_vars`.
+- **`scripts/lib/merge-plan.sh`** — `write_merge_plan()` emits `.standards-pending/MERGE_PLAN.md`.
+- **`.cursor/commands/merge-standards.md`** — Cursor-facing twin of the Claude Code skill.
+- **`make merge-standards`** — prints `MERGE_PLAN.md` for manual or agent-agnostic workflows.
+- **`scripts/test-setup-safe.sh`** — 17 functional tests for pending-mode writes, agent detection, template-var resolution, workflow gate, MERGE_PLAN emission. Wired into `make test`.
+
+### Fixed
+
+- Re-running `setup.sh` on a project that already has customized `AGENTS.md` / `CLAUDE.md` no longer discards the user's work.
+- Assembled `CLAUDE.md` never ships with literal `{{PROJECT_NAME}}`, `{{PROJECT_OVERVIEW}}`, or `{{KEY_COMMANDS}}` tokens.
 
 ## [1.1.0] - 2026-04-15
 

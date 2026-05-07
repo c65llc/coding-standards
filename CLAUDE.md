@@ -73,3 +73,4 @@ All bash. Key scripts:
 - **Agent config consistency**: When modifying shared standards in `core-standards.md`, check that agent configs (`.cursorrules`, copilot-instructions.md, `.aiderrc`, `.codexrc`, `GEMINI.md`) stay aligned.
 - **Shell scripts**: Must pass `bash -n` syntax validation.
 - **Safety**: Never modify `.standards_tmp/`, `.secret`, or `.tfstate` files. Always preserve standards file numbering. Update `.cursorrules` when adding new standards.
+- **Safe setup (1.2+)**: `setup.sh` never clobbers existing agent configs. Customized files are staged to `.standards-pending/` with a `MERGE_PLAN.md` describing how to reconcile them. The merge skill (`/merge-standards` in Claude Code / Cursor, `make merge-standards` via CLI) drives the agent-agnostic handoff.

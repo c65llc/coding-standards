@@ -11,6 +11,14 @@ Merge pending standards updates into agent configs that have been customized.
 
 Run this after `sync-standards` reports that agent configs have been customized and pending updates exist in `.standards-pending/`.
 
+## Setup-time behavior
+
+When invoked immediately after `setup.sh`, `.standards-pending/MERGE_PLAN.md` exists and lists the files to reconcile. Read it first; it names each pending file, detected vs requested agents, and any `<!-- TODO(standards): -->` markers that need filling.
+
+For **empty targets** (the project had no existing config and `.standards-pending/` still contains the assembled version because `--agents detect` found it), the merge is a rename: move the pending file into place, update `.standards-checksums`, and delete the pending copy.
+
+For **`<!-- TODO(standards): -->` markers** in CLAUDE.md and friends: ask the user for a one-paragraph project overview and a list of key commands (or infer them from `package.json` scripts / Makefile targets) and replace the markers in place before completing the merge.
+
 ## Workflow
 
 1. List files in `.standards-pending/`. If the directory is empty or doesn't exist, report: "All agent configs are up to date — no pending standards updates."

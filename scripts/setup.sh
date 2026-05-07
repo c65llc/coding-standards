@@ -11,6 +11,7 @@ ROLE="service"
 AGENTS_OVERRIDE=""
 LANGUAGES_OVERRIDE=""
 DRY_RUN=false
+INSTALL_WORKFLOW=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -28,6 +29,10 @@ while [ $# -gt 0 ]; do
             ;;
         --dry-run)
             DRY_RUN=true
+            shift
+            ;;
+        --workflow)
+            INSTALL_WORKFLOW=true
             shift
             ;;
         *)
@@ -83,6 +88,12 @@ if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
     # shellcheck disable=SC1091
     source "$SCRIPT_DIR/lib/checksums.sh"
 fi
+if [ ! -f "$SCRIPT_DIR/lib/assembly.sh" ]; then
+    echo "Error: required library 'assembly.sh' not found at $SCRIPT_DIR/lib/assembly.sh" >&2
+    exit 1
+fi
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/assembly.sh"
 
 # Map detected languages to block filenames
 map_languages_to_blocks() {
@@ -173,14 +184,30 @@ setup_ai_agents() {
 
     # Determine which agents to set up
     local AGENTS_LIST
-    if [ -n "$AGENTS_OVERRIDE" ]; then
-        AGENTS_LIST=$(echo "$AGENTS_OVERRIDE" | tr ',' ' ')
+    if [ -n "$AGENTS_OVERRIDE" ] && [ "$AGENTS_OVERRIDE" != "detect" ]; then
+        if [ "$AGENTS_OVERRIDE" = "all" ]; then
+            AGENTS_LIST="claude-code cursor copilot gemini codex aider"
+        else
+            AGENTS_LIST=$(echo "$AGENTS_OVERRIDE" | tr ',' ' ')
+        fi
     else
-        AGENTS_LIST="claude-code cursor copilot gemini codex aider"
+        # Default: detect agents already in use in the project.
+        # Use the pre-detection snapshot captured before .cursor/commands was installed.
+        AGENTS_LIST="${PRE_DETECTED_AGENTS:-}"
+        DETECTED_AGENTS="$AGENTS_LIST"
+        if [ -z "$AGENTS_LIST" ]; then
+            echo "ℹ️  No agent configs detected. Pass --agents <list> or --agents all to install."
+            echo "   Detected agents: (none)"
+            echo "   Available: claude-code, cursor, copilot, gemini, codex, aider"
+            AGENTS_LIST=""
+        else
+            echo "ℹ️  Detected agents: $AGENTS_LIST"
+        fi
     fi
 
-    local ASSEMBLED_AGENTS_LIST=""
+    ASSEMBLED_AGENTS_LIST=""
     local NEW_CHECKSUMS=""
+    PENDING_LIST=""
 
     for agent in $AGENTS_LIST; do
         local BASE_TEMPLATE="$AGENTS_DIR/$agent/base-$agent.md"
@@ -206,25 +233,35 @@ setup_ai_agents() {
         esac
 
         echo "📝 Assembling $agent config..."
-        if [ "$DRY_RUN" = true ]; then
-            local TEMP_ASSEMBLED
-            TEMP_ASSEMBLED=$(mktemp)
-            if "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$TEMP_ASSEMBLED" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} 2>/dev/null; then
-                echo "  [dry-run] Would write: $OUTPUT_PATH"
-            fi
-            rm -f "$TEMP_ASSEMBLED"
-            echo "✅ $agent config (dry-run)"
-        elif "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$OUTPUT_PATH" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"}; then
-            echo "✅ $agent config assembled"
-            if type compute_hash &>/dev/null; then
-                local new_hash
-                new_hash=$(compute_hash "$OUTPUT_PATH")
-                NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$new_hash" "$NEW_CHECKSUMS")
-            fi
-        else
-            echo "⚠️  Failed to assemble $agent config (non-fatal, continuing...)"
-            continue
-        fi
+        local CHECKSUMS_PATH="$PROJECT_ROOT/$CHECKSUMS_FILE"
+        local rc=0
+        assemble_agent_config_guarded \
+            "$agent" "$ASSEMBLE_SCRIPT" "$BLOCKS_DIR" "$BASE_TEMPLATE" \
+            "$OUTPUT_PATH" "$CHECKSUMS_PATH" "$DRY_RUN" \
+            ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} || rc=$?
+
+        case "$rc" in
+            0)
+                echo "✅ $agent config assembled"
+                if [ "$DRY_RUN" = false ] && type compute_hash &>/dev/null; then
+                    local new_hash
+                    new_hash=$(compute_hash "$OUTPUT_PATH")
+                    NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$new_hash" "$NEW_CHECKSUMS")
+                fi
+                ;;
+            1)
+                echo "⚠️  $agent config already exists and differs — staged to $PENDING_DIR/"
+                PENDING_LIST="${PENDING_LIST:+$PENDING_LIST }$(basename "$OUTPUT_PATH")"
+                ;;
+            2)
+                echo "⚠️  $agent config was manually created — backup in $PENDING_DIR/"
+                PENDING_LIST="${PENDING_LIST:+$PENDING_LIST }$(basename "$OUTPUT_PATH")"
+                ;;
+            3)
+                echo "⚠️  Failed to assemble $agent config (non-fatal, continuing...)"
+                continue
+                ;;
+        esac
 
         # Aider special handling: also copy aiderrc.template to .aiderrc
         if [ "$agent" = "aider" ] && [ -f "$AGENTS_DIR/aider/aiderrc.template" ]; then
@@ -427,6 +464,16 @@ else
         exit 1
     fi
 
+    # Detect agents early — before .cursor/commands install modifies the filesystem.
+    # This snapshot is used by setup_ai_agents() when --agents detect (default).
+    if [ -z "$AGENTS_OVERRIDE" ] || [ "$AGENTS_OVERRIDE" = "detect" ]; then
+        if [ -f "$SCRIPT_DIR/lib/detect-agents.sh" ]; then
+            # shellcheck disable=SC1091
+            source "$SCRIPT_DIR/lib/detect-agents.sh"
+            PRE_DETECTED_AGENTS=$(detect_installed_agents "$PROJECT_ROOT")
+        fi
+    fi
+
     # Copy Cursor custom commands if they exist
     if [ -d "$STANDARDS_DIR/.cursor/commands" ]; then
         CURSOR_COMMANDS_SOURCE="$STANDARDS_DIR/.cursor/commands"
@@ -453,6 +500,18 @@ else
     echo ""
     echo "🤖 Setting up AI agent configurations..."
     setup_ai_agents "$STANDARDS_DIR" "$SCRIPT_DIR" "$PROJECT_ROOT"
+
+    # Emit MERGE_PLAN.md if setup staged any pending updates.
+    if [ -f "$SCRIPT_DIR/lib/merge-plan.sh" ] && [ -n "${PENDING_LIST:-}" ]; then
+        # shellcheck disable=SC1091
+        source "$SCRIPT_DIR/lib/merge-plan.sh"
+        write_merge_plan "$PROJECT_ROOT" "$PENDING_LIST" "${DETECTED_AGENTS:-}" "${ASSEMBLED_AGENTS_LIST:-}"
+        echo ""
+        echo "📋 Pending updates staged. See .standards-pending/MERGE_PLAN.md or run:"
+        echo "   Claude Code: /merge-standards"
+        echo "   Cursor:      /merge-standards"
+        echo "   CLI:         make merge-standards"
+    fi
 fi
 
 # Set up git hooks
@@ -487,7 +546,7 @@ HOOK
 fi
 
 # Install standards review workflow template
-if [ -d "$STANDARDS_DIR/.github/actions/standards-review" ]; then
+if [ "$INSTALL_WORKFLOW" = true ] && [ -d "$STANDARDS_DIR/.github/actions/standards-review" ]; then
     if [ ! -f "$PROJECT_ROOT/.github/workflows/standards-review.yml" ]; then
         if [ -f "$STANDARDS_DIR/templates/standards-review.yml.example" ]; then
             dry_run_mkdir "$PROJECT_ROOT/.github/workflows"
@@ -499,6 +558,8 @@ if [ -d "$STANDARDS_DIR/.github/actions/standards-review" ]; then
             fi
         fi
     fi
+elif [ -d "$STANDARDS_DIR/.github/actions/standards-review" ] && [ ! -f "$PROJECT_ROOT/.github/workflows/standards-review.yml" ]; then
+    echo "ℹ️  standards-review workflow available. To install: ./setup.sh --workflow"
 fi
 
 # Set up git aliases (global configuration)
