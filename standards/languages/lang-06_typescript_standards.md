@@ -2,7 +2,8 @@
 
 ## 1. Package Management
 
-* **Tool:** `pnpm` preferred, `npm` acceptable. Lock files committed.
+* **Tool:** `pnpm` preferred, `npm` acceptable. Lock files committed. Pin the package manager via `packageManager` (Corepack).
+* **Runtime pinning + ENFORCEMENT:** Pin the Node version (`.nvmrc` + `engines.node`, and `.tool-versions` for asdf/mise). Pinning alone is not enough — **enforce** it so a wrong runtime fails fast with an actionable message instead of a cryptic native-build error: set `engine-strict=true` in `.npmrc` and/or add a `preinstall` guard that compares the active runtime to the pin. (Observed failure: a project on the wrong Node major hit an opaque `node-gyp` failure building a native dependency on every install until the runtime was switched by hand.)
 * **Version:** TypeScript 5.0+. Use strict mode.
 * **Config:** `tsconfig.json` with strict compiler options.
 * **Age Gate:** Do not adopt any npm package version published less than 3 days ago. Verify publish date via npm registry API before upgrading. See `sec-01` §5 for exceptions.
@@ -139,7 +140,14 @@ describe('UserService', () => {
 });
 ```
 
-## 8. Async/Await
+### Test Quality — Anti-Brittleness
+
+Tests must fail on real regressions, not on incidental details. Each rule below maps to an observed false failure that cost debugging time:
+
+* **Don't assert on raw source text** (CSS/markup strings). A regex over a stylesheet is fragile (e.g. one that "checked for an outline" actually matched whitespace and blocked a valid fix). Assert rendered behavior, or use visual-regression snapshots for appearance.
+* **No test-only markup.** Don't add DOM attributes/elements that exist solely so a test can assert them. Query by role/text/label, or by an intentional, app-used hook.
+* **Make formatted output deterministic.** Don't assert on locale/timezone-dependent display strings (e.g. `Intl.DateTimeFormat(undefined, …)` — passes only under one locale). Pin the locale/timezone, or assert against a stable `data-*` value rather than the localized text.
+* **Scope queries to a container.** When two components render similar elements (e.g. two sets of date buttons), a document-wide query collides and gives false positives/negatives. Use `within(region)` / role-scoped queries.
 
 * **Promises:** Use `async`/`await` over `.then()`. Use `Promise.all()` for parallel operations.
 * **Error Handling:** Always handle promise rejections. Use `try-catch` with async functions.

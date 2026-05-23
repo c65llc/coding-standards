@@ -28,6 +28,16 @@ Every project MUST include the following targets in the root `Makefile`:
 * **Goal:** Verify code integrity.
 * **Action:** Runs all unit and integration tests.
 
+### `make test-e2e`
+* **Goal:** Verify end-to-end behavior against a built artifact.
+* **Action:** Runs the browser/integration e2e suite (e.g. Playwright).
+* **Requirement:** MUST (re)build the artifact the runner serves before executing — a runner that serves a prebuilt `dist/` will otherwise validate **stale** output and report false greens. Either rebuild as a prerequisite or fail if the build is stale.
+
+### `make verify` (pre-merge gate)
+* **Goal:** The single command that must pass before merge.
+* **Action:** Runs the full pipeline INCLUDING e2e: typecheck + lint + format-check + tests + **build + `test-e2e`**.
+* **Why:** A gate of only typecheck/lint/unit lets UI and integration regressions through (observed: multiple UI regressions shipped "unit-green" because e2e was excluded from the local gate). A smoke subset (single browser) is acceptable for the fast local loop; run the full matrix in CI.
+
 ### `make lint`
 * **Goal:** Static analysis.
 * **Action:** Runs linters (ESLint, Pylint, Ruff) and type checkers.
