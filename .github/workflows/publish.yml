@@ -1,0 +1,42 @@
+name: Publish site
+
+# Cloudflare Pages is connected to this repo via the GitHub integration (no API
+# tokens stored here). Its **production branch is `live`**, and Cloudflare builds
+# + deploys whenever `live` changes.
+#
+# This workflow is the only thing that moves `live`: it fast-forwards `live` to
+# the published commit ONLY when we cut a release or add/edit a blog post — so
+# the site republishes on exactly those events, not on every merge to `main`.
+# It uses the built-in GITHUB_TOKEN (contents: write) — no secrets to manage.
+
+on:
+  release:
+    types: [published]
+  push:
+    branches:
+      - main
+    paths:
+      - 'website/src/content/docs/blog/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-live
+  cancel-in-progress: false
+
+jobs:
+  advance-live:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the commit to publish
+        uses: actions/checkout@v6
+        with:
+          # On a release, publish the tagged commit; otherwise the triggering
+          # commit on main.
+          ref: ${{ github.event.release.tag_name || github.sha }}
+          fetch-depth: 0
+
+      - name: Fast-forward `live` (triggers the Cloudflare Pages build)
+        run: git push --force origin HEAD:live

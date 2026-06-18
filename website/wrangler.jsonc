@@ -1,9 +1,0 @@
-{
-  // Cloudflare Pages project config for the documentation site.
-  // The CI workflow (.github/workflows/deploy.yml) builds the Astro site and
-  // deploys ./dist with `wrangler pages deploy`. `pages_build_output_dir` tells
-  // wrangler where the built assets are, so the deploy command needs no path.
-  "name": "coding-standards",
-  "pages_build_output_dir": "./dist",
-  "compatibility_date": "2026-06-18"
-}

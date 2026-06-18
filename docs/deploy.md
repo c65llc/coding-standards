@@ -1,64 +1,61 @@
-# Deployment — Cloudflare Pages
+# Deployment — Cloudflare Pages (Git integration)
 
-The documentation site (`website/`, Astro + Starlight) is a fully static build
-deployed to **Cloudflare Pages**. This file is a maintainer runbook; it is not
-published to the site.
+The documentation site (`website/`, Astro + Starlight, a fully static build) is
+hosted on **Cloudflare Pages**, connected to this repository through Cloudflare's
+**GitHub integration**. Cloudflare runs the build and deploy itself — there are
+**no API tokens or secrets stored in GitHub**. This file is a maintainer runbook;
+it is not published to the site.
 
-## How CI deploys
+## How publishing works
 
-`.github/workflows/deploy.yml` publishes **only** when:
+Cloudflare Pages' **production branch is `live`** (not `main`). Cloudflare builds
+and deploys whenever `live` changes.
 
-- a **GitHub Release is published** (`release: [published]`) — i.e. when we cut a
-  release; or
-- a **blog post is added/edited** on `main` (`push` to `website/src/content/docs/blog/**`); or
-- it is run **manually** (`workflow_dispatch`).
+`main` is never the production branch, so routine docs/standards merges don't
+republish the site. The only thing that moves `live` is
+[`.github/workflows/publish.yml`](../.github/workflows/publish.yml), which
+fast-forwards `live` to the published commit — and it runs **only** on:
 
-Routine docs/standards changes merged to `main` do **not** trigger a publish.
-When it does run it:
+- a **GitHub Release being published** (`release: [published]`) — i.e. when we cut a release;
+- a **blog post added/edited** on `main` (`push` to `website/src/content/docs/blog/**`); or
+- a **manual run** (`workflow_dispatch`).
 
-1. Build the Astro site (`cd website && npm run build` → `website/dist`).
-2. `cloudflare/wrangler-action` runs `wrangler pages deploy --branch=main` from
-   `website/`, which reads the project name and output dir from
-   [`website/wrangler.jsonc`](../website/wrangler.jsonc).
+The workflow uses the built-in `GITHUB_TOKEN` (`contents: write`) to push `live`
+— no Cloudflare credentials are involved.
 
-`--branch=main` produces a **production** deployment (the project's production
-branch must be `main`); any other branch would be a preview deployment.
+```
+release published ─┐
+blog post on main ─┼─▶ publish.yml ──(git push)──▶ live branch ──▶ Cloudflare Pages builds + deploys
+manual dispatch  ──┘
+```
 
-## One-time setup (manual — needs Cloudflare dashboard / an authed `wrangler`)
+## One-time setup (Cloudflare dashboard — no GitHub secrets)
 
-These steps are done once by a maintainer with Cloudflare access; CI cannot do
-them because they need account-level + DNS permissions.
-
-1. **Create the Pages project** (name must match `wrangler.jsonc` → `coding-standards`):
-
-   ```sh
-   cd website
-   npx wrangler pages project create coding-standards --production-branch=main
-   ```
-
-   (or create it in the Cloudflare dashboard → Workers & Pages → Create → Pages).
-
-2. **Add the CI secrets** to the GitHub repo (Settings → Secrets and variables → Actions):
-   - `CLOUDFLARE_API_TOKEN` — a token with the **Account › Cloudflare Pages › Edit** permission.
-   - `CLOUDFLARE_ACCOUNT_ID` — the Cloudflare account ID.
-
-3. **Attach the custom domain.** In the Pages project → Custom domains → add
-   `coding-standards.c65llc.com`. Because DNS is already on Cloudflare, this is
-   one click and Cloudflare issues/manages the TLS certificate automatically —
-   no cross-provider cert dance.
-
-4. **Point DNS at Pages.** Cloudflare creates/updates the `coding-standards`
-   CNAME to the `*.pages.dev` target automatically when you add the custom
-   domain above. The record stays **proxied (orange cloud)** and SSL just works
-   (no more HTTP 526).
+1. **Connect the repo.** Cloudflare dashboard → Workers & Pages → Create →
+   Pages → **Connect to Git** → authorize the Cloudflare GitHub app on
+   `c65llc/coding-standards`.
+2. **Build settings:**
+   - **Production branch:** `live`
+   - **Root directory:** `website`
+   - **Build command:** `npm run build`
+   - **Build output directory:** `dist`
+   - Cloudflare installs deps from the committed `website/package-lock.json`.
+3. **Disable preview deployments** (optional) so only `live` publishes — or leave
+   them on for PR previews; they don't touch production.
+4. **Custom domain:** in the Pages project → Custom domains → add
+   `coding-standards.c65llc.com`. Because DNS is already on Cloudflare this is one
+   click; Cloudflare issues and renews the TLS certificate automatically (no more
+   HTTP 526), and the proxy stays on.
+5. **Seed `live`:** run the `Publish site` workflow once (Actions → Publish site →
+   Run workflow) to create/advance `live`, or `git push origin main:live` locally.
 
 ## Migrating off GitHub Pages
 
-This repo previously deployed to GitHub Pages, which broke behind the Cloudflare
-proxy (GitHub's ACME validation couldn't complete → `bad_authz` → Cloudflare
-returned HTTP 526). After the Cloudflare Pages custom domain is live:
+GitHub Pages broke behind the Cloudflare proxy (GitHub's ACME validation couldn't
+complete → `bad_authz` → Cloudflare returned HTTP 526). After the Cloudflare Pages
+custom domain is live:
 
-- In GitHub → Settings → Pages, remove the custom domain / disable the Pages
-  site so the two don't fight over the domain.
-- The old `website/public/CNAME` marker and the GitHub Pages workflow have been
-  removed in this migration.
+- In GitHub → Settings → Pages, remove the custom domain / disable the Pages site
+  so the two don't fight over the domain.
+- The old `website/public/CNAME` marker and the GitHub Pages deploy workflow were
+  removed as part of this migration.
