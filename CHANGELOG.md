@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- Add entries under the standard Keep a Changelog headings as work lands:
 ### Added / ### Changed / ### Deprecated / ### Removed / ### Fixed / ### Security -->
 
+## [1.3.1] - 2026-06-18
+
+### Fixed
+
+- **Release hygiene:** backfilled the `v1.2.0` git tag and GitHub release (CHANGELOG `[1.2.0]`, PR #77, commit `298d64e`) that were finalized in the changelog but never published — restoring a contiguous tag/release history (previously jumped `v1.1.0` → `v1.3.0`).
+
 ## [1.3.0] - 2026-06-18
 
 ### Changed
