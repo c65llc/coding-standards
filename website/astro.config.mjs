@@ -20,7 +20,7 @@ export default defineConfig({
       sidebar: [
         {
           label: 'Getting Started',
-          autogenerate: { directory: 'getting-started' },
+          items: [{ autogenerate: { directory: 'getting-started' } }],
         },
         {
           label: 'Standards',
@@ -28,29 +28,29 @@ export default defineConfig({
           items: [
             {
               label: 'Architecture',
-              autogenerate: { directory: 'standards/architecture' },
+              items: [{ autogenerate: { directory: 'standards/architecture' } }],
             },
             {
               label: 'Languages',
-              autogenerate: { directory: 'standards/languages' },
+              items: [{ autogenerate: { directory: 'standards/languages' } }],
             },
             {
               label: 'Process',
-              autogenerate: { directory: 'standards/process' },
+              items: [{ autogenerate: { directory: 'standards/process' } }],
             },
             {
               label: 'Security',
-              autogenerate: { directory: 'standards/security' },
+              items: [{ autogenerate: { directory: 'standards/security' } }],
             },
           ],
         },
         {
           label: 'Guides',
-          autogenerate: { directory: 'guides' },
+          items: [{ autogenerate: { directory: 'guides' } }],
         },
         {
           label: 'Reference',
-          autogenerate: { directory: 'reference' },
+          items: [{ autogenerate: { directory: 'reference' } }],
         },
       ],
       customCss: [],
