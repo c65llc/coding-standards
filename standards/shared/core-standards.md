@@ -121,6 +121,23 @@ Projects MUST build testing infrastructure that supports:
 
 Coverage gates MUST be enforced in CI. A PR that drops coverage below 95% in any module MUST NOT be merged.
 
+### Untestable Boundaries
+
+Some runtime surfaces genuinely cannot run in CI — a real filesystem-access API,
+a device keychain, a native window server, a third-party SDK with no test mode.
+The coverage floor is met with **real tests**, never by gaming the number.
+
+- **Keep the untestable boundary thin.** Push all logic *behind* it into pure,
+  testable units (the parsing, the decision, the transformation) and cover those
+  fully. The thin remaining adapter is the only part that can't be unit-tested.
+- **Never add dead or unreachable branches to hit a coverage target.** That is the
+  opposite of the goal — it ships untested code paths *and* hides the real gap, and
+  automated reviewers will (correctly) flag it.
+- **Flag the residual manual-verification step explicitly** — in the PR body and,
+  for agents, as a tracked item — rather than pretending the boundary is covered.
+- Document the exclusion (and why) where the project records coverage policy, so
+  the carve-out is auditable rather than silent.
+
 ### Test Organization
 
 - Mirror source structure: `src/domain/user.py` → `tests/domain/test_user.py`
@@ -321,6 +338,9 @@ Reference architecture pattern standards in:
 
 - `standards/architecture/arch-04_data_versioning_and_migration_standards.md`
 - `standards/architecture/arch-05_resilient_architecture_patterns.md`
+- `standards/architecture/arch-06_monorepo_workspace_standards.md`
+- `standards/architecture/arch-07_cross_platform_shared_core_standards.md`
+- `standards/architecture/arch-08_ci_cd_pipeline_standards.md`
 
 ## Security Standards
 

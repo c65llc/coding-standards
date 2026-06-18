@@ -17,7 +17,11 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │   ├── architecture/              # Core architecture & automation standards
 │   │   ├── arch-01_project_standards_and_architecture.md
 │   │   ├── arch-02_automation_standards.md
-│   │   └── arch-03_cursor_automation_standards.md
+│   │   ├── arch-04_data_versioning_and_migration_standards.md
+│   │   ├── arch-05_resilient_architecture_patterns.md
+│   │   ├── arch-06_monorepo_workspace_standards.md
+│   │   ├── arch-07_cross_platform_shared_core_standards.md
+│   │   └── arch-08_ci_cd_pipeline_standards.md
 │   │
 │   ├── languages/                 # Language-specific standards
 │   │   ├── lang-01_python_standards.md
@@ -119,8 +123,8 @@ This document explains the reorganized file hierarchy for easier navigation and 
 
 | Category | Location | Files |
 |----------|----------|-------|
-| Architecture | `standards/architecture/` | arch-01 through arch-03 |
-| Languages | `standards/languages/` | lang-01 through lang-11 |
+| Architecture | `standards/architecture/` | arch-01, arch-02, arch-04 through arch-08 |
+| Languages | `standards/languages/` | lang-01 through lang-13 |
 | Process | `standards/process/` | proc-01 through proc-04 |
 | Security | `standards/security/` | sec-01 |
 

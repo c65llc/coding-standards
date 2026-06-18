@@ -21,8 +21,9 @@ Every project MUST include the following targets in the root `Makefile`:
 
 ### `make dev`
 * **Goal:** Setup stable local development environment.
-* **Requirement:** Must provision containers (Docker Compose) or strict virtual environments.
-* **Post-condition:** System is ready for coding immediately after execution.
+* **Requirement:** Must provision containers (Docker Compose) or strict virtual environments. On a multi-toolchain repo it MUST provision **every** toolchain a fresh machine needs (e.g. JS deps *and* the Rust toolchain) plus the git hooks — a contributor runs one command and is ready.
+* **Requirement:** Dependency installs use the lockfile (frozen/`ci`/`--locked` mode) so a fresh checkout or worktree reproduces the committed versions exactly.
+* **Post-condition:** System is ready for coding immediately after execution; pair with `make doctor` to verify every required tool is present.
 
 ### `make test`
 * **Goal:** Verify code integrity.
@@ -63,6 +64,11 @@ Every project MUST include the following targets in the root `Makefile`:
 ### `make repo-setup`
 * **Goal:** Initialize version control.
 * **Action:** Configures git hooks (pre-commit), submodules, and local git settings.
+
+### `make hooks`
+* **Goal:** (Re)install git hooks for the current checkout.
+* **Action:** Re-runs the hook installer (e.g. `pnpm exec lefthook install`, `pre-commit install`) so `.git/hooks/*` point at the current working tree.
+* **Why:** Hook installers can leave `.git/hooks/*` hardcoding a *deleted* worktree's path; switching between worktrees then breaks committing. `make hooks` repairs this. Declare the hook tool as a **root** dependency so it resolves at the repo root where `.git` lives, not only inside a sub-package.
 
 ### `make pr`
 * **Goal:** Create and populate a GitHub Pull Request from current branch to main.

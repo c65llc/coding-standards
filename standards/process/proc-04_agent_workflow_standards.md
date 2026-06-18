@@ -68,6 +68,33 @@ git worktree list            # should only show root checkout + active work
 git branch --no-merged main  # audit for abandoned branches
 ```
 
+### Worktree Hygiene
+
+The root checkout is the human's volatile workspace — it auto-pulls mainline and
+its branch gets switched out from under you. These rules keep agent work from
+landing on the wrong branch or failing on phantom errors:
+
+* **Do all multi-commit work in a worktree, never the root checkout.** If you must
+  touch the root, run `git branch --show-current` immediately before *every*
+  commit — a background pull may have flipped HEAD to `main` or another branch.
+* **`gh pr create` infers the head branch from the current directory.** Run it from
+  inside the feature worktree, or pass `--head <branch>` explicitly. Running it
+  from the root opens a PR for whatever branch the root is on — your title/body on
+  the wrong diff, a silent outward-facing mistake. Verify after:
+  `gh pr view <n> --json headRefName`. (`gh pr merge <number>` is safe — it takes
+  an explicit PR number.)
+* **Install from the lockfile in a fresh worktree before running gates.** A new
+  worktree shares the repo but not `node_modules`/`target`; a plain install can
+  resolve versions that differ from the committed lock and produce *phantom* lint
+  or type failures on files you never touched. Use the frozen/locked mode
+  (`pnpm install --frozen-lockfile`, `npm ci`, `cargo build --locked`). When a gate
+  fails on an untouched file, check the installed toolchain version against the
+  lock *before* "fixing" the file.
+* **Repair git hooks after switching worktrees.** Hook installers can leave
+  `.git/hooks/*` pointing at a deleted worktree's path. If hooks misbehave, run the
+  repo's hook-repair target (e.g. `make hooks`) to rewrite them for the current
+  checkout.
+
 ## 2. Project-Level AI Guide
 
 Every project SHOULD have a `CLAUDE.md` (or equivalent agent guide) at the repository root. This file is distinct from `.cursorrules` or `.github/copilot-instructions.md` — it documents project-specific context that evolves during development.
@@ -248,6 +275,32 @@ Patterns are globs evaluated against repo-relative file paths. For changes that 
 - **Per-region delta**: cropped diffs for changed components only. Best for token / theme changes that touch many pages.
 
 The agent's output is a **diff artifact + a summary of what changed**. Approval is human-gated unless the project explicitly opts into pixel-diff gating (rare; document the threshold in `assets/designs/NOTES.md`).
+
+### UI PRs are not auto-mergeable without sign-off
+
+When a UI change has **no reference design** for the surface (a brand-new view, an
+exploratory layout), the agent MUST open the PR, attach the rendered screenshots,
+and **wait for human visual sign-off** — even when CI is green. Do not auto-merge.
+This is an explicit exception to the otherwise-autonomous merge loop in
+[proc-03_code_review_expectations.md](./proc-03_code_review_expectations.md) §1.
+State it in the PR body (e.g. "UI — needs visual sign-off, do not auto-merge").
+
+### Visual baselines are environment-specific
+
+Visual-regression baselines must be regenerated **on the CI runner**, not locally.
+Even a matching local container renders fractionally differently (font hinting,
+anti-aliasing) from the CI host, so locally-generated baselines fail the CI visual
+gate. Regenerate via the pipeline's own mechanism (e.g. a `workflow_dispatch` with
+an `update_snapshots` input that uploads the regenerated baselines as an artifact),
+then commit those. Visual changes remain human-gated.
+
+### Cross-platform UI scope
+
+For products that ship the same UX on multiple platforms, a UI change is assumed
+to apply to **every** platform unless scoped otherwise. Scope the issue/PR to cover
+web *and* each native shell, and keep shared data/logic single-sourced in the core.
+See [arch-07_cross_platform_shared_core_standards.md](../architecture/arch-07_cross_platform_shared_core_standards.md)
+§4.
 
 ### Cross-agent invocation
 
