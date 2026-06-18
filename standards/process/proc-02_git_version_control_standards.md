@@ -158,6 +158,50 @@ Format: `MAJOR.MINOR.PATCH` (e.g., `1.2.3`)
 6. Create GitHub/GitLab release with notes
 7. Merge back to `develop` if applicable
 
+### Release Version vs. Build Version
+
+For products that deploy continuously, distinguish two version numbers:
+
+* **Release version** — manual semantic version (`MAJOR.MINOR.PATCH`), bumped
+  deliberately at a release. It is what users see and what gates a coordinated
+  release (e.g. apps and marketing site move together on a release-version bump).
+* **Build version** — derived automatically and ticking on every commit to the
+  mainline (e.g. `git rev-list --count HEAD`). Useful for "exact build" reporting
+  and crash triage, never for user-facing semver decisions.
+
+Surface both in an About/diagnostics view. A value only tree-shakes in if it is
+actually *rendered* — exporting it isn't enough.
+
+### Deploy Channels & Promotion
+
+* Separate **staging/preview** from **production** by channel. The mainline
+  branch auto-deploys to the staging channel; production is gated on an explicit
+  promotion. **Never deploy production off arbitrary feature branches.**
+* If the deploy platform's branch control takes no wildcard, gate production on a
+  single long-lived `release` branch (not `release/*`) and promote by
+  fast-forwarding mainline into it (`git push origin main:release`).
+* Channel-gate not-yet-released content (e.g. an "unreleased" changelog section
+  visible only on the staging channel) via a build-time channel variable. Verify
+  the variable name matches what the deploy platform actually injects — a typo
+  (`PUBLIC_CHANNEL` vs `VITE_CHANNEL`) silently ships the wrong content.
+
+### Scripted, Reviewable Release Cut
+
+Automate the release cut as a **script that produces a reviewable PR**, not a
+manual sequence of edits:
+
+* A pure script performs the semver bump and promotes changelog entries
+  (`unreleased/` → the released version section), and emits the release-notes body.
+* The script opens (or prepares) a PR for human review before anything is tagged
+  or promoted. Tagging and channel promotion happen only after that PR merges.
+* Mind CI-identity loop-prevention: a PR opened by a CI token often does **not**
+  trigger the normal PR gate, so a fully hands-free release usually needs a
+  dedicated app token or a human to open/merge the cut PR. Document which model
+  the repo uses.
+
+See [arch-08_ci_cd_pipeline_standards.md](../architecture/arch-08_ci_cd_pipeline_standards.md)
+§7 for the CI side of channel promotion.
+
 ## 6. Git Configuration
 
 ### Required Settings
@@ -390,3 +434,45 @@ As a guideline, a repository should have fewer than **10 active branches** at an
 * **Remote Repository:** Always push to remote (GitHub, GitLab, etc.)
 * **Multiple Remotes:** Consider backup remote for critical projects
 * **Regular Pushes:** Push at least daily during active development
+
+## 11. Stacked & Dependent PRs and Platform Automation Traps
+
+When PRs depend on each other or are driven by automation, a handful of
+platform behaviors silently cause lost work or false signals. Encode them.
+
+### Stacked PRs — the base-deletion trap
+
+When PR **B** is based on PR **A**'s branch (B's base = A's feature branch):
+
+* Merging **A** with delete-branch (`gh pr merge A --squash --delete-branch`)
+  **closes B** — the host does *not* auto-retarget B to mainline, and B cannot be
+  reopened once its base branch is gone.
+* **Avoid it:** before merging A, either retarget B to mainline first
+  (`gh pr edit B --base main`) while A's branch still exists, or merge A *without*
+  deleting its branch until B is retargeted.
+* **Recover** (if B was already closed by an A merge): in B's worktree,
+  `git rebase --onto origin/main <A-tip-commit>` to drop A's now-redundant commits
+  (their content is in mainline via the squash) and replay only B's own commits,
+  then open a fresh PR B′ → mainline referencing the closed one.
+
+### A conflicting PR runs no checks
+
+A PR with merge conflicts has no merge ref, so the host runs **none** of its
+merge-ref-triggered workflows — it looks like CI never fired (zero runs created,
+not even queued). If a PR's checks are entirely absent, check its mergeable state
+and resolve the conflict; the checks then trigger normally. Distinguish this from
+a self-hosted runner being offline (which produces a *queued* run that waits).
+
+### Other host-automation traps
+
+* **One close-keyword per line.** `Closes #A, #B, #C` only auto-closes the *first*
+  issue. Write one `Closes #X` per line to fan out across issues.
+* **Check polling can settle early.** Right after a push, only fast external checks
+  are registered; host-run jobs appear seconds later. A poll that exits as soon as
+  "all known checks are non-pending" can exit before real CI starts — guard with a
+  minimum-expected-check count.
+* **`gh pr create` infers the branch from the current directory.** Run it from the
+  correct worktree, or pass `--head <branch>` explicitly, or it opens a PR for
+  whatever branch the cwd is on. See
+  [proc-04_agent_workflow_standards.md](./proc-04_agent_workflow_standards.md)
+  § Worktree Hygiene.

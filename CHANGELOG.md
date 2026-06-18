@@ -16,6 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`arch-06_monorepo_workspace_standards.md`** (new): multi-toolchain workspaces kept separate, per-member pipeline ownership ("own your scope, not your style"), running the build (not just typecheck), complete path/alias resolution across all resolvers, generated-artifact drift gates (clean-rebuild to reproduce), and workspace dependency hygiene.
+- **`arch-07_cross_platform_shared_core_standards.md`** (new): shared pure core + thin per-platform shells, conformance/golden-vector testing as the parity gate, FFI boundary coverage (export smoke / golden parity / edge cases), UI-changes-are-cross-platform-by-default scoping, and testing to the platform edges.
+- **`arch-08_ci_cd_pipeline_standards.md`** (new): local gate mirrors CI, consolidate the required gate + build once, don't-run-everything-per-PR (concurrency cancel, path filters, tiered heavy suites), caching (pinned actions, keyed/evicted caches), artifact retention, self-hosted runner caveats, and deploy channels & promotion.
+- `proc-03_code_review_expectations.md`: a **PR Definition of Done / merge loop** (full local gate → open → wait for automated review → address all feedback → all-green → squash-merge), automated/AI review treated as a first-class gate with an author self-review checklist of common findings, and a UI-PRs-need-sign-off case.
+- `proc-02_git_version_control_standards.md` § 5/§ 11: release-version vs build-version model, deploy channels & promotion, the scripted reviewable release cut, and a Stacked & Dependent PRs section (base-deletion trap, conflicting-PR-runs-no-checks, one `Closes #X` per line, `gh pr create` cwd inference).
+- `proc-04_agent_workflow_standards.md`: Worktree Hygiene (volatile root checkout, `gh pr create` cwd, frozen-lockfile install in fresh worktrees, hook repair) and UI sign-off / environment-specific visual baselines / cross-platform UI scope.
+- `arch-02_automation_standards.md`: `make hooks` target and stronger `make dev` provisioning (all toolchains + hooks, frozen-lockfile installs).
+- `arch-05_resilient_architecture_patterns.md` §§ 7–9: best-effort/isolated secondary subsystems, liveness & takeover for coordination singletons, and "don't swallow the root cause."
+- `core-standards.md`: an Untestable Boundaries policy under Testing Standards (no dead-branch coverage gaming; keep boundaries thin; flag manual verification) and references to the new `arch-06`/`arch-07`/`arch-08` standards.
+- Shared blocks updated to propagate into assembled agent configs: `git-workflow` (merge loop, small/stacked PRs, `gh pr create` cwd, stacked-PR retarget), `testing-policy` (untestable boundaries, run the build), `architecture-core` (best-effort secondary subsystems, preserve the cause).
 - `lang-04_swift_standards.md § 14`: Build & Project Generation (Apple platforms) — XcodeGen/Tuist as project source of truth, code-signing rules (set `DEVELOPMENT_TEAM`, never disable signing at `base`), CI override pattern, a diagnostic checklist for "code is unsigned" device-install failures, and a note (§14.5) on latent target-config gaps that surface when re-enabling signing (e.g. test targets requiring `GENERATE_INFOPLIST_FILE: YES`).
 
 ## [1.2.0] - 2026-04-16

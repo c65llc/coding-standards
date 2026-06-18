@@ -6,8 +6,8 @@ This directory contains all coding standards documents organized by category.
 
 | Directory | Prefix | Contents |
 |-----------|--------|----------|
-| `architecture/` | `arch-XX` | Core architecture, automation, Cursor-specific |
-| `languages/` | `lang-XX` | Per-language standards (Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby/Rails) |
+| `architecture/` | `arch-XX` | Core architecture, automation, data versioning/migration, resilient patterns, monorepo/workspace, cross-platform shared-core, CI/CD pipeline |
+| `languages/` | `lang-XX` | Per-language standards (Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby/Rails, Go, Elixir) |
 | `process/` | `proc-XX` | Documentation, git workflow, code review, agent workflow |
 | `security/` | `sec-XX` | Security guidelines with P0-P2 severity model |
 | `shared/` | — | Cross-cutting standards (`core-standards.md`) referenced by all agent configs |
