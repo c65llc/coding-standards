@@ -28,6 +28,17 @@ Every project MUST include the following targets in the root `Makefile`:
 * **Goal:** Verify code integrity.
 * **Action:** Runs all unit and integration tests.
 
+### `make test-e2e`
+* **Applicability:** Required for projects with a browser/integration surface (web app, API server, CLI with integration paths). Projects without one — a pure library, or a docs/standards repo — MAY omit it; `make verify` then runs only the applicable subset.
+* **Goal:** Verify end-to-end behavior against a built artifact.
+* **Action:** Runs the browser/integration e2e suite (e.g. Playwright).
+* **Requirement:** MUST (re)build the artifact the runner serves before executing — a runner that serves a prebuilt `dist/` will otherwise validate **stale** output and report false greens. Either rebuild as a prerequisite or fail if the build is stale.
+
+### `make verify` (pre-merge gate)
+* **Goal:** The single command that must pass before merge.
+* **Action:** Runs the full pipeline applicable to the project: typecheck + lint + format check + tests + **build + `test-e2e`** (e2e included wherever the project defines it, per the applicability note above). "Format check" is the **non-mutating** counterpart of `make fmt` — e.g. `prettier --check`, `cargo fmt --check`, `ruff format --check` — so the gate fails on unformatted code instead of silently reformatting it.
+* **Why:** A gate of only typecheck/lint/unit lets UI and integration regressions through (observed: multiple UI regressions shipped "unit-green" because e2e was excluded from the local gate). A smoke subset (single browser) is acceptable for the fast local loop; run the full matrix in CI.
+
 ### `make lint`
 * **Goal:** Static analysis.
 * **Action:** Runs linters (ESLint, Pylint, Ruff) and type checkers.
