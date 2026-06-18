@@ -1,13 +1,15 @@
 name: Deploy to Cloudflare Pages
 
 on:
+  # Publish only on a release cut or a new/updated blog post — NOT on every
+  # docs/standards change merged to main.
+  release:
+    types: [published]
   push:
     branches:
       - main
     paths:
-      - 'website/**'
-      - 'docs/**'
-      - 'standards/**'
+      - 'website/src/content/docs/blog/**'
   workflow_dispatch:
 
 permissions:

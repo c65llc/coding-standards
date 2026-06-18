@@ -6,8 +6,15 @@ published to the site.
 
 ## How CI deploys
 
-`.github/workflows/deploy.yml` runs on push to `main` (and `workflow_dispatch`)
-when `website/`, `docs/`, or `standards/` change:
+`.github/workflows/deploy.yml` publishes **only** when:
+
+- a **GitHub Release is published** (`release: [published]`) — i.e. when we cut a
+  release; or
+- a **blog post is added/edited** on `main` (`push` to `website/src/content/docs/blog/**`); or
+- it is run **manually** (`workflow_dispatch`).
+
+Routine docs/standards changes merged to `main` do **not** trigger a publish.
+When it does run it:
 
 1. Build the Astro site (`cd website && npm run build` → `website/dist`).
 2. `cloudflare/wrangler-action` runs `wrangler pages deploy --branch=main` from
