@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Hosting:** migrated the documentation site from GitHub Pages to **Cloudflare Pages**. Replaces the GitHub Pages deploy workflow with a `wrangler pages deploy` workflow (`website/wrangler.jsonc`), drops the GitHub Pages `CNAME` marker, and adds CF Pages `_headers`. Fixes the cross-provider TLS failure (GitHub ACME `bad_authz` behind the Cloudflare proxy → HTTP 526). Publishes only on a release cut (`release: published`) or a new/edited blog post — not on every docs/standards merge. One-time Cloudflare/secret setup is documented in `docs/deploy.md`.
+- **CI:** the website CI build and the Cloudflare Pages deploy now install with `npm ci` (frozen lockfile) instead of `rm -rf node_modules package-lock.json && npm install`, so builds use the committed `website/package-lock.json` and are reproducible (per the frozen-install standard in `arch-02`/`core-standards`).
 
 ## [1.3.1] - 2026-06-18
 
