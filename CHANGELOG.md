@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<!-- Add entries under the standard Keep a Changelog headings as work lands:
+### Added / ### Changed / ### Deprecated / ### Removed / ### Fixed / ### Security -->
+
 ## [1.3.0] - 2026-06-18
 
 ### Changed
