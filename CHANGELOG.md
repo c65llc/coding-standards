@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Documentation / releases (`proc-01 §4`, `shared/blocks/documentation-policy.md`):** projects with release automation (semantic-release, release-please, Changesets) must NOT hand-maintain a shared `[Unreleased]` changelog block per PR — rely on generated notes or per-PR changeset fragments (avoids predictable merge conflicts under parallel work). (#88)
-- **Automation (`arch-02 §2`):** added `make test-e2e` and a `make verify` pre-merge gate that includes build + e2e; e2e runners that serve a prebuilt artifact must rebuild first (no stale-artifact false greens). (#89)
-- **TypeScript (`lang-06 §1`):** runtime pinning must be ENFORCED (engine-strict / preinstall guard / Corepack), not just declared, so a wrong runtime fails fast instead of a cryptic native-build error. (#90)
+- **Documentation / releases (`proc-01 §4`, `shared/blocks/documentation-policy.md`):** projects with release automation (semantic-release, release-please, Changesets) must NOT hand-maintain a shared `## [Unreleased]` changelog block per PR — rely on generated notes or per-PR changeset fragments (avoids predictable merge conflicts under parallel work). (#88)
+- **Automation (`arch-02 §2`):** added `make test-e2e` (scoped to projects with a browser/integration surface) and a `make verify` pre-merge gate that includes build + e2e; e2e runners that serve a prebuilt artifact must rebuild first (no stale-artifact false greens). (#89)
+- **TypeScript (`lang-06 §1`):** Node **runtime** pinning must be ENFORCED (engine-strict / preinstall guard), not just declared, so a wrong runtime fails fast instead of a cryptic native-build error; pin the **package manager** separately via `packageManager`/Corepack. (#90)
 - **TypeScript testing (`lang-06 §7`):** added anti-brittleness rules — no asserting on raw source text, no test-only markup, deterministic (locale-pinned) formatted-output assertions, and container-scoped queries. (#91)
 
 ### Added

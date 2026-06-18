@@ -149,7 +149,7 @@ Use [Keep a Changelog](https://keepachangelog.com/) format in `CHANGELOG.md` at 
 
 ### Guidelines
 
-* **Every PR (manual mode only):** When the project has no release automation, update the changelog for user-facing changes. Do NOT hand-edit a shared `[Unreleased]` block when releases are automated — see "Automated Releases" below.
+* **Every PR (manual mode only):** When the project has no release automation, update the changelog for user-facing changes. Do NOT hand-edit a shared `## [Unreleased]` block when releases are automated — see "Automated Releases" below.
 * **Categories:** Use standard categories. Be specific about changes
 * **Links:** Link to issues and PRs: `[#123](https://github.com/user/repo/issues/123)`
 * **Versioning:** Follow semantic versioning. Tag releases with version numbers
@@ -166,9 +166,9 @@ When a project uses an automated release tool (`semantic-release`, `release-plea
 
 * **Why:** Under parallel development, every PR editing the same first line of `### Added`/`### Changed`/`### Fixed` produces a predictable `CHANGELOG.md` merge conflict on each batch. Generated notes (or per-PR fragments) eliminate it.
 * **Preferred approaches:**
-  * **Generated release notes** (e.g. `@semantic-release/release-notes-generator` → GitHub Releases) as the source of truth; keep `CHANGELOG.md` either generated at release time (`@semantic-release/changelog`) or omit the per-PR manual section entirely.
-  * **Changeset fragments** — one file per PR under `.changes/` / `.changeset/`, collected at release. No shared line to conflict on.
-* **Conventional Commits become load-bearing:** since notes derive from commit messages, enforce the commit convention (commitlint / hook).
+  * **Commit-message-driven** (`semantic-release`, `release-please`): notes are generated from the git history. Keep `CHANGELOG.md` either generated at release time (`@semantic-release/changelog`) or omit the per-PR manual section entirely.
+  * **Fragment-driven** (Changesets): one changeset file per PR under `.changeset/`, collected at release. Notes derive from the fragments, not from commit messages.
+* **Match enforcement to the model:** for commit-message-driven automation, Conventional Commits become load-bearing — enforce the commit convention (commitlint / hook). For fragment-driven automation, the gate is instead that each user-facing PR includes a changeset fragment (enforce via a `changeset` status check).
 
 ## 5. Project Documentation
 
