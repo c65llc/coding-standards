@@ -1,7 +1,14 @@
 # Cloudflare Pages response headers (served from the deployed site root).
 # https://developers.cloudflare.com/pages/configuration/headers/
+#
+# CSP note: this is a static Starlight site that ships inline <script>/<style>
+# (theme toggle, expressive-code) without nonces, so script/style-src require
+# 'unsafe-inline'. There is no user-generated content, so the XSS surface is
+# minimal. Tightening to hashes/nonces is tracked as a follow-up; verify any
+# CSP change against a preview deploy before shipping.
 /*
   X-Content-Type-Options: nosniff
   X-Frame-Options: SAMEORIGIN
   Referrer-Policy: strict-origin-when-cross-origin
   Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'
