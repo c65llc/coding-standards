@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- Add entries under the standard Keep a Changelog headings as work lands:
 ### Added / ### Changed / ### Deprecated / ### Removed / ### Fixed / ### Security -->
 
+## [1.4.0] - 2026-06-18
+
 ### Changed
 
 - **Hosting:** migrated the documentation site from GitHub Pages to **Cloudflare Pages** via Cloudflare's **GitHub integration** (no API tokens/secrets in the repo). Cloudflare's production branch is `live`; a secret-free `publish.yml` (using `GITHUB_TOKEN`) fast-forwards `live` only on a **release cut** or a **new/edited blog post**, so the site republishes on exactly those events — not on every docs/standards merge. Drops the GitHub Pages `CNAME` marker and adds CF Pages `_headers`. Fixes the cross-provider TLS failure (GitHub ACME `bad_authz` behind the Cloudflare proxy → HTTP 526). Dashboard setup is documented in `docs/deploy.md`.
