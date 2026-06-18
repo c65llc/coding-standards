@@ -23,7 +23,7 @@ fast-forwards `live` to the published commit — and it runs **only** on:
 The workflow uses the built-in `GITHUB_TOKEN` (`contents: write`) to push `live`
 — no Cloudflare credentials are involved.
 
-```
+```text
 release published ─┐
 blog post on main ─┼─▶ publish.yml ──(git push)──▶ live branch ──▶ Cloudflare Pages builds + deploys
 manual dispatch  ──┘
