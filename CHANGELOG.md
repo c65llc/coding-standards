@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- Add entries under the standard Keep a Changelog headings as work lands:
 ### Added / ### Changed / ### Deprecated / ### Removed / ### Fixed / ### Security -->
 
+### Changed
+
+- **Hosting:** migrated the documentation site from GitHub Pages to **Cloudflare Pages**. Replaces the GitHub Pages deploy workflow with a `wrangler pages deploy` workflow (`website/wrangler.jsonc`), drops the GitHub Pages `CNAME` marker, and adds CF Pages `_headers`. Fixes the cross-provider TLS failure (GitHub ACME `bad_authz` behind the Cloudflare proxy → HTTP 526). One-time Cloudflare/secret setup is documented in `docs/deploy.md`.
+
 ## [1.3.1] - 2026-06-18
 
 ### Fixed
