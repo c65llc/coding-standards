@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- Add entries under the standard Keep a Changelog headings as work lands:
 ### Added / ### Changed / ### Deprecated / ### Removed / ### Fixed / ### Security -->
 
+### Changed
+
+- **Hosting:** migrated the documentation site from GitHub Pages to **Cloudflare Pages** via Cloudflare's **GitHub integration** (no API tokens/secrets in the repo). Cloudflare's production branch is `live`; a secret-free `publish.yml` (using `GITHUB_TOKEN`) fast-forwards `live` only on a **release cut** or a **new/edited blog post**, so the site republishes on exactly those events — not on every docs/standards merge. Drops the GitHub Pages `CNAME` marker and adds CF Pages `_headers`. Fixes the cross-provider TLS failure (GitHub ACME `bad_authz` behind the Cloudflare proxy → HTTP 526). Dashboard setup is documented in `docs/deploy.md`.
+- **CI:** the website CI build installs with `npm ci` (frozen lockfile) instead of `rm -rf node_modules package-lock.json && npm install`, and the committed `website/package-lock.json` was regenerated so it builds cleanly — reproducible builds (per the frozen-install standard in `arch-02`/`core-standards`), and Cloudflare's build uses the same lockfile.
+
 ## [1.3.1] - 2026-06-18
 
 ### Fixed

@@ -63,3 +63,6 @@ standards-sync-*.tmp
 # gh-task CLI state files
 .gh-task-state
 .gh-task.conf
+
+# Cloudflare Wrangler local state/cache (per-env, contains account ids)
+.wrangler/
