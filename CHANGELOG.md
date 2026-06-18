@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<!-- Add entries under the standard Keep a Changelog headings as work lands:
+### Added / ### Changed / ### Deprecated / ### Removed / ### Fixed / ### Security -->
+
+## [1.3.0] - 2026-06-18
+
 ### Changed
 
 - **Documentation / releases (`proc-01 §4`, `shared/blocks/documentation-policy.md`):** projects with release automation (semantic-release, release-please, Changesets) must NOT hand-maintain a shared `## [Unreleased]` changelog block per PR — rely on generated notes or per-PR changeset fragments (avoids predictable merge conflicts under parallel work). (#88)
