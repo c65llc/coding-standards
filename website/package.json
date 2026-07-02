@@ -15,7 +15,7 @@
     "@astrojs/starlight": "^0.40.0",
     "astro": "^6.4.8",
     "sharp": "^0.35.1",
-    "starlight-blog": "^0.26.1"
+    "starlight-blog": "^0.27.0"
   },
   "engines": {
     "node": ">=22.12.0"
