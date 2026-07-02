@@ -11,7 +11,7 @@
     "predev": "bash scripts/sync-content.sh"
   },
   "dependencies": {
-    "@astrojs/rss": "^4.0.18",
+    "@astrojs/rss": "^4.0.19",
     "@astrojs/starlight": "^0.40.0",
     "astro": "^6.4.8",
     "sharp": "^0.35.1",
