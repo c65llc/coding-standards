@@ -57,28 +57,18 @@ format: ## Format all markdown files (if formatter available)
 		echo "ℹ️  prettier not installed, skipping"
 
 test-scripts: ## Test setup and sync scripts
-	@echo "Testing setup.sh..."
-	@bash -n scripts/setup.sh && echo "✅ setup.sh syntax valid"
-	@echo "Testing sync-standards.sh..."
-	@bash -n scripts/sync-standards.sh && echo "✅ sync-standards.sh syntax valid"
-	@echo "Testing detect-languages.sh..."
-	@bash -n scripts/detect-languages.sh && echo "✅ detect-languages.sh syntax valid"
-	@echo "Testing build-claude-settings.sh..."
-	@bash -n scripts/build-claude-settings.sh && echo "✅ build-claude-settings.sh syntax valid"
-	@echo "Testing assemble-config.sh..."
-	@bash -n scripts/assemble-config.sh && echo "✅ assemble-config.sh syntax valid"
-	@echo "Testing doctor.sh..."
-	@bash -n scripts/doctor.sh && echo "✅ doctor.sh syntax valid"
-	@echo "Testing diff-standards.sh..."
-	@bash -n scripts/diff-standards.sh && echo "✅ diff-standards.sh syntax valid"
-	@echo "Testing lib/checksums.sh..."
-	@bash -n scripts/lib/checksums.sh && echo "✅ lib/checksums.sh syntax valid"
-	@echo "Testing sync-content.sh..."
-	@bash -n website/scripts/sync-content.sh && echo "✅ sync-content.sh syntax valid"
-	@echo "Testing gh-task..."
-	@bash -n bin/gh-task && echo "✅ gh-task syntax valid"
-	@echo "Testing lint check scripts..."
-	@find scripts/lint-checks -name "*.sh" -exec bash -n {} \; && echo "✅ All lint check scripts syntax valid"
+	@echo "Syntax-checking all shell scripts (bash -n)..."
+	@fail=0; \
+	for f in $$(find scripts website/scripts -name '*.sh' 2>/dev/null) bin/gh-task install.sh; do \
+		[ -f "$$f" ] || continue; \
+		if bash -n "$$f"; then \
+			echo "  ✅ $$f"; \
+		else \
+			echo "  ❌ $$f"; fail=1; \
+		fi; \
+	done; \
+	if [ "$$fail" -ne 0 ]; then echo "❌ Syntax errors found"; exit 1; fi; \
+	echo "✅ All shell scripts syntax valid"
 	@echo "Testing format-results.py..."
 	@./scripts/test-format-results.sh
 

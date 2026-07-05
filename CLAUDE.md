@@ -38,6 +38,7 @@ There are no build steps, no test suites, and no application to run. The primary
 ### Standards Documents (`standards/`)
 
 Markdown files organized by category with prefix-based naming:
+
 - `architecture/` (arch-01, arch-02, arch-04–arch-08): Core architecture, automation, data versioning/migration, resilient patterns, monorepo/workspace, cross-platform shared-core, CI/CD pipeline
 - `languages/` (lang-01 through lang-13): Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby on Rails, Go, Elixir
 - `process/` (proc-01 through proc-04): Documentation, git/version control, code review, agent workflow
@@ -47,6 +48,7 @@ Markdown files organized by category with prefix-based naming:
 ### Agent Configurations (`standards/agents/`)
 
 Template configs deployed to consumer projects during setup:
+
 - `claude-code/base-claude-code.md` — Claude Code (assembled to `CLAUDE.md`)
 - `cursor/` — Cursor AI (assembled to `.cursorrules`)
 - `copilot/.github/copilot-instructions.md` — GitHub Copilot
@@ -57,6 +59,7 @@ Template configs deployed to consumer projects during setup:
 ### Scripts (`scripts/`)
 
 All bash. Key scripts:
+
 - `setup.sh` — Installs standards into a target project, detects and configures AI agents; copies the standards-review workflow template only when run with `--workflow`
 - `sync-standards.sh` — Pulls latest standards and updates agent configs in consumer projects
 - `lint-standards.sh` — Standards compliance linter; outputs text, JSON, or SARIF

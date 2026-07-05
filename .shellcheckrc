@@ -1,0 +1,24 @@
+# ShellCheck configuration for the coding-standards repo.
+#
+# CI lints the whole shell tree (scripts/, scripts/lib/, scripts/lint-checks/,
+# bin/gh-task, install.sh, website/scripts/). This config keeps that gate
+# meaningful — errors and substantive warnings still fail — while silencing a
+# small set of pervasive, low-value, or intentional findings so the expanded
+# scope doesn't drown real issues in style noise.
+
+# Follow `source`d files (shared libs under scripts/lib/) during analysis.
+external-sources=true
+
+# NOTE: severity is a CLI-only option (not valid in .shellcheckrc). CI runs
+# shellcheck with `--severity=warning` to drop info/style chatter
+# (e.g. SC2016 single-quoted GraphQL/awk programs, SC2126 grep|wc style).
+
+# Disabled checks (with rationale):
+#   SC2155 - `local x=$(cmd)` masking the command exit status; pervasive across
+#            these scripts and intentional (the exit status is not consumed).
+#   SC2034 - vars that look unused but are consumed by the script that sources
+#            the library (scripts/lib/*.sh).
+#   SC2064 - a trap that expands a known, fixed local path at definition time
+#            (bin/gh-task) — intended behavior here.
+#   SC1090/SC1091 - dynamic/relative `source` paths resolved at runtime.
+disable=SC2155,SC2034,SC2064,SC1090,SC1091

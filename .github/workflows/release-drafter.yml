@@ -1,0 +1,38 @@
+name: Release Drafter
+
+# Keeps a draft GitHub Release continuously up to date from merged PRs, and
+# auto-labels PRs from their Conventional Commit title so the notes categorize
+# themselves. Publishing the draft creates the tag — that tag's `release:
+# published` event is what publish.yml and definition-of-done.yml already key
+# off of. This replaces the manual `chore(release)` note-writing.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  update_release_draft:
+    # Skip PRs from forks: their GITHUB_TOKEN is read-only, so autolabeling would
+    # fail and show a red check for external contributors. Drafting still runs on
+    # push to main and on same-repo PRs.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write      # create/update the draft release
+      pull-requests: write # apply autolabels
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-drafter-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
+        with:
+          config-name: release-drafter.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

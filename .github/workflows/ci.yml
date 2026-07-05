@@ -8,22 +8,36 @@ on:
 permissions:
   contents: read
 
+# Cancel superseded runs on the same ref so rapid pushes don't stack.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   shellcheck:
     name: ShellCheck
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Install ShellCheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
 
       - name: Run ShellCheck on all shell scripts
+        # Cover the whole shell tree: top-level scripts, the sourced libs under
+        # scripts/lib/, every lint-check module, bin/gh-task, and the installer.
+        # --severity=warning + .shellcheckrc keep the gate meaningful without
+        # drowning in pre-existing style noise. -x follows sourced files.
         run: |
-          shellcheck scripts/*.sh install.sh
+          shellcheck -x --severity=warning \
+            scripts/*.sh \
+            scripts/lib/*.sh \
+            scripts/lint-checks/*/*.sh \
+            bin/gh-task \
+            install.sh
           if [ -d "website/scripts" ]; then
-            shellcheck website/scripts/*.sh
+            shellcheck -x --severity=warning website/scripts/*.sh
           fi
 
   test-scripts:
@@ -31,13 +45,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Syntax check (bash -n)
         run: make test-scripts
 
       - name: Bootstrap functional tests
         run: ./scripts/test-bootstrap.sh
+
+      - name: Safe-setup functional tests
+        run: ./scripts/test-setup-safe.sh
 
       - name: gh-task tests
         run: ./scripts/test-gh-task.sh
@@ -47,26 +64,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "22.12.0"
 
       - name: Install markdownlint-cli
         run: npm install -g markdownlint-cli
 
-      - name: Run markdownlint on standards/ and docs/
+      - name: Run markdownlint on standards/, docs/, and root markdown
+        # REVIEW.md is a stale one-off scheduled for removal (#140); ignore it
+        # rather than block CI on its formatting.
         run: |
-          markdownlint 'standards/**/*.md' 'docs/**/*.md'
+          markdownlint 'standards/**/*.md' 'docs/**/*.md' '*.md' --ignore REVIEW.md
 
   build-website:
     name: Build Website
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Check if website directory exists
         id: check-website
@@ -79,7 +98,7 @@ jobs:
 
       - name: Set up Node.js
         if: steps.check-website.outputs.exists == 'true'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "22.12.0"
 
@@ -90,3 +109,31 @@ jobs:
       - name: Build website
         if: steps.check-website.outputs.exists == 'true'
         run: cd website && npm run build
+
+  lint-standards-selfhost:
+    name: Lint Standards (dogfood)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      # Dogfood our own compliance linter against this repo. This repo is a
+      # standards library, not an application, so it legitimately has no test
+      # dir / coverage config — we therefore do NOT fail on findings. Instead we
+      # assert the linter RUNS cleanly and emits valid JSON/SARIF. This is the
+      # exact contract the standards-review composite action depends on and
+      # would have caught the zero-findings crash fixed in #132.
+      - name: Run linter (text, informational)
+        run: ./scripts/lint-standards.sh . || true
+
+      - name: Assert --format json emits valid JSON (no crash)
+        run: |
+          set -euo pipefail
+          ./scripts/lint-standards.sh --format json . > /tmp/lint.json || true
+          python3 -c "import json,sys; json.load(open('/tmp/lint.json')); print('valid JSON')"
+
+      - name: Assert --format sarif emits valid JSON (no crash)
+        run: |
+          set -euo pipefail
+          ./scripts/lint-standards.sh --format sarif . > /tmp/lint.sarif || true
+          python3 -c "import json,sys; json.load(open('/tmp/lint.sarif')); print('valid SARIF')"

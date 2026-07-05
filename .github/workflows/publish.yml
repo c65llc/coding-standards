@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the commit to publish
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           # On a release, publish the tagged commit; otherwise the triggering
           # commit on main.
@@ -39,4 +39,17 @@ jobs:
           fetch-depth: 0
 
       - name: Fast-forward `live` (triggers the Cloudflare Pages build)
-        run: git push --force origin HEAD:live
+        # Use --force-with-lease so an out-of-band commit pushed to `live`
+        # between our read and our push is not silently clobbered. The checkout
+        # above only fetched the publish ref, so capture `live`'s current SHA
+        # explicitly and lease against it (creating `live` if it doesn't exist).
+        run: |
+          set -euo pipefail
+          LIVE_SHA="$(git ls-remote origin refs/heads/live | cut -f1)"
+          if [ -n "$LIVE_SHA" ]; then
+            echo "Leasing live against $LIVE_SHA"
+            git push --force-with-lease=live:"$LIVE_SHA" origin HEAD:live
+          else
+            echo "live does not exist yet — creating it"
+            git push origin HEAD:live
+          fi
