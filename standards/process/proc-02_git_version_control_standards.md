@@ -197,6 +197,15 @@ actually *rendered* — exporting it isn't enough.
   visible only on the staging channel) via a build-time channel variable. Verify
   the variable name matches what the deploy platform actually injects — a typo
   (`PUBLIC_CHANNEL` vs `VITE_CHANNEL`) silently ships the wrong content.
+* **A green release does not prove production updated.** End the release with an
+  automated version assertion against the *live* deployment (fetch it, assert the
+  new release/build number), not "the promote step succeeded". The deploy
+  platform's credentials and branch protections live outside the repo and fail
+  invisibly — a rolled or deleted build token, or a force-push-protected `release`
+  branch that silently rejects the fast-forward promote — so a green in-repo
+  pipeline is necessary but not sufficient. See
+  [arch-08_ci_cd_pipeline_standards.md](../architecture/arch-08_ci_cd_pipeline_standards.md)
+  §7 for the CI-side smoke check.
 
 ### Scripted, Reviewable Release Cut
 

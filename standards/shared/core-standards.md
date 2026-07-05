@@ -135,6 +135,11 @@ The coverage floor is met with **real tests**, never by gaming the number.
   automated reviewers will (correctly) flag it.
 - **Flag the residual manual-verification step explicitly** — in the PR body and,
   for agents, as a tracked item — rather than pretending the boundary is covered.
+- **Commit an auditable manual-QA checklist in-repo** (e.g.
+  `docs/planning/<version>-manual-qa.md`) enumerating the exact steps CI cannot
+  reach — Touch-ID prompts, native window-server behavior, on-device flows — and
+  update it each release. A committed checklist makes the carve-out reviewable and
+  travels with the release, instead of living only as a verbal "flag it."
 - Document the exclusion (and why) where the project records coverage policy, so
   the carve-out is auditable rather than silent.
 

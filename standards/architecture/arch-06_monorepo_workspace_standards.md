@@ -94,6 +94,19 @@ silently resolves somewhere else (or fails only in one tool).
 * Prefer the package manager's native workspace resolution over hand-maintained
   alias maps where possible; reserve aliases for cases the resolver can't cover.
 
+### Alias ordering & config parity
+
+* **Register specific subpath aliases before any catch-all/prefix alias.** A
+  greedy `@pkg/core` catch-all that resolves ahead of `@pkg/core/<subpath>`
+  shadows the subpath — it resolves to the package `index.ts` or a
+  dir-not-found. Order matters: most-specific first, prefix last.
+* **Keep the alias map in sync across the bundler *and* the test-runner config**
+  (e.g. `vite.config.ts` and `vitest.config.ts`). Drift between them produces
+  "works in the app, fails in tests" (or the reverse) — a trap CI can mask
+  behind a misleading, unrelated error.
+* Prefer package `exports` subpath maps over hand-rolled aliases where possible;
+  a single `exports` map is honored by every resolver, so it can't drift.
+
 ## 6. Generated & Committed Artifacts
 
 Some workspaces commit build outputs that are derived from source (e.g.

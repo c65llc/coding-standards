@@ -68,6 +68,23 @@ the boundary itself is a tested surface, not an afterthought.
   the generated bindings as committed generated artifacts (see
   [arch-06](./arch-06_monorepo_workspace_standards.md) §6).
 
+### Cold-rebuild drift gate for committed generated artifacts
+
+If you commit generated cross-platform artifacts — wasm `pkg/*_bg.wasm`, UniFFI
+Swift/Kotlin bindings, design-token outputs — add a CI gate that regenerates them
+and fails if the result differs from what is committed.
+
+* **Rebuild from a cold/clean state before diffing.** A warm incremental build
+  target (`target/`) *masks* artifact drift: a naive "regenerate and diff" on a
+  warm target can pass falsely because stale build state produces the already-
+  committed output. The gate must `cargo clean` (or the equivalent) first, or run
+  in a fresh checkout, so the diff reflects a true from-scratch regeneration.
+* Treat committed generated code as **generated** for coverage and TODO/lint
+  rules — do not require the untestable-boundary or coverage treatment that
+  hand-written code gets. Apply the generated-artifact rules in
+  [core-standards.md](../shared/core-standards.md) (Testing Standards) rather than
+  restating them here.
+
 ## 4. UI Changes Are Cross-Platform by Default
 
 When a product ships the same UX on multiple platforms, a UI change is assumed to
@@ -95,3 +112,18 @@ apply to **every** platform unless explicitly scoped otherwise.
 * See [arch-05](./arch-05_resilient_architecture_patterns.md) §3 for choosing
   layout by **semantic state** (a `LayoutMode` computed from dimensions) rather
   than platform detection — the same semantic state drives every shell.
+
+## 6. Version Bumps Fan Out to Every Platform Artifact
+
+A semver/release-version bump is a **coordinated fan-out** across all shipped
+platforms — web plus each native shell — not a single-artifact edit with manual
+follow-up on the rest.
+
+* Cut the bump as **one step, enforced by the release script.** The script updates
+  every platform's version artifact together; do not leave any platform to a manual
+  follow-up commit, where it silently drifts out of version sync.
+* The release checklist/script **enumerates every platform artifact** a version
+  bump must produce (e.g. the web `package.json`, each native shell's manifest/build
+  version, the core crate version). Adding a platform means adding it to this
+  enumeration, so a missed platform fails the release rather than shipping mismatched
+  versions.
