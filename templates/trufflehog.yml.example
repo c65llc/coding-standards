@@ -1,0 +1,39 @@
+# TruffleHog secret scanning — copy to .github/workflows/trufflehog.yml
+#
+# Scans pushes and PRs for committed secrets. Unignored findings BLOCK the
+# check (P0 per sec-01 §3). Verification is intentionally OFF (no
+# --only-verified): we do not send detected secrets to third-party endpoints.
+# False positives are suppressed via a committed .trufflehog-ignore file.
+name: Secret Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trufflehog-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trufflehog:
+    name: TruffleHog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so a PR diff scan has both endpoints to compare.
+          fetch-depth: 0
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@00155c9dc586f34d189adc83d3ac2698c2ec551f # v3.95.8
+        with:
+          # Scan the whole checkout. On PRs, TruffleHog auto-scopes to the diff.
+          path: ./
+          # extra_args: no --only-verified (verification off by default);
+          # --exclude-paths respects the committed allowlist.
+          extra_args: --results=verified,unknown --exclude-paths=.trufflehog-ignore

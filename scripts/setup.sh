@@ -562,6 +562,31 @@ elif [ -d "$STANDARDS_DIR/.github/actions/standards-review" ] && [ ! -f "$PROJEC
     echo "ℹ️  standards-review workflow available. To install: ./setup.sh --workflow"
 fi
 
+# Install TruffleHog secret-scanning allowlist (never clobber an existing one)
+if [ -f "$STANDARDS_DIR/templates/.trufflehog-ignore" ] && [ ! -f "$PROJECT_ROOT/.trufflehog-ignore" ]; then
+    if [ "$DRY_RUN" = true ]; then
+        echo "  [dry-run] Would copy: $STANDARDS_DIR/templates/.trufflehog-ignore → $PROJECT_ROOT/.trufflehog-ignore"
+    else
+        cp "$STANDARDS_DIR/templates/.trufflehog-ignore" "$PROJECT_ROOT/.trufflehog-ignore"
+        echo "✅ TruffleHog allowlist installed at .trufflehog-ignore"
+    fi
+fi
+
+# Install TruffleHog secret-scanning workflow (opt-in, like standards-review)
+if [ "$INSTALL_WORKFLOW" = true ] && [ -f "$STANDARDS_DIR/templates/trufflehog.yml.example" ]; then
+    if [ ! -f "$PROJECT_ROOT/.github/workflows/trufflehog.yml" ]; then
+        dry_run_mkdir "$PROJECT_ROOT/.github/workflows"
+        if [ "$DRY_RUN" = true ]; then
+            echo "  [dry-run] Would copy: $STANDARDS_DIR/templates/trufflehog.yml.example → $PROJECT_ROOT/.github/workflows/trufflehog.yml"
+        else
+            cp "$STANDARDS_DIR/templates/trufflehog.yml.example" "$PROJECT_ROOT/.github/workflows/trufflehog.yml"
+            echo "✅ TruffleHog secret-scan workflow installed at .github/workflows/trufflehog.yml"
+        fi
+    fi
+elif [ -f "$STANDARDS_DIR/templates/trufflehog.yml.example" ] && [ ! -f "$PROJECT_ROOT/.github/workflows/trufflehog.yml" ]; then
+    echo "ℹ️  TruffleHog secret-scan workflow available. To install: ./setup.sh --workflow"
+fi
+
 # Set up git aliases (global configuration)
 if command -v git >/dev/null 2>&1; then
     # Determine path to setup-git-aliases.sh
