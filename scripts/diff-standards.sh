@@ -37,7 +37,7 @@ fi
 # Map languages to block filenames (shared: scripts/lib/languages.sh)
 # ---------------------------------------------------------------------------
 
-# shellcheck source=lib/languages.sh
+# shellcheck source=lib/languages.sh disable=SC1091
 source "$SCRIPT_DIR/lib/languages.sh"
 
 # ---------------------------------------------------------------------------

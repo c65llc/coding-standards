@@ -22,7 +22,7 @@ while [ $# -gt 0 ]; do
 done
 
 # Dry-run aware file operations (shared: scripts/lib/dry-run.sh)
-# shellcheck source=lib/dry-run.sh
+# shellcheck source=lib/dry-run.sh disable=SC1091
 source "$SCRIPT_DIR/lib/dry-run.sh"
 
 if [ "$DRY_RUN" = true ]; then
@@ -50,7 +50,7 @@ fi
 source "$SCRIPT_DIR/lib/assembly.sh"
 
 # Map detected languages to block filenames (shared: scripts/lib/languages.sh)
-# shellcheck source=lib/languages.sh
+# shellcheck source=lib/languages.sh disable=SC1091
 source "$SCRIPT_DIR/lib/languages.sh"
 
 # Function to sync AI agent configurations
