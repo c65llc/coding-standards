@@ -9,10 +9,15 @@ This project follows comprehensive development standards. Reference these docume
 ### Architecture & Standards
 - `standards/architecture/arch-01_project_standards_and_architecture.md` - Core architecture, SOLID principles, naming conventions
 - `standards/architecture/arch-02_automation_standards.md` - Makefile targets and automation requirements
+- `standards/architecture/arch-04_data_versioning_and_migration_standards.md` - Data versioning and migration
+- `standards/architecture/arch-05_resilient_architecture_patterns.md` - Resilient architecture patterns
+- `standards/architecture/arch-06_monorepo_workspace_standards.md` - Monorepo/workspace standards
+- `standards/architecture/arch-07_cross_platform_shared_core_standards.md` - Cross-platform shared-core standards
+- `standards/architecture/arch-08_ci_cd_pipeline_standards.md` - CI/CD pipeline standards
 - `standards/shared/core-standards.md` - Shared core standards
 
 ### Language-Specific Standards
-- `standards/languages/lang-01_python_standards.md` - Python (poetry/uv, black, ruff, mypy, pytest)
+- `standards/languages/lang-01_python_standards.md` - Python (uv, ruff, mypy, pytest)
 - `standards/languages/lang-02_java_standards.md` - Java (Gradle/Maven, Java 17+, JUnit 5)
 - `standards/languages/lang-03_kotlin_standards.md` - Kotlin (Gradle, ktlint, detekt, MockK)
 - `standards/languages/lang-04_swift_standards.md` - Swift (SPM, swiftformat, XCTest)
@@ -23,6 +28,8 @@ This project follows comprehensive development standards. Reference these docume
 - `standards/languages/lang-09_zig_standards.md` - Zig (zig build, zig fmt, manual memory management)
 - `standards/languages/lang-10_ruby_standards.md` - Ruby (bundler, rubocop, sorbet, rspec)
 - `standards/languages/lang-11_ruby_on_rails_standards.md` - Ruby on Rails (Rails 7.2+, rubocop-rails)
+- `standards/languages/lang-12_go_standards.md` - Go (go modules, gofmt, go vet, golangci-lint)
+- `standards/languages/lang-13_elixir_standards.md` - Elixir (mix, mix format, credo, ExUnit)
 
 ### Process Standards
 - `standards/process/proc-01_documentation_standards.md` - ADR, code docs, changelog, user docs
@@ -83,6 +90,8 @@ When working with code, automatically detect the language and apply the correspo
 - `.zig` files → `standards/languages/lang-09_zig_standards.md`
 - `.rb` files → `standards/languages/lang-10_ruby_standards.md`
 - `.erb` files, `Gemfile`, `Rakefile` → `standards/languages/lang-11_ruby_on_rails_standards.md`
+- `.go` files, `go.mod` → `standards/languages/lang-12_go_standards.md`
+- `.ex`, `.exs` files, `mix.exs` → `standards/languages/lang-13_elixir_standards.md`
 
 ## Response Style
 

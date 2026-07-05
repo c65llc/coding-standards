@@ -106,8 +106,12 @@ When working with this repository, agents must follow the A-P-E (Analyze, Plan, 
 
 - **Architecture:** `standards/architecture/arch-01_project_standards_and_architecture.md`
 - **Automation:** `standards/architecture/arch-02_automation_standards.md`
-- **Cursor Integration:** `standards/architecture/arch-03_cursor_automation_standards.md`
-- **Language Standards:** `standards/languages/lang-01_python_standards.md` through `lang-11_ruby_on_rails_standards.md`
+- **Data Versioning & Migration:** `standards/architecture/arch-04_data_versioning_and_migration_standards.md`
+- **Resilient Architecture:** `standards/architecture/arch-05_resilient_architecture_patterns.md`
+- **Monorepo/Workspace:** `standards/architecture/arch-06_monorepo_workspace_standards.md`
+- **Cross-Platform Shared Core:** `standards/architecture/arch-07_cross_platform_shared_core_standards.md`
+- **CI/CD Pipeline:** `standards/architecture/arch-08_ci_cd_pipeline_standards.md`
+- **Language Standards:** `standards/languages/lang-01_python_standards.md` through `lang-13_elixir_standards.md`
 - **Process Standards:** `standards/process/proc-01_documentation_standards.md` through `proc-04_agent_workflow_standards.md`
 - **Security Standards:** `standards/security/sec-01_security_standards.md` - P0-P2 security guidelines
 

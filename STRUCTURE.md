@@ -34,7 +34,9 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │   │   ├── lang-08_rust_standards.md
 │   │   ├── lang-09_zig_standards.md
 │   │   ├── lang-10_ruby_standards.md
-│   │   └── lang-11_ruby_on_rails_standards.md
+│   │   ├── lang-11_ruby_on_rails_standards.md
+│   │   ├── lang-12_go_standards.md
+│   │   └── lang-13_elixir_standards.md
 │   │
 │   ├── process/                   # Process & workflow standards
 │   │   ├── proc-01_documentation_standards.md
@@ -50,7 +52,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │   │
 │   └── agents/                    # AI agent-specific configurations
 │       ├── claude-code/
-│       │   ├── CLAUDE.md.template
+│       │   ├── base-claude-code.md
 │       │   ├── settings.json.example
 │       │   └── permissions/       # Language-specific Claude Code permissions
 │       │       ├── python.txt
@@ -60,7 +62,9 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │       │       ├── jvm.txt
 │       │       ├── swift.txt
 │       │       ├── dart.txt
-│       │       └── zig.txt
+│       │       ├── zig.txt
+│       │       ├── go.txt
+│       │       └── elixir.txt
 │       ├── python/
 │       │   └── ruff.toml          # Python linter/formatter config
 │       ├── rust/
@@ -75,7 +79,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │       │       └── copilot-instructions.md
 │       ├── aider/
 │       │   └── .aiderrc
-│       ├── codex/
+│       ├── codex/                 # Note: Codex now reads AGENTS.md at project root (.codexrc is deprecated)
 │       │   └── .codexrc
 │       └── gemini/                # Note: Gemini CLI uses .gemini/ at root (Gemini CLI convention)
 │           └── (configs in .gemini/ at project root)
