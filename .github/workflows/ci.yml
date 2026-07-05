@@ -59,6 +59,9 @@ jobs:
       - name: gh-task tests
         run: ./scripts/test-gh-task.sh
 
+      - name: lint-standards functional tests
+        run: ./scripts/test-lint-standards.sh
+
   markdown-lint:
     name: Markdown Lint
     runs-on: ubuntu-latest

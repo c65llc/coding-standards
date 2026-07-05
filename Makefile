@@ -1,4 +1,4 @@
-.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor merge-standards lint-standards website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe
+.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor merge-standards lint-standards website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards
 
 help: ## Show this help message
 	@echo "Standards Repository Management"
@@ -81,7 +81,10 @@ test-gh-task: ## Run comprehensive tests on gh-task CLI
 test-setup-safe: ## Run functional tests on safe-setup behavior (1.2)
 	@./scripts/test-setup-safe.sh
 
-test: test-scripts test-bootstrap test-gh-task test-setup-safe ## Run all tests
+test-lint-standards: ## Run functional tests on lint-standards.sh and lint-checks modules
+	@./scripts/test-lint-standards.sh
+
+test: test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards ## Run all tests
 
 setup-agents: ## Setup AI agent configurations (Copilot, Aider, Codex)
 	@if [ -d ".standards" ]; then \
