@@ -21,42 +21,9 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Dry-run aware file operations
-dry_run_cp() {
-    if [ "$DRY_RUN" = true ]; then
-        echo "  [dry-run] Would copy: $1 → $2"
-    else
-        cp "$1" "$2"
-    fi
-}
-
-dry_run_mkdir() {
-    if [ "$DRY_RUN" = true ]; then
-        echo "  [dry-run] Would create directory: $1"
-    else
-        mkdir -p "$1"
-    fi
-}
-
-dry_run_write() {
-    local target="$1"
-    if [ "$DRY_RUN" = true ]; then
-        echo "  [dry-run] Would write: $target"
-        cat > /dev/null
-    else
-        cat > "$target"
-    fi
-}
-
-dry_run_append() {
-    local target="$1"
-    if [ "$DRY_RUN" = true ]; then
-        echo "  [dry-run] Would append to: $target"
-        cat > /dev/null
-    else
-        cat >> "$target"
-    fi
-}
+# Dry-run aware file operations (shared: scripts/lib/dry-run.sh)
+# shellcheck source=lib/dry-run.sh disable=SC1091
+source "$SCRIPT_DIR/lib/dry-run.sh"
 
 if [ "$DRY_RUN" = true ]; then
     echo "🔍 DRY RUN — showing what would change (no files modified)"
@@ -82,30 +49,9 @@ fi
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/assembly.sh"
 
-# Map detected languages to block filenames (shared with setup.sh)
-map_languages_to_blocks() {
-    local BLOCKS=()
-    for lang in $1; do
-        case "$lang" in
-            python)     BLOCKS+=("lang-python.md") ;;
-            javascript) BLOCKS+=("lang-javascript.md") ;;
-            typescript) BLOCKS+=("lang-typescript.md") ;;
-            jvm)        BLOCKS+=("lang-java.md" "lang-kotlin.md") ;;
-            java)       BLOCKS+=("lang-java.md") ;;
-            kotlin)     BLOCKS+=("lang-kotlin.md") ;;
-            ruby)       BLOCKS+=("lang-ruby.md") ;;
-            rails)      BLOCKS+=("lang-rails.md" "lang-ruby.md") ;;
-            rust)       BLOCKS+=("lang-rust.md") ;;
-            swift)      BLOCKS+=("lang-swift.md") ;;
-            dart)       BLOCKS+=("lang-dart.md") ;;
-            zig)        BLOCKS+=("lang-zig.md") ;;
-            go)         BLOCKS+=("lang-go.md") ;;
-            elixir)     BLOCKS+=("lang-elixir.md") ;;
-        esac
-    done
-    # Deduplicate and output
-    printf '%s\n' "${BLOCKS[@]}" | sort -u | tr '\n' ' '
-}
+# Map detected languages to block filenames (shared: scripts/lib/languages.sh)
+# shellcheck source=lib/languages.sh disable=SC1091
+source "$SCRIPT_DIR/lib/languages.sh"
 
 # Function to sync AI agent configurations
 sync_ai_agents() {

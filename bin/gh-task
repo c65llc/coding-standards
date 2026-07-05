@@ -99,10 +99,15 @@ load_config() {
         done < "$CONFIG_FILE"
     fi
     
-    # Get repository info
-    REPO_OWNER=$(gh repo view --json owner --jq '.owner.login' 2>/dev/null || echo "")
-    REPO_NAME=$(gh repo view --json name --jq '.name' 2>/dev/null || echo "")
-    
+    # Fall back to `gh repo view` only when the config didn't supply the values,
+    # so the documented REPO_OWNER/REPO_NAME config keys are actually honored.
+    if [ -z "${REPO_OWNER:-}" ]; then
+        REPO_OWNER=$(gh repo view --json owner --jq '.owner.login' 2>/dev/null || echo "")
+    fi
+    if [ -z "${REPO_NAME:-}" ]; then
+        REPO_NAME=$(gh repo view --json name --jq '.name' 2>/dev/null || echo "")
+    fi
+
     if [ -z "$REPO_OWNER" ] || [ -z "$REPO_NAME" ]; then
         error "Could not determine repository information"
     fi
@@ -120,10 +125,22 @@ EOF
 }
 
 # Load current task state
+# Parse as key=value data with a whitelist of expected keys. Never `source`
+# the file: it lives in the working directory (.gh-task-state) and a tampered
+# or mis-merged copy would otherwise execute arbitrary shell code.
 load_state() {
-    if [ -f "$STATE_FILE" ]; then
-        source "$STATE_FILE"
-    fi
+    [ -f "$STATE_FILE" ] || return 0
+    local key value
+    while IFS='=' read -r key value; do
+        [[ "$key" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "$key" ]] && continue
+        key=$(echo "$key" | xargs)
+        case "$key" in
+            CURRENT_ISSUE)  CURRENT_ISSUE="$value"  ;;
+            CURRENT_BRANCH) CURRENT_BRANCH="$value" ;;
+            STARTED_AT)     STARTED_AT="$value"     ;;
+        esac
+    done < "$STATE_FILE"
 }
 
 # Clear task state
@@ -405,7 +422,8 @@ cmd_create() {
     fi
     
     # Extract issue number from URL
-    local issue_number=$(echo "$issue_url" | grep -oP '\d+$')
+    # Portable extraction: BSD grep (macOS default) has no -P/PCRE support.
+    local issue_number=$(echo "$issue_url" | grep -Eo '[0-9]+$')
     
     success "Created issue #$issue_number"
     echo "$issue_url"
@@ -579,8 +597,11 @@ cmd_submit() {
         git checkout "$CURRENT_BRANCH" || error "Failed to checkout branch"
     fi
     
-    # Check for uncommitted changes
-    if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+    # Check for uncommitted changes.
+    # `git diff-index HEAD` errors on a repo with no commits (HEAD unresolved),
+    # which would otherwise be misreported as "uncommitted changes". Only run
+    # the diff once we know HEAD resolves.
+    if git rev-parse --verify -q HEAD >/dev/null 2>&1 && ! git diff-index --quiet HEAD -- 2>/dev/null; then
         warning "You have uncommitted changes"
         git status --short
         echo ""
@@ -650,9 +671,17 @@ This PR addresses the work tracked in issue #$CURRENT_ISSUE.
 ---
 *Created via gh-task CLI*"
     
+    # Resolve the issue title up front so a failed lookup doesn't silently
+    # create a PR with an empty title.
+    local pr_title
+    pr_title=$(gh issue view "$CURRENT_ISSUE" --json title --jq '.title' 2>/dev/null || echo "")
+    if [ -z "$pr_title" ]; then
+        error "Could not fetch title for issue #$CURRENT_ISSUE — aborting PR creation"
+    fi
+
     local pr_url=$(gh pr create \
         --draft \
-        --title "$(gh issue view "$CURRENT_ISSUE" --json title --jq '.title')" \
+        --title "$pr_title" \
         --body "$pr_body" 2>/dev/null || echo "")
     
     if [ -z "$pr_url" ]; then

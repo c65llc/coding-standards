@@ -2,7 +2,7 @@
 # Generate PR content using git information for Cursor AI to enhance
 # This script outputs PR information that Cursor AI can use to generate better titles and descriptions
 
-set -e
+set -euo pipefail
 
 CURRENT_BRANCH=$(git branch --show-current)
 BASE_BRANCH="${1:-main}"
@@ -19,9 +19,13 @@ PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 STANDARDS_TMP_DIR="$PROJECT_ROOT/.standards_tmp"
 mkdir -p "$STANDARDS_TMP_DIR"
 
-# Create temporary file for PR content in .standards_tmp
+# Create a file for PR content in .standards_tmp (gitignored, ephemeral).
+# NOTE: This file is intentionally NOT deleted on exit — line ~59 prints its
+# path to stdout so a downstream consumer (the Cursor `/pr` command, `make pr`)
+# can read it after this script returns. An EXIT trap that removed it would
+# delete the file before any consumer could open it. Cleanup is left to the
+# ephemeral .standards_tmp/ directory.
 PR_CONTENT_FILE="$STANDARDS_TMP_DIR/pr-content-$(date +%s)-$$.txt"
-trap 'rm -f "$PR_CONTENT_FILE"' EXIT
 
 # Gather commit information
 {

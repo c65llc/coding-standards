@@ -208,6 +208,7 @@ output_json() {
     printf '  "results": [\n'
 
     local first=true
+    if [ ${#RESULTS[@]} -gt 0 ]; then
     for result in "${RESULTS[@]}"; do
         local status check_name message
         status=$(echo "$result" | awk '{print $1}')
@@ -229,6 +230,7 @@ output_json() {
         printf '      "message": "%s"\n' "$message"
         printf '    }'
     done
+    fi
 
     printf '\n  ]\n'
     printf '}\n'
@@ -268,15 +270,18 @@ output_sarif() {
     # Emit rules array from unique check names
     local rules_first=true
     local seen_rules=()
+    if [ ${#RESULTS[@]} -gt 0 ]; then
     for result in "${RESULTS[@]}"; do
         local check_name
         check_name=$(echo "$result" | awk '{print $2}')
 
         # Skip duplicates
         local already_seen=false
+        if [ ${#seen_rules[@]} -gt 0 ]; then
         for seen in "${seen_rules[@]}"; do
             [ "$seen" = "$check_name" ] && already_seen=true && break
         done
+        fi
         $already_seen && continue
         seen_rules+=("$check_name")
 
@@ -301,6 +306,7 @@ output_sarif() {
         printf '              "shortDescription": { "text": "Standards compliance check: %s" }\n' "$check_name"
         printf '            }'
     done
+    fi
 
     printf '\n          ]\n'
     printf '        }\n'
@@ -308,6 +314,7 @@ output_sarif() {
     printf '      "results": [\n'
 
     local results_first=true
+    if [ ${#RESULTS[@]} -gt 0 ]; then
     for result in "${RESULTS[@]}"; do
         local status check_name message level
         status=$(echo "$result" | awk '{print $1}')
@@ -342,6 +349,7 @@ output_sarif() {
         printf '          ]\n'
         printf '        }'
     done
+    fi
 
     printf '\n      ],\n'
     printf '      "invocations": [\n'
