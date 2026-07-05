@@ -10,6 +10,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- Add entries under the standard Keep a Changelog headings as work lands:
 ### Added / ### Changed / ### Deprecated / ### Removed / ### Fixed / ### Security -->
 
+## [1.5.0] - 2026-07-05
+
+A full-repo audit turned up ~30 issues across shell scripts, CI, docs, and the
+standards themselves. This release lands the fixes in reviewable batches, plus a
+round of standards enrichment from real cross-platform development.
+
+### Added
+
+- **Release automation (#141):** a `release-drafter` config and workflow keep a
+  categorized draft release continuously up to date from merged PRs and
+  auto-label PRs from their Conventional Commit title.
+- **TruffleHog secret scanning (#58):** ship `templates/.trufflehog-ignore` (a
+  documented `--exclude-paths` allowlist) and `templates/trufflehog.yml.example`
+  (merge-blocking, verification-off, SHA-pinned). `setup.sh` installs the
+  allowlist by default and the workflow with `--workflow`; `sec-01 §3` now
+  recommends TruffleHog and documents the suppression mechanisms.
+- **Linter dogfooding + docs (#127, #145):** a CI job runs `lint-standards.sh`
+  against this repo and asserts text/JSON/SARIF run without crashing; a new
+  `scripts/lint-checks/README.md` documents the enforced set (Python,
+  TypeScript, Go, Elixir + common) vs. the nine standards-only languages, with a
+  roadmap.
+- **Functional test coverage (#144):** `scripts/test-lint-standards.sh` covers
+  the linter's output formats and check modules; the safe-setup suite gains
+  TruffleHog install tests.
+- **Standards enrichment** from a real TS/Rust/Swift local-first monorepo:
+  leader-protocol versioning + self-healing (`arch-05`, #119); alias ordering
+  and bundler/test config parity (`arch-06`, #115); cold-rebuild drift gate and
+  release-version fan-out across platforms (`arch-07`, #114/#118); self-hosted
+  runner isolation and a post-promote production smoke check (`arch-08`/`proc-02`,
+  #116/#117); an auditable per-release manual-QA checklist (`core-standards`,
+  #121); regenerate visual baselines in CI, never locally (`testing-policy`/
+  `lang-06`, #120); JS/TS lockfile + package-manager hygiene with
+  `.prettierignore`/`.npmrc` templates (`#86`).
+- **Dependabot ergonomics (#139):** grouped npm and github-actions updates with
+  auto-merge for patch/minor bumps (majors stay manual).
+- Shared script libraries `scripts/lib/languages.sh` and `scripts/lib/dry-run.sh`
+  (#142).
+
+### Changed
+
+- **CI hardening (#128, #108):** added concurrency groups; expanded ShellCheck to
+  the whole shell tree (with a documented `.shellcheckrc`); run
+  `test-setup-safe.sh` in CI; `make test-scripts` now globs every shell script;
+  markdownlint covers root markdown; all GitHub Actions pinned to exact commit
+  SHAs.
+- **Definition of Done (#134):** default Node `18 → 22`, advisory checks labeled
+  honestly (so non-enforcing steps aren't mistaken for gates), and the summary
+  comment is edited in place instead of stacked each run.
+- **Lifecycle sync (#135):** project-item lookup paginates all items (was capped
+  at 100 and failing open) and surfaces a warning when the issue isn't found.
+- **Publish (#141):** `live` is advanced with `--force-with-lease` so an
+  out-of-band commit isn't clobbered.
+- **Website deps (#122–#126):** Astro `6 → 7`, Starlight, `starlight-blog`,
+  `@astrojs/rss`, and `sharp` upgraded together (build re-verified).
+- **Docs alignment:** `proc-02` distinguishes branch prefixes from Conventional
+  Commit types (#138); `--workflow` install is documented as opt-in with the
+  correct path (#143); agent configs and docs are re-synced to the standards
+  tree — the deleted `arch-03` removed, Go/Elixir (`lang-12`/`lang-13`) added,
+  Codex pointed at `AGENTS.md` (#136).
+
+### Fixed
+
+- `lint-standards.sh --format json/sarif` no longer crashes on zero findings
+  under bash 3.2 — the exact path the standards-review action runs (#132).
+- `gh-task`: parse `.gh-task-state` as data instead of `source`-ing it (arbitrary
+  code execution), honor the documented repo config keys, handle a repo with no
+  commits, abort instead of opening an empty-title PR (#133), and use portable
+  `grep -Eo` instead of macOS-unsupported `grep -oP` (#129).
+- `generate-pr-content.sh` no longer deletes the output file (via an EXIT trap)
+  before any consumer can read the path it printed (#131).
+- `install.sh` reads its prompt from `/dev/tty` (with a `STANDARDS_ASSUME_YES`
+  opt-in) so it works under `curl | bash`, and hardens shell options (#130).
+
+### Removed
+
+- Orphaned `landing-page.png` (~250KB) and the stale `REVIEW.md` improvement-plan
+  doc (its items are now tracked as issues) (#140).
+
+### Security
+
+- TruffleHog secret-scanning config and `sec-01 §3` guidance (#58) — see Added.
+
 ## [1.4.0] - 2026-06-18
 
 ### Changed
