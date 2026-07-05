@@ -1,5 +1,5 @@
 Use `pnpm` (preferred) or `npm`. Commit lock files verbatim — they are generated artifacts, never hand-formatted. TypeScript 5.0+ with strict mode.
-Pin the package manager: set an exact `packageManager` field in `package.json` and add `.npmrc` with `manage-package-manager-versions=true` so local pnpm self-switches to the pinned version (byte-identical to CI). CI installs with `--frozen-lockfile`.
+Pin the package manager: set an exact `packageManager` field in `package.json` and add `.npmrc` with `manage-package-manager-versions=true` so local pnpm self-switches to the pinned version (byte-identical to CI). CI installs from the lockfile without updating it (`pnpm install --frozen-lockfile`, or `npm ci` for npm).
 Format with `prettier` (line length 120). Lint with `eslint` + `@typescript-eslint`. Run `tsc --noEmit` in CI. Ship a `.prettierignore` excluding lockfiles (`pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`).
 No `any`; use `unknown` when type is uncertain. Explicit types on public APIs; infer locally.
 Use `Partial<T>`, `Pick<T>`, `Omit<T>`, `Record<K, V>` utility types.
