@@ -64,6 +64,7 @@ if json_valid "$TMP_BASE/out.json"; then pass; else fail "invalid JSON output"; 
 echo -n "Test 4: --format json has summary.pass/warn/fail keys... "
 if grep -q '"summary"' "$TMP_BASE/out.json" \
    && grep -q '"pass"' "$TMP_BASE/out.json" \
+   && grep -q '"warn"' "$TMP_BASE/out.json" \
    && grep -q '"fail"' "$TMP_BASE/out.json"; then pass; else fail "missing summary keys"; fi
 
 echo -n "Test 5: --format sarif emits valid JSON (regression: bash 3.2 unbound array)... "
@@ -87,7 +88,10 @@ if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out
 
 echo -n "Test 9: no-secrets module FLAGS a hardcoded AWS key... "
 secret=$(make_project "secret")
-printf 'aws_secret_access_key = "AKIAIOSFODNN7EXAMPLE1234"\n' > "$secret/config.py"
+# Build a valid-length AWS access key id (AKIA + 16 chars) at runtime by
+# concatenation, so no key-shaped literal is committed to trip secret scanners.
+aws_key="AKIA$(printf '%s' 'IOSFODNN7EXAMPLE')"   # 4 + 16 = 20 chars
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$secret/config.py"
 out=$(bash "$CHECKS/common/no-secrets.sh" "$secret" 2>/dev/null || true)
 if echo "$out" | grep -qE '^(FAIL|WARN)'; then pass; else fail "expected FAIL/WARN, got: $out"; fi
 
@@ -102,11 +106,13 @@ echo -n "Test 11: every check module emits a recognized status line... "
 bad=""
 for m in "$CHECKS"/*/*.sh; do
     out=$(bash "$m" "$proj" 2>/dev/null || true)
-    if [ -n "$out" ] && ! echo "$out" | grep -qE '^(PASS|WARN|FAIL)'; then
+    # Empty output is a failure too: a module that emits nothing is a silent
+    # regression the runner would tally as zero results.
+    if [ -z "$out" ] || ! echo "$out" | grep -qE '^(PASS|WARN|FAIL)'; then
         bad="$bad $(basename "$m")"
     fi
 done
-if [ -z "$bad" ]; then pass; else fail "modules with unrecognized output:$bad"; fi
+if [ -z "$bad" ]; then pass; else fail "modules with empty/unrecognized output:$bad"; fi
 
 # --- Sibling scripts smoke --------------------------------------------------
 
