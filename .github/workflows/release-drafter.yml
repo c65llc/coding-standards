@@ -17,6 +17,12 @@ permissions:
 
 jobs:
   update_release_draft:
+    # Skip PRs from forks: their GITHUB_TOKEN is read-only, so autolabeling would
+    # fail and show a red check for external contributors. Drafting still runs on
+    # push to main and on same-repo PRs.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: write      # create/update the draft release
       pull-requests: write # apply autolabels

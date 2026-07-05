@@ -59,7 +59,7 @@ format: ## Format all markdown files (if formatter available)
 test-scripts: ## Test setup and sync scripts
 	@echo "Syntax-checking all shell scripts (bash -n)..."
 	@fail=0; \
-	for f in $$(find scripts website/scripts -name '*.sh' 2>/dev/null) bin/gh-task; do \
+	for f in $$(find scripts website/scripts -name '*.sh' 2>/dev/null) bin/gh-task install.sh; do \
 		[ -f "$$f" ] || continue; \
 		if bash -n "$$f"; then \
 			echo "  ✅ $$f"; \
