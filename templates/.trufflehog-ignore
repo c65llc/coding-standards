@@ -1,0 +1,32 @@
+# .trufflehog-ignore — path-exclude file for TruffleHog (`--exclude-paths`).
+#
+# Format: one PATH REGEX per line (Go RE2 syntax). Blank lines and lines
+# starting with `#` are ignored. Each pattern excludes matching file paths from
+# the scan. Keep this list narrow — excluding whole trees can hide real secrets.
+#
+# For GRANULAR, per-finding suppression prefer an inline comment on the exact
+# line instead of excluding a whole path:
+#     const EXAMPLE_TOKEN = "AKIA...";  // trufflehog:ignore
+# That keeps the rest of the file scanned and documents the false positive in
+# place. Reserve this file for paths that are inherently all-noise.
+#
+# Common all-noise paths worth excluding (uncomment/add as they apply to your
+# repo — regexes, so `\.` escapes a literal dot):
+#
+# Lockfiles (hash checksums trip generic detectors):
+# (^|/)pnpm-lock\.yaml$
+# (^|/)package-lock\.json$
+# (^|/)yarn\.lock$
+# (^|/)Cargo\.lock$
+# (^|/)poetry\.lock$
+#
+# Checksums / SBOM / minified vendor bundles:
+# \.checksums$
+# (^|/)dist/
+# \.min\.(js|css)$
+#
+# Test fixtures and example/placeholder tokens:
+# (^|/)(tests?|__tests__|fixtures|examples)/
+#
+# Binary/asset data that base64-decodes to non-secrets (fonts, image URIs):
+# \.(woff2?|ttf|eot|png|jpe?g|gif|ico)$

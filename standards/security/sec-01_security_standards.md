@@ -326,6 +326,37 @@ logger.info("User login", extra={"username": username})
 | Tool | Scope |
 |------|-------|
 | `git-secrets` | Pre-commit hook |
-| `truffleHog` | Full repo history scan |
+| `trufflehog` | Full repo/PR scan in CI (recommended, see below) |
 | `detect-secrets` | Pre-commit + CI |
 | GitHub Secret Scanning | Automatic (GitHub repos) |
+
+#### Recommended CI scanner: TruffleHog `[P0]`
+
+[TruffleHog](https://github.com/trufflesecurity/trufflehog) is the recommended
+CI secret scanner. Its GitHub Action is fully free (Gitleaks' action requires a
+license for v2+), it is actively maintained, and unignored findings **block
+merge** per the P0 hardcoded-credentials rule above.
+
+- **Keep verification OFF by default.** Do not pass `--only-verified`.
+  Verification sends detected secrets to third-party endpoints (a security
+  concern in itself), needs outbound network many CI environments restrict, and
+  adds latency/flakiness. An expired/rotated secret is still a finding worth
+  removing from history.
+- **Suppress false positives at the finest granularity that works.** Prefer an
+  inline `// trufflehog:ignore` comment on the exact offending line so the rest
+  of the file is still scanned. Reserve a committed `.trufflehog-ignore`
+  path-exclude file (consumed via `--exclude-paths`, one path **regex** per
+  line) for paths that are inherently all-noise. Never exclude a whole tree just
+  to silence one finding — that hides future real secrets.
+- **Common all-noise sources:** lockfiles and `*.checksums` (SHA/MD5 hashes trip
+  generic detectors), minified/vendored `dist/` bundles, test fixtures and
+  example/placeholder tokens, and binary assets that base64-decode to non-secret
+  data (fonts, image data URIs). Hex color codes and UUID constants are better
+  handled with an inline `trufflehog:ignore` where they appear.
+
+Ship-with-standards templates: [`templates/.trufflehog-ignore`](../../templates/.trufflehog-ignore)
+(allowlist with format docs) and [`templates/trufflehog.yml.example`](../../templates/trufflehog.yml.example)
+(free action, verification off, merge-blocking). `setup.sh` installs the
+allowlist into consumer projects; add the workflow with `setup.sh --workflow`.
+Noisy, ignored scanner output is why teams disable scanning entirely — the
+allowlist keeps signal high so the P0 rule stays enforced.
