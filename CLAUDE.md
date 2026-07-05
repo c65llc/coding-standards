@@ -29,7 +29,7 @@ Use `--dry-run` with setup or sync to preview changes without modifying files:
 ./scripts/sync-standards.sh --dry-run
 ```
 
-The standards-review composite GitHub Action lives at `.github/actions/standards-review/action.yml`. It runs `lint-standards.sh --format json` and posts structured PR comments. A ready-to-use workflow template is at `templates/standards-review.yml.example`. Installing it into a consumer project is **opt-in**: run `setup.sh --workflow` to copy it to `.github/workflows/standards-review.yml`. Without `--workflow`, setup only prints how to install it.
+The standards-review composite GitHub Action lives at `.github/actions/standards-review/action.yml`. It runs `lint-standards.sh --format json` and posts structured PR comments. A ready-to-use workflow template is at `templates/standards-review.yml.example`. Installing it into a consumer project is **opt-in**: run `.standards/scripts/setup.sh --workflow` (or `./scripts/setup.sh --workflow` from a clone of this repo) to copy it to `.github/workflows/standards-review.yml`. Without `--workflow`, setup only prints how to install it.
 
 There are no build steps, no test suites, and no application to run. The primary "tests" are `bash -n` syntax checks on shell scripts.
 
