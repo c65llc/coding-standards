@@ -41,9 +41,10 @@ if [ -d "$STANDARDS_DIR" ]; then
     if [ "${STANDARDS_ASSUME_YES:-}" = "1" ]; then
         echo "   STANDARDS_ASSUME_YES=1 set — continuing without prompt."
     elif [ -r /dev/tty ]; then
-        read -p "Continue anyway? (y/N) " -n 1 -r < /dev/tty
+        REPLY=""
+        read -p "Continue anyway? (y/N) " -n 1 -r < /dev/tty || true
         echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        if [[ ! "${REPLY:-}" =~ ^[Yy]$ ]]; then
             echo "Aborted."
             exit 1
         fi
