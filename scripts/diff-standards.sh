@@ -34,31 +34,11 @@ if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Map languages to block filenames (shared logic)
+# Map languages to block filenames (shared: scripts/lib/languages.sh)
 # ---------------------------------------------------------------------------
 
-map_languages_to_blocks() {
-    local BLOCKS=()
-    for lang in $1; do
-        case "$lang" in
-            python)     BLOCKS+=("lang-python.md") ;;
-            javascript) BLOCKS+=("lang-javascript.md") ;;
-            typescript) BLOCKS+=("lang-typescript.md") ;;
-            jvm)        BLOCKS+=("lang-java.md" "lang-kotlin.md") ;;
-            java)       BLOCKS+=("lang-java.md") ;;
-            kotlin)     BLOCKS+=("lang-kotlin.md") ;;
-            ruby)       BLOCKS+=("lang-ruby.md") ;;
-            rails)      BLOCKS+=("lang-rails.md" "lang-ruby.md") ;;
-            rust)       BLOCKS+=("lang-rust.md") ;;
-            swift)      BLOCKS+=("lang-swift.md") ;;
-            dart)       BLOCKS+=("lang-dart.md") ;;
-            zig)        BLOCKS+=("lang-zig.md") ;;
-            go)         BLOCKS+=("lang-go.md") ;;
-            elixir)     BLOCKS+=("lang-elixir.md") ;;
-        esac
-    done
-    printf '%s\n' "${BLOCKS[@]}" | sort -u | tr '\n' ' '
-}
+# shellcheck source=lib/languages.sh
+source "$SCRIPT_DIR/lib/languages.sh"
 
 # ---------------------------------------------------------------------------
 # Locate standards directories

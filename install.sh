@@ -8,7 +8,7 @@
 #   STANDARDS_REPO_URL="https://github.com/c65llc/coding-standards" \
 #     curl -fsSL https://raw.githubusercontent.com/c65llc/coding-standards/main/install.sh | bash
 
-set -e
+set -euo pipefail
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -35,9 +35,21 @@ cd "$PROJECT_ROOT"
 # Check if standards already exist
 if [ -d "$STANDARDS_DIR" ]; then
     echo -e "${YELLOW}⚠️  Standards directory already exists at $STANDARDS_DIR${NC}"
-    read -p "Continue anyway? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    # Under the documented `curl ... | bash` flow, stdin IS the piped script, so
+    # a bare `read` would consume script bytes instead of user input. Read from
+    # the controlling terminal explicitly, and support a non-interactive opt-in.
+    if [ "${STANDARDS_ASSUME_YES:-}" = "1" ]; then
+        echo "   STANDARDS_ASSUME_YES=1 set — continuing without prompt."
+    elif [ -r /dev/tty ]; then
+        read -p "Continue anyway? (y/N) " -n 1 -r < /dev/tty
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "Aborted."
+            exit 1
+        fi
+    else
+        echo -e "${YELLOW}   No interactive terminal detected (piped install).${NC}"
+        echo -e "${YELLOW}   Re-run with STANDARDS_ASSUME_YES=1 to proceed non-interactively.${NC}"
         echo "Aborted."
         exit 1
     fi
@@ -61,11 +73,16 @@ else
         rm -rf "$STANDARDS_DIR"
     fi
     git clone "$STANDARDS_REPO_URL" "$STANDARDS_DIR"
+    INSTALL_MODE="clone"
     echo -e "${GREEN}✅ Standards cloned${NC}"
+    echo -e "${YELLOW}   Note: installed as a plain clone, NOT a git submodule.${NC}"
+    echo -e "${YELLOW}   'git submodule update' will not manage $STANDARDS_DIR;${NC}"
+    echo -e "${YELLOW}   update it with: git -C $STANDARDS_DIR pull${NC}"
 fi
+INSTALL_MODE="${INSTALL_MODE:-submodule}"
 
-# Initialize submodule if needed
-if [ -f "$STANDARDS_DIR/.gitmodules" ] || [ -f "$PROJECT_ROOT/.gitmodules" ]; then
+# Initialize submodule if needed (skip for plain-clone installs)
+if [ "$INSTALL_MODE" = "submodule" ] && [ -f "$PROJECT_ROOT/.gitmodules" ]; then
     git submodule update --init --recursive "$STANDARDS_DIR" 2>/dev/null || true
 fi
 
