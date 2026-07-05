@@ -1,0 +1,54 @@
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
+
+# Categorize the drafted release notes. PRs are auto-labeled below from their
+# Conventional Commit title, so contributors don't have to label by hand.
+categories:
+  - title: '🚀 Features'
+    labels: ['enhancement', 'feature']
+  - title: '🐛 Bug Fixes'
+    labels: ['bug', 'fix']
+  - title: '📝 Documentation'
+    labels: ['documentation']
+  - title: '🔧 Maintenance & Refactor'
+    labels: ['chore', 'refactor', 'ci', 'test', 'perf']
+  - title: '⬆️ Dependencies'
+    labels: ['dependencies']
+
+change-template: '- $TITLE (#$NUMBER) @$AUTHOR'
+change-title-escapes: '\<*_&'
+
+# Map Conventional Commit PR titles onto the labels used above.
+autolabeler:
+  - label: 'feature'
+    title: ['/^feat(\(.+\))?!?:/']
+  - label: 'bug'
+    title: ['/^fix(\(.+\))?!?:/']
+  - label: 'documentation'
+    title: ['/^docs(\(.+\))?!?:/']
+  - label: 'ci'
+    title: ['/^ci(\(.+\))?!?:/']
+  - label: 'perf'
+    title: ['/^perf(\(.+\))?!?:/']
+  - label: 'test'
+    title: ['/^test(\(.+\))?!?:/']
+  - label: 'chore'
+    title: ['/^(chore|refactor|build)(\(.+\))?!?:/']
+
+# Pick the semver bump from labels; a `!` breaking-change PR should carry the
+# `breaking` label (added manually) to force a major bump.
+version-resolver:
+  major:
+    labels: ['major', 'breaking']
+  minor:
+    labels: ['minor', 'feature', 'enhancement']
+  patch:
+    labels: ['patch', 'bug', 'fix', 'documentation', 'chore', 'ci', 'test', 'perf', 'dependencies']
+  default: patch
+
+template: |
+  ## Changes
+
+  $CHANGES
+
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION

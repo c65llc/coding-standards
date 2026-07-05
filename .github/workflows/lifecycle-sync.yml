@@ -20,6 +20,11 @@ on:
         description: 'GitHub token with project write permissions'
         required: false
 
+# Serialize per calling ref so rapid PR events don't race project updates.
+concurrency:
+  group: lifecycle-sync-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   sync-project-status:
     name: Sync Project Status
@@ -31,11 +36,11 @@ jobs:
       
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         
       - name: Get PR details
         id: pr
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const pr = context.payload.pull_request;
@@ -80,7 +85,7 @@ jobs:
       
       - name: Update project status
         if: steps.pr.outputs.issue_number != ''
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           PROJECT_ID: ${{ inputs.project_id }}
           STATUS_FIELD_ID: ${{ inputs.status_field_id }}
@@ -112,21 +117,11 @@ jobs:
               const issueId = issue.data.node_id;
               console.log(`Issue node ID: ${issueId}`);
               
-              // Find the project item
-              const projectQuery = `
+              // Fetch the Status field options (fields are few; first 20 is safe).
+              const fieldsQuery = `
                 query($projectId: ID!) {
                   node(id: $projectId) {
                     ... on ProjectV2 {
-                      items(first: 100) {
-                        nodes {
-                          id
-                          content {
-                            ... on Issue {
-                              id
-                            }
-                          }
-                        }
-                      }
                       fields(first: 20) {
                         nodes {
                           ... on ProjectV2SingleSelectField {
@@ -143,22 +138,65 @@ jobs:
                   }
                 }
               `;
-              
-              const projectData = await github.graphql(projectQuery, {
+
+              const fieldsData = await github.graphql(fieldsQuery, {
                 projectId: projectId
               });
-              
-              // Find the project item for this issue
-              const projectItem = projectData.node.items.nodes.find(
-                item => item.content?.id === issueId
-              );
-              
+
+              // Find the project item for this issue by paginating ALL items.
+              // A non-paginated items(first: 100) silently fails to find the
+              // issue once the project exceeds 100 items (#135).
+              const itemsQuery = `
+                query($projectId: ID!, $cursor: String) {
+                  node(id: $projectId) {
+                    ... on ProjectV2 {
+                      items(first: 100, after: $cursor) {
+                        pageInfo { hasNextPage endCursor }
+                        nodes {
+                          id
+                          content {
+                            ... on Issue {
+                              id
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
+
+              let projectItem = null;
+              let cursor = null;
+              let pageCount = 0;
+              do {
+                const page = await github.graphql(itemsQuery, {
+                  projectId: projectId,
+                  cursor: cursor
+                });
+                pageCount++;
+                const items = page.node.items;
+                projectItem = items.nodes.find(
+                  item => item.content?.id === issueId
+                );
+                cursor = items.pageInfo.hasNextPage ? items.pageInfo.endCursor : null;
+              } while (!projectItem && cursor);
+
+              // Reshape to keep the downstream code below unchanged.
+              const projectData = { node: { fields: fieldsData.node.fields } };
+
               if (!projectItem) {
-                console.log('Issue not found in project, skipping update');
+                // Fail loudly: surface a warning annotation so this gap is
+                // visible rather than silently skipped.
+                core.warning(
+                  `Issue #${issueNumber} not found in project after scanning ` +
+                  `${pageCount} page(s) of items — status was NOT updated. ` +
+                  `Verify the issue is added to the project.`
+                );
                 return;
               }
-              
-              console.log(`Project item ID: ${projectItem.id}`);
+
+              console.log(`Project item ID: ${projectItem.id} (found on page ${pageCount})`);
               
               // Find the Status field and target option
               const statusField = projectData.node.fields.nodes.find(

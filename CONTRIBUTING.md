@@ -37,6 +37,7 @@ This project is designed to be forked and tailored to your organization. Here is
    [github.com/c65llc/coding-standards](https://github.com/c65llc/coding-standards).
 
 2. **Clone your fork**
+
    ```bash
    git clone https://github.com/YOUR_ORG/coding-standards.git
    cd coding-standards
@@ -47,17 +48,20 @@ This project is designed to be forked and tailored to your organization. Here is
 
 4. **Point the installer at your fork** -- When installing in projects, use your
    fork URL:
+
    ```bash
    STANDARDS_REPO_URL="https://github.com/YOUR_ORG/coding-standards" \
      curl -fsSL https://raw.githubusercontent.com/YOUR_ORG/coding-standards/main/install.sh | bash
    ```
 
 5. **Keep your fork updated from upstream**
+
    ```bash
    git remote add upstream https://github.com/c65llc/coding-standards.git
    git fetch upstream
    git merge upstream/main
    ```
+
    Resolve any conflicts where your customizations diverge from upstream, then push
    to your fork.
 

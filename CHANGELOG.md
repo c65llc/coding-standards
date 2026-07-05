@@ -73,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.0] - 2026-04-15
 
 ### Added
+
 - **Project governance & infrastructure**
   - `.github/CODEOWNERS` — default code ownership (proc-03 compliance)
   - `.github/dependabot.yml` — automated dependency updates for npm and GitHub Actions (sec-01 compliance)
@@ -100,27 +101,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `standards/shared/blocks/role-app.md` — UI-validation requirement injected into every assembled `role: app` agent config via the existing block-assembly system
 
 ### Changed
+
 - `.aiderrc` re-synced with canonical `aiderrc.template`; drops 97 lines of stale inline P0/P1 security list now sourced via the block assembly system (#34, #69)
 - Default Aider model bumped to `claude-sonnet-4-6` (current Sonnet 4.6 family alias) (#70)
 - Restructured `CHANGELOG.md` with versioned release sections
 
 ### Fixed
+
 - `standards-review` composite GitHub Action failed to load in consumer repos with `could not find expected ':'` YAML parse error. A Python heredoc inside a `run: |` block was indented at column 0, terminating the YAML literal block scalar so the parser interpreted Python as YAML. The formatter is now a sibling `format-results.py` invoked via `${{ github.action_path }}` (#64, #66)
 
 ## [0.5.0] - 2026-03-03
 
 ### Added
+
 - **Language-aware bootstrap** for Claude Code settings (#24)
   - Automatic language detection from project files
   - Dynamic `settings.json` generation with language-specific tool configs
   - CI test infrastructure for bootstrap validation
 
 ### Fixed
+
 - Corrected invalid Claude Code `settings.json` template (#23)
 
 ## [0.4.0] - 2026-03-03
 
 ### Added
+
 - **Security Standards Framework** (`standards/security/sec-01_security_standards.md`) (#22)
   - P0-P2 severity model (P0/P1 block merge, P2 flagged as warning)
   - 8 security categories: injection, auth, secrets, dangerous functions, dependencies, config, data protection, SAST tooling
@@ -133,15 +139,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] - 2026-03-03
 
 ### Added
+
 - **Ruby standards** (`lang-10_ruby_standards.md`) (#21)
 - **Ruby on Rails standards** (`lang-11_ruby_on_rails_standards.md`) (#21)
 
 ### Changed
+
 - Restructured language file numbering to accommodate new languages (#21)
 
 ## [0.2.0] - 2026-03-02
 
 ### Added
+
 - `CLAUDE.md` for Claude Code project instructions (#20)
 - Gemini CLI and Antigravity support with `.gemini/` configuration (#20)
 - Marketing website with Starlight documentation site (#19)
@@ -149,12 +158,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `docs/changelog.md` for website changelog rendering
 
 ### Changed
+
 - Updated setup/sync scripts with Gemini CLI detection (#20)
 - Public launch improvements: collaboration docs, CI workflows (#19)
 
 ## [0.1.0] - 2025-12-22
 
 ### Added
+
 - **GitHub Project Lifecycle Automation Suite**
   - `bin/gh-task` — CLI tool for GitHub Projects V2 integration
   - Commands: `create`, `start`, `status`, `update`, `submit`

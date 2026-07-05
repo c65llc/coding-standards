@@ -10,7 +10,7 @@ on:
         description: 'Node.js version to use (if applicable)'
         required: false
         type: string
-        default: '18'
+        default: '22'
       python_version:
         description: 'Python version to use (if applicable)'
         required: false
@@ -36,6 +36,11 @@ on:
         description: 'GitHub token for API access'
         required: false
 
+# Serialize per calling ref so rapid pushes don't stack redundant DoD runs.
+concurrency:
+  group: definition-of-done-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   code-quality-checks:
     name: Code Quality & Standards
@@ -46,20 +51,20 @@ jobs:
       
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
           
       - name: Setup Node.js
         if: hashFiles('package.json') != ''
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ inputs.node_version }}
           cache: 'npm'
           
       - name: Setup Python
         if: hashFiles('requirements.txt', 'setup.py', 'pyproject.toml') != ''
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: ${{ inputs.python_version }}
           
@@ -71,10 +76,13 @@ jobs:
         if: hashFiles('requirements.txt') != ''
         run: pip install -r requirements.txt
         
-      - name: Run linting
+      # Advisory: this reusable workflow runs against arbitrary consumer repos
+      # with unknown lint setups, so linting reports but does not fail the gate
+      # (note the `|| true`). Only the "Run tests" step is enforcing.
+      - name: Run linting (advisory — reports only, does not fail the gate)
         if: inputs.run_linting
         run: |
-          echo "Running linting checks..."
+          echo "Running linting checks (advisory)..."
           
           # Node.js linting
           if [ -f "package.json" ]; then
@@ -129,10 +137,10 @@ jobs:
           
           echo "✅ Tests passed"
           
-      - name: Check code coverage
+      - name: Check code coverage (advisory — reports only, does not fail the gate)
         if: inputs.run_tests
         run: |
-          echo "Checking code coverage..."
+          echo "Checking code coverage (advisory)..."
           
           # Node.js coverage
           if [ -f "package.json" ] && grep -q '"coverage"' package.json; then
@@ -160,11 +168,11 @@ jobs:
       
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         
-      - name: Run dependency security scan
+      - name: Run dependency security scan (advisory — reports only)
         run: |
-          echo "Running dependency security scan..."
+          echo "Running dependency security scan (advisory)..."
           
           # Node.js security audit
           if [ -f "package.json" ]; then
@@ -183,14 +191,14 @@ jobs:
           
           echo "✅ Security scan completed"
           
-      - name: Run CodeQL Analysis
-        uses: github/codeql-action/init@v4
+      - name: Run CodeQL Analysis (advisory — continue-on-error)
+        uses: github/codeql-action/init@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4
         with:
           languages: 'javascript,python'
         continue-on-error: true
-        
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4
+
+      - name: Perform CodeQL Analysis (advisory — continue-on-error)
+        uses: github/codeql-action/analyze@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a # v4
         continue-on-error: true
   
   documentation-checks:
@@ -201,7 +209,7 @@ jobs:
       
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         
       - name: Check for README updates
         run: |
@@ -241,7 +249,7 @@ jobs:
       
     steps:
       - name: Check PR details
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           github-token: ${{ secrets.gh_token || secrets.GITHUB_TOKEN }}
           script: |
@@ -298,7 +306,7 @@ jobs:
       
     steps:
       - name: Generate summary
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           github-token: ${{ secrets.gh_token || secrets.GITHUB_TOKEN }}
           script: |
@@ -327,13 +335,29 @@ jobs:
             }
             
             console.log(summary);
-            
-            // Post summary as comment if this is a PR
+
+            // Post/update the summary comment. Edit the previous DoD comment in
+            // place (matched by a hidden marker) instead of stacking a new
+            // comment on every run.
             if (context.payload.pull_request) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.payload.pull_request.number,
-                body: summary
-              });
+              const marker = '<!-- definition-of-done-summary -->';
+              const body = `${marker}\n${summary}`;
+              const { owner, repo } = context.repo;
+              const issue_number = context.payload.pull_request.number;
+
+              const existing = await github.paginate(
+                github.rest.issues.listComments,
+                { owner, repo, issue_number, per_page: 100 }
+              );
+              const prior = existing.find(c => (c.body || '').includes(marker));
+
+              if (prior) {
+                await github.rest.issues.updateComment({
+                  owner, repo, comment_id: prior.id, body
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number, body
+                });
+              }
             }

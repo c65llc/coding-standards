@@ -4,7 +4,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 
 ## Directory Organization
 
-```
+```text
 .
 ├── .cursorrules                    # Cursor AI configuration (root level for easy access)
 ├── .gemini/                        # Gemini CLI & Antigravity configuration
@@ -165,4 +165,3 @@ If you have existing projects using the old structure:
 3. **Update Makefile** - Use `make setup` (automatically uses new paths)
 
 The reorganization is backward-compatible through the updated scripts and `.cursorrules` file.
-
