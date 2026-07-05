@@ -1,0 +1,4 @@
+# Lockfiles are generated artifacts. Commit them verbatim; never let Prettier reformat them.
+pnpm-lock.yaml
+package-lock.json
+yarn.lock

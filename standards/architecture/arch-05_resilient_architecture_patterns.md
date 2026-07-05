@@ -129,6 +129,15 @@ lock, a primary node, a lease holder — design for that singleton becoming
 * Liveness ≠ presence. A holder that still owns the lock but never answers is the
   hard case — detect it via timeout and route to takeover, don't assume a held
   lock means a healthy leader.
+* **Version the coordination protocol.** Stamp leader/follower messages with a
+  protocol (or build) version and refuse to trust an incompatible leader. A stale
+  participant from a *prior deploy* holding the lock (e.g. a lingering browser tab
+  owning the shared-worker/DB leader) must not wedge every freshly deployed
+  follower — a version mismatch is a takeover trigger, not a probe to wait on.
+* **Distinguish transient from persistent failure.** Retry is for *transient*
+  hiccups; a *persistent* leader timeout means self-heal — re-elect or force
+  takeover — never retry a persistent timeout indefinitely. Cap the retry
+  window/count and escalate to recovery once it is exceeded.
 * Test the "stale leader" path explicitly; it does not reproduce in a single-tab /
   single-node dev setup, so it is easy to ship broken.
 

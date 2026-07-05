@@ -85,6 +85,15 @@ Self-hosted runners trade per-minute cost for operational responsibility. If use
   it (e.g. `ENOTEMPTY` during a parallel dependency-manager install). Give each
   runner its own home/work directory, or reduce concurrency, or move the
   self-install into per-runner scope.
+* **Isolate every runner on a shared host.** Each runner MUST get its own `HOME`,
+  tool-cache, and `_work` directory. Never share package-manager setup dirs (e.g.
+  `~/setup-pnpm`) across runners on one machine — sharing causes duplicate-listener
+  `_diag` collisions and `pnpm/action-setup` races (`ENOTEMPTY`/reflink) on large
+  fan-out.
+* **Diagnose by failure mode.** An *offline* runner yields a run that stays
+  **queued/waiting** (nothing schedules it). A *collision/misconfig* yields a run
+  that **fails at "Set up job" within seconds**. Same-looking red check, opposite
+  cause — read which one before touching the code.
 
 ## 7. Deploy Channels & Promotion
 
@@ -97,6 +106,12 @@ channel and gate promotion explicitly:
 * If the platform's branch controls take no wildcard, use a single long-lived
   promotion branch (`release`), not a pattern (`release/*`), and promote by
   fast-forwarding into it.
+* **A green pipeline is not proof production updated.** The release job MUST end
+  with an automated production smoke check — fetch the live deployment and assert
+  the new version/build — not merely trust that the promote step exited 0. Deploy
+  credentials and branch protections live *outside* the repo and fail invisibly (a
+  rolled/deleted build token, a force-push-protected `release` branch blocking a
+  fast-forward promote). An in-repo green is necessary but **not** sufficient.
 * See [proc-02_git_version_control_standards.md](../process/proc-02_git_version_control_standards.md)
   §5 for the release-version vs build-version model and the scripted release PR
   that drives promotion.

@@ -10,3 +10,4 @@ Meet coverage with real tests — never add dead/unreachable branches to hit a n
 Run the build (e.g. `tsc -b`), not just typecheck — a narrow typecheck config often excludes test files and the project references that the full build compiles, so the build catches errors typecheck misses.
 Mirror source structure: `src/domain/user.py` → `tests/domain/test_user.py`
 Use descriptive test names: `test_should_raise_error_when_email_is_invalid`
+Visual/snapshot baselines: regenerate via a CI dispatch job, never commit from a local run — rendered pixels are environment-specific and local baselines drift from CI.

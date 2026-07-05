@@ -44,7 +44,7 @@ Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby
 - **One-Command Setup** -- Install everything with a single command.
 - **Auto-Updating** -- Git hooks keep standards in sync whenever you pull.
 - **Preview Before You Commit** -- `--dry-run` flag for `setup.sh` and `sync-standards.sh` shows every write operation without modifying files. `make diff-standards` shows line-level diffs for all agent configs.
-- **Standards Compliance Linter** -- `make lint-standards` checks commits, secrets, coverage, type safety, and banned functions across Python, TypeScript, Go, and Elixir. Outputs text, JSON, or SARIF for GitHub Code Scanning.
+- **Standards Compliance Linter** -- `make lint-standards` checks commits, secrets, coverage, type safety, and banned functions. Automated compliance checks currently ship for **Python, TypeScript, Go, and Elixir** (plus common cross-language checks); the other nine language standards are documented but not yet machine-enforced (see [scripts/lint-checks/README.md](scripts/lint-checks/README.md)). Outputs text, JSON, or SARIF for GitHub Code Scanning.
 - **Automated PR Review** -- A composite GitHub Action posts structured standards compliance results as a PR comment on every pull request. Opt-in: install the workflow with `.standards/scripts/setup.sh --workflow` (or `./scripts/setup.sh --workflow` from a clone of this repo); blocks merge when checks fail.
 - **GitHub Project Lifecycle** -- CLI-driven workflow connecting issues to Draft PRs via GitHub Projects V2.
 
