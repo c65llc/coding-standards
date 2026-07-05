@@ -9,7 +9,11 @@ Reference and strictly follow these documents when making any changes:
 1. **Architecture & Standards:**
    - `standards/architecture/arch-01_project_standards_and_architecture.md` - Core architecture, SOLID principles, naming conventions
    - `standards/architecture/arch-02_automation_standards.md` - Makefile targets and automation requirements
-   - `standards/architecture/arch-03_cursor_automation_standards.md` - Cursor-specific interaction modes (@new-feature, @refactor, @debug, @review)
+   - `standards/architecture/arch-04_data_versioning_and_migration_standards.md` - Data versioning and migration
+   - `standards/architecture/arch-05_resilient_architecture_patterns.md` - Resilient architecture patterns
+   - `standards/architecture/arch-06_monorepo_workspace_standards.md` - Monorepo/workspace structure
+   - `standards/architecture/arch-07_cross_platform_shared_core_standards.md` - Cross-platform shared-core
+   - `standards/architecture/arch-08_ci_cd_pipeline_standards.md` - CI/CD pipeline
 
 2. **Language-Specific Standards:**
    - `standards/languages/lang-01_python_standards.md` - Python (uv, ruff, mypy, pytest)
@@ -23,11 +27,14 @@ Reference and strictly follow these documents when making any changes:
    - `standards/languages/lang-09_zig_standards.md` - Zig (zig build, zig fmt, manual memory management)
    - `standards/languages/lang-10_ruby_standards.md` - Ruby (bundler, rubocop, sorbet, rspec)
    - `standards/languages/lang-11_ruby_on_rails_standards.md` - Ruby on Rails (Rails 7.2+, rubocop-rails)
+   - `standards/languages/lang-12_go_standards.md` - Go (go build, gofmt, go vet, table-driven tests)
+   - `standards/languages/lang-13_elixir_standards.md` - Elixir (mix, mix format, credo, ExUnit)
 
 3. **Process Standards:**
    - `standards/process/proc-01_documentation_standards.md` - ADR, code docs, changelog, user docs
    - `standards/process/proc-02_git_version_control_standards.md` - Git workflow, commits, branching
    - `standards/process/proc-03_code_review_expectations.md` - Code review process and expectations
+   - `standards/process/proc-04_agent_workflow_standards.md` - Agent worktree/PR workflow
 
 4. **Security Standards:**
    - `standards/security/sec-01_security_standards.md` - Security guidelines with P0-P2 severity model
@@ -52,7 +59,7 @@ These mandates apply to ALL code changes, regardless of scope or urgency:
    - Documentation → `standards/process/proc-01_documentation_standards.md`
    - Git operations → `standards/process/proc-02_git_version_control_standards.md`
 
-2. **Follow interaction modes** from `standards/architecture/arch-03_cursor_automation_standards.md`:
+2. **Follow interaction modes:**
    - `@new-feature` - Scaffold new features following Clean Architecture
    - `@refactor` - Apply SOLID principles and naming conventions
    - `@debug` - Systematic debugging approach
@@ -89,6 +96,8 @@ When working with code, automatically detect the language and apply the correspo
 - `.zig` files → `standards/languages/lang-09_zig_standards.md`
 - `.rb` files → `standards/languages/lang-10_ruby_standards.md`
 - `.erb` files, `Gemfile`, `Rakefile` → `standards/languages/lang-11_ruby_on_rails_standards.md`
+- `.go` files, `go.mod` → `standards/languages/lang-12_go_standards.md`
+- `.ex`, `.exs` files, `mix.exs` → `standards/languages/lang-13_elixir_standards.md`
 
 ## Response Style
 

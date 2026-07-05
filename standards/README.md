@@ -11,7 +11,7 @@ This directory contains all coding standards documents organized by category.
 | `process/` | `proc-XX` | Documentation, git workflow, code review, agent workflow |
 | `security/` | `sec-XX` | Security guidelines with P0-P2 severity model |
 | `shared/` | — | Cross-cutting standards (`core-standards.md`) referenced by all agent configs |
-| `agents/` | — | Template configs for AI coding assistants (Copilot, Aider, Codex, Gemini) |
+| `agents/` | — | Template configs for AI coding assistants (Claude Code, Cursor, Copilot, Aider, Codex, Gemini) |
 
 ## Naming Convention
 
@@ -30,7 +30,7 @@ When adding new standards, use the next available number in the appropriate cate
 Atomic content fragments used to assemble agent configs at setup time. Each block is a condensed summary (~5-20 lines) of standards content, written in imperative style for token-efficient agent consumption.
 
 - **Common blocks** (always included): architecture-core, testing-policy, security-summary, naming-conventions, git-workflow, documentation-policy
-- **Language blocks** (per detection): lang-python, lang-typescript, lang-javascript, lang-java, lang-kotlin, lang-swift, lang-dart, lang-rust, lang-zig, lang-ruby, lang-rails
+- **Language blocks** (per detection): lang-python, lang-typescript, lang-javascript, lang-java, lang-kotlin, lang-swift, lang-dart, lang-rust, lang-zig, lang-ruby, lang-rails, lang-go, lang-elixir
 - **Role blocks** (one per project): role-service, role-library, role-app, role-data-pipeline
 
 ## Agent Base Templates (`agents/`)

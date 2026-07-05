@@ -27,7 +27,11 @@ This document explains the repository layout so you can find what you need quick
 │   ├── architecture/               # Architecture and automation standards
 │   │   ├── arch-01_project_standards_and_architecture.md
 │   │   ├── arch-02_automation_standards.md
-│   │   └── arch-03_cursor_automation_standards.md
+│   │   ├── arch-04_data_versioning_and_migration_standards.md
+│   │   ├── arch-05_resilient_architecture_patterns.md
+│   │   ├── arch-06_monorepo_workspace_standards.md
+│   │   ├── arch-07_cross_platform_shared_core_standards.md
+│   │   └── arch-08_ci_cd_pipeline_standards.md
 │   │
 │   ├── languages/                  # Language-specific standards
 │   │   ├── lang-01_python_standards.md
@@ -40,7 +44,9 @@ This document explains the repository layout so you can find what you need quick
 │   │   ├── lang-08_rust_standards.md
 │   │   ├── lang-09_zig_standards.md
 │   │   ├── lang-10_ruby_standards.md
-│   │   └── lang-11_ruby_on_rails_standards.md
+│   │   ├── lang-11_ruby_on_rails_standards.md
+│   │   ├── lang-12_go_standards.md
+│   │   └── lang-13_elixir_standards.md
 │   │
 │   ├── process/                    # Process and workflow standards
 │   │   ├── proc-01_documentation_standards.md
@@ -52,12 +58,15 @@ This document explains the repository layout so you can find what you need quick
 │   │   └── core-standards.md
 │   │
 │   └── agents/                     # AI agent configuration templates
+│       ├── claude-code/            # → assembled to CLAUDE.md
+│       │   └── base-claude-code.md
+│       ├── cursor/                 # → assembled to .cursorrules
 │       ├── copilot/
 │       │   └── .github/
 │       │       └── copilot-instructions.md
 │       ├── aider/
 │       │   └── .aiderrc
-│       └── codex/
+│       └── codex/                  # legacy; Codex now reads AGENTS.md at root
 │           └── .codexrc
 │
 ├── scripts/                        # Automation scripts

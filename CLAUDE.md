@@ -29,7 +29,7 @@ Use `--dry-run` with setup or sync to preview changes without modifying files:
 ./scripts/sync-standards.sh --dry-run
 ```
 
-The standards-review composite GitHub Action lives at `.github/actions/standards-review/action.yml`. It runs `lint-standards.sh --format json` and posts structured PR comments. A ready-to-use workflow template is at `templates/standards-review.yml.example` — `setup.sh` copies it to `.github/workflows/standards-review.yml` in consumer projects automatically.
+The standards-review composite GitHub Action lives at `.github/actions/standards-review/action.yml`. It runs `lint-standards.sh --format json` and posts structured PR comments. A ready-to-use workflow template is at `templates/standards-review.yml.example`. Installing it into a consumer project is **opt-in**: run `.standards/scripts/setup.sh --workflow` (or `./scripts/setup.sh --workflow` from a clone of this repo) to copy it to `.github/workflows/standards-review.yml`. Without `--workflow`, setup only prints how to install it.
 
 There are no build steps, no test suites, and no application to run. The primary "tests" are `bash -n` syntax checks on shell scripts.
 
@@ -47,15 +47,17 @@ Markdown files organized by category with prefix-based naming:
 ### Agent Configurations (`standards/agents/`)
 
 Template configs deployed to consumer projects during setup:
+- `claude-code/base-claude-code.md` — Claude Code (assembled to `CLAUDE.md`)
+- `cursor/` — Cursor AI (assembled to `.cursorrules`)
 - `copilot/.github/copilot-instructions.md` — GitHub Copilot
-- `aider/.aiderrc` — Aider (Claude Code)
-- `codex/.codexrc` — OpenAI Codex
+- `aider/.aiderrc` — Aider
+- OpenAI Codex reads `AGENTS.md` at the project root (the legacy `codex/.codexrc` is deprecated)
 - Gemini CLI config lives at `.gemini/` (root level, per Gemini convention)
 
 ### Scripts (`scripts/`)
 
 All bash. Key scripts:
-- `setup.sh` — Installs standards into a target project, detects and configures AI agents; also copies the standards-review workflow template
+- `setup.sh` — Installs standards into a target project, detects and configures AI agents; copies the standards-review workflow template only when run with `--workflow`
 - `sync-standards.sh` — Pulls latest standards and updates agent configs in consumer projects
 - `lint-standards.sh` — Standards compliance linter; outputs text, JSON, or SARIF
 - `add-copilot-instructions-pr.sh` — Creates a PR to add Copilot instructions to a repo
@@ -70,7 +72,7 @@ All bash. Key scripts:
 - **Standards numbering**: Files use category-based prefixes (arch-XX, lang-XX, proc-XX). Preserve this naming scheme when adding new standards.
 - **Conventional Commits**: `type(scope): subject` — types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`, `ci`
 - **Temporary files**: Go in `.standards_tmp/` (gitignored).
-- **Agent config consistency**: When modifying shared standards in `core-standards.md`, check that agent configs (`.cursorrules`, copilot-instructions.md, `.aiderrc`, `.codexrc`, `GEMINI.md`) stay aligned.
+- **Agent config consistency**: When modifying shared standards in `core-standards.md`, check that agent configs (`CLAUDE.md`, `.cursorrules`, copilot-instructions.md, `.aiderrc`, `AGENTS.md`, `GEMINI.md`) stay aligned.
 - **Shell scripts**: Must pass `bash -n` syntax validation.
 - **Safety**: Never modify `.standards_tmp/`, `.secret`, or `.tfstate` files. Always preserve standards file numbering. Update `.cursorrules` when adding new standards.
 - **Safe setup (1.2+)**: `setup.sh` never clobbers existing agent configs. Customized files are staged to `.standards-pending/` with a `MERGE_PLAN.md` describing how to reconcile them. The merge skill (`/merge-standards` in Claude Code / Cursor, `make merge-standards` via CLI) drives the agent-agnostic handoff.

@@ -5,16 +5,17 @@ description: "Configure multiple AI coding assistants to follow the same project
 
 # Multi-Agent Setup
 
-This repository supports five AI coding assistants out of the box. Every agent reads the same underlying standards, so your team gets consistent suggestions regardless of which tool each person uses.
+This repository supports six AI coding assistants out of the box. Every agent reads the same underlying standards, so your team gets consistent suggestions regardless of which tool each person uses.
 
 ## Supported Agents
 
 | Agent | Config File | Location |
 | ----- | ----------- | -------- |
+| Claude Code | `CLAUDE.md` | Project root |
 | Cursor AI | `.cursorrules` | Project root |
 | GitHub Copilot | `.github/copilot-instructions.md` | `.github/` directory |
-| Aider / Claude Code | `.aiderrc` | Project root |
-| OpenAI Codex | `.codexrc` | Project root |
+| Aider | `.aiderrc` | Project root |
+| OpenAI Codex | `AGENTS.md` | Project root |
 | Gemini CLI / Antigravity | `.gemini/GEMINI.md`, `.gemini/settings.json` | `.gemini/` directory |
 
 ## Automatic Setup
@@ -41,6 +42,12 @@ Any agent configuration that has not been applied yet is added automatically dur
 
 ## Agent-Specific Details
 
+### Claude Code
+
+- **Config:** `CLAUDE.md` in your project root.
+- **How it works:** Claude Code reads `CLAUDE.md` automatically when you run `claude` in the project directory, using it as project-specific guidance. Language-aware permissions and settings are written to `.claude/`.
+- **After setup:** No restart needed; the config is read on each invocation. Customize `CLAUDE.md` with your project's specifics.
+
 ### Cursor AI
 
 - **Config:** `.cursorrules` in your project root.
@@ -62,7 +69,7 @@ To add Copilot instructions to an existing repo via a pull request:
 make add-copilot-instructions
 ```
 
-### Aider / Claude Code
+### Aider
 
 - **Config:** `.aiderrc` in your project root.
 - **How it works:** Aider reads `.aiderrc` automatically when you run `aider` in the project directory.
@@ -71,8 +78,8 @@ make add-copilot-instructions
 
 ### OpenAI Codex
 
-- **Config:** `.codexrc` in your project root.
-- **How it works:** Codex-compatible tools read this file for project-specific guidance.
+- **Config:** `AGENTS.md` in your project root. (The older `.codexrc` is deprecated; if present it is preserved but no longer the source of truth.)
+- **How it works:** Codex reads `AGENTS.md` for project-specific guidance.
 - **After setup:** Check your IDE's Codex integration documentation.
 
 ### Gemini CLI and Google Antigravity
@@ -100,7 +107,7 @@ After setup, verify each agent is working:
 
 ```bash
 # Check that config files exist
-ls -la .cursorrules .github/copilot-instructions.md .aiderrc .codexrc .gemini/GEMINI.md .gemini/settings.json
+ls -la CLAUDE.md .cursorrules .github/copilot-instructions.md .aiderrc AGENTS.md .gemini/GEMINI.md .gemini/settings.json
 ```
 
 Then ask each agent to generate a small piece of code and confirm it follows the project's naming conventions and architecture rules.

@@ -14,8 +14,15 @@
 ### Branch Naming
 
 * **Format:** `type/description` (kebab-case)
-* **Types:** `feature`, `fix`, `hotfix`, `release`, `refactor`, `docs`, `test`
+* **Branch prefixes:** `feature`, `fix`, `hotfix`, `release`, `refactor`, `docs`, `test`
 * **Description:** Concise, descriptive (3-5 words)
+
+> **Branch prefixes are not commit types.** The words above name *branches*
+> (`feature/user-auth`, `hotfix/security-patch`). Commit **messages** use the
+> Conventional Commits types below — note `feat`, not `feature`, and there is no
+> `hotfix`/`release` commit type. The canonical commit-type set is defined once
+> in `shared/core-standards.md` (§ Commit Messages); this document must stay
+> aligned with it.
 
 ## 2. Commit Messages
 
@@ -31,16 +38,22 @@
 
 ### Commit Types
 
+The canonical cross-cutting set (from `shared/core-standards.md`) is:
+`feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`, `ci`.
+
 * **feat:** New feature
 * **fix:** Bug fix
-* **docs:** Documentation changes
-* **style:** Code style changes (formatting, missing semicolons)
 * **refactor:** Code refactoring (no functional changes)
-* **perf:** Performance improvements
 * **test:** Adding or updating tests
+* **docs:** Documentation changes
 * **chore:** Maintenance tasks (dependencies, build config)
+* **perf:** Performance improvements
 * **ci:** CI/CD changes
-* **build:** Build system changes
+
+Additional Conventional Commits types the linter also accepts
+(`scripts/lint-checks/common/conventional-commits.sh`) but which fall outside
+the canonical set: `build` (build-system changes), `style` (formatting-only
+changes), `revert` (reverting a prior commit). Prefer the canonical types.
 
 ### Commit Guidelines
 
