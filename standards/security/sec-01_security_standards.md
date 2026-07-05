@@ -326,7 +326,7 @@ logger.info("User login", extra={"username": username})
 | Tool | Scope |
 |------|-------|
 | `git-secrets` | Pre-commit hook |
-| TruffleHog | Full repo/PR scan in CI (recommended, see below) |
+| `trufflehog` | Full repo/PR scan in CI (recommended, see below) |
 | `detect-secrets` | Pre-commit + CI |
 | GitHub Secret Scanning | Automatic (GitHub repos) |
 

@@ -231,6 +231,43 @@ else
     fail "pending CLAUDE.md did not resolve {{PROJECT_NAME}} from consumer project"
 fi
 
+echo -n "Test 21: setup installs .trufflehog-ignore when absent... "
+proj=$(make_project "th-install")
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+ln -s "$REPO_ROOT/templates" "$proj/.standards/templates"
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+if [ -f "$proj/.trufflehog-ignore" ]; then pass; else fail ".trufflehog-ignore not installed"; fi
+
+echo -n "Test 22: setup does NOT clobber an existing .trufflehog-ignore... "
+proj=$(make_project "th-preserve")
+printf '# my custom allowlist\n(^|/)secret-fixtures/\n' > "$proj/.trufflehog-ignore"
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+ln -s "$REPO_ROOT/templates" "$proj/.standards/templates"
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+if grep -q "my custom allowlist" "$proj/.trufflehog-ignore"; then pass; else fail "existing .trufflehog-ignore was clobbered"; fi
+
+echo -n "Test 23: setup does NOT install trufflehog.yml without --workflow... "
+proj=$(make_project "th-no-workflow")
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+ln -s "$REPO_ROOT/templates" "$proj/.standards/templates"
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+if [ ! -f "$proj/.github/workflows/trufflehog.yml" ]; then pass; else fail "trufflehog.yml installed without --workflow"; fi
+
+echo -n "Test 24: setup --workflow DOES install trufflehog.yml... "
+proj=$(make_project "th-workflow")
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+ln -s "$REPO_ROOT/templates" "$proj/.standards/templates"
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript --workflow >/dev/null 2>&1) || true
+if [ -f "$proj/.github/workflows/trufflehog.yml" ]; then pass; else fail "trufflehog.yml not installed with --workflow"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

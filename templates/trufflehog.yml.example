@@ -3,7 +3,9 @@
 # Scans pushes and PRs for committed secrets. Unignored findings BLOCK the
 # check (P0 per sec-01 §3). Verification is intentionally OFF (no
 # --only-verified): we do not send detected secrets to third-party endpoints.
-# False positives are suppressed via a committed .trufflehog-ignore file.
+# Noisy *paths* are excluded via the committed .trufflehog-ignore file
+# (--exclude-paths, path regexes). Suppress an individual false positive with an
+# inline `// trufflehog:ignore` comment on the offending line instead.
 name: Secret Scan
 
 on:
