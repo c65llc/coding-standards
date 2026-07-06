@@ -111,6 +111,7 @@ When working with this repository, agents must follow the A-P-E (Analyze, Plan, 
 - **Monorepo/Workspace:** `standards/architecture/arch-06_monorepo_workspace_standards.md`
 - **Cross-Platform Shared Core:** `standards/architecture/arch-07_cross_platform_shared_core_standards.md`
 - **CI/CD Pipeline:** `standards/architecture/arch-08_ci_cd_pipeline_standards.md`
+- **Containerized Agent-Dev Environment:** `standards/architecture/arch-09_containerized_agent_dev_standards.md`
 - **Language Standards:** `standards/languages/lang-01_python_standards.md` through `lang-13_elixir_standards.md`
 - **Process Standards:** `standards/process/proc-01_documentation_standards.md` through `proc-04_agent_workflow_standards.md`
 - **Security Standards:** `standards/security/sec-01_security_standards.md` - P0-P2 security guidelines

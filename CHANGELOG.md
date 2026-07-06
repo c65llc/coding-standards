@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- Add entries under the standard Keep a Changelog headings as work lands:
 ### Added / ### Changed / ### Deprecated / ### Removed / ### Fixed / ### Security -->
 
+### Added
+
+- **Containerized agent-dev environment (#10):** new standard
+  `arch-09_containerized_agent_dev_standards.md` codifying a sandboxed,
+  reproducible Docker environment for autonomous AI agents — separate dev/prod
+  images, a non-root sudo dev user, workspace-as-volume, a dual-layer egress
+  allow-list, secret injection without baking, sandbox-earned "YOLO" permissions
+  with git checkpointing, and scripted IDE integration. Ships an installable
+  starter kit at `templates/containerized-dev/` (Dockerfiles, compose,
+  `init-workspace.sh`/`setup-proxy.sh`, IDE bootstrap scripts, whitelists,
+  devcontainer) with a Definition-of-Done validation checklist.
+
 ## [1.5.0] - 2026-07-05
 
 A full-repo audit turned up ~30 issues across shell scripts, CI, docs, and the

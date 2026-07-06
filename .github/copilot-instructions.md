@@ -14,6 +14,7 @@ This project follows comprehensive development standards. Reference these docume
 - `standards/architecture/arch-06_monorepo_workspace_standards.md` - Monorepo/workspace standards
 - `standards/architecture/arch-07_cross_platform_shared_core_standards.md` - Cross-platform shared-core standards
 - `standards/architecture/arch-08_ci_cd_pipeline_standards.md` - CI/CD pipeline standards
+- `standards/architecture/arch-09_containerized_agent_dev_standards.md` - Containerized agent-dev environment standards
 - `standards/shared/core-standards.md` - Shared core standards
 
 ### Language-Specific Standards
