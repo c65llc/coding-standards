@@ -22,6 +22,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │   │   ├── arch-06_monorepo_workspace_standards.md
 │   │   ├── arch-07_cross_platform_shared_core_standards.md
 │   │   ├── arch-08_ci_cd_pipeline_standards.md
+│   │   ├── arch-09_containerized_agent_dev_standards.md
 │   │   └── arch-10_agent_tools_and_mcp_server_standards.md
 │   │
 │   ├── languages/                 # Language-specific standards
@@ -156,7 +157,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 
 | Category | Location | Files |
 |----------|----------|-------|
-| Architecture | `standards/architecture/` | arch-01, arch-02, arch-04 through arch-08, arch-10 |
+| Architecture | `standards/architecture/` | arch-01, arch-02, arch-04 through arch-10 |
 | Languages | `standards/languages/` | lang-01 through lang-14 |
 | Process | `standards/process/` | proc-01 through proc-05 |
 | Security | `standards/security/` | sec-01 |
