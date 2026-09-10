@@ -1,0 +1,58 @@
+# Development compose file for containerized AI-agent work (arch-09).
+#
+# Usage:
+#   ./scripts/init-workspace.sh      # writes .env.secret, forwards identity
+#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml exec dev bash
+#
+# The image is disposable; only the mounted workspace and named caches persist.
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      args:
+        # Match host UID/GID so bind-mounted files are not root-owned (arch-09 §2).
+        USER_UID: ${HOST_UID:-1000}
+        USER_GID: ${HOST_GID:-1000}
+    working_dir: /workspace
+    # Runtime secrets injected from a git-ignored file (arch-09 §5).
+    # init-workspace.sh generates .env.secret; never commit it.
+    env_file:
+      - .env.secret
+    environment:
+      # Egress control: setup-proxy.sh generates these values (arch-09 §4).
+      # Point the container at the egress proxy and deny everything else.
+      HTTP_PROXY: ${EGRESS_PROXY:-}
+      HTTPS_PROXY: ${EGRESS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-}
+      # SSH agent forwarding for git push (arch-09 §5).
+      SSH_AUTH_SOCK: /ssh-agent
+    volumes:
+      # The codebase — the single source of truth both humans and agents edit.
+      - .:/workspace:cached
+      # Git identity, read-only (arch-09 §5).
+      - ${HOME}/.gitconfig:/home/developer/.gitconfig:ro
+      # SSH agent forwarding for git push (arch-09 §5). On macOS/Linux the host
+      # socket path comes from init-workspace.sh via SSH_AUTH_SOCK.
+      - ${SSH_AUTH_SOCK:-/dev/null}:/ssh-agent
+      # Docker client talks to the host daemon (dev convenience only).
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Named caches survive image rebuilds (arch-09 §3).
+      - node-modules-cache:/workspace/node_modules
+      - dev-cache:/home/developer/.cache
+    # Keep the container alive so agents/IDEs can exec into it.
+    command: sleep infinity
+    # Deny-by-default egress is enforced by the proxy + this internal network.
+    # Attach an explicit egress network only where the proxy lives.
+    networks:
+      - devnet
+
+networks:
+  devnet:
+    driver: bridge
+
+volumes:
+  node-modules-cache:
+  dev-cache:

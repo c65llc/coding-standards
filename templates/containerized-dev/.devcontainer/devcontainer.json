@@ -1,0 +1,20 @@
+{
+  // VS Code Dev Containers config (arch-09 §7). "Reopen in Container" attaches
+  // VS Code to the same dev service (and the same /workspace) the CLI agents use.
+  "name": "agent-dev",
+  "dockerComposeFile": ["../docker-compose.dev.yml"],
+  "service": "dev",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "developer",
+  // Run identity + secret injection before the container is used.
+  "initializeCommand": "./scripts/init-workspace.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "GitHub.copilot",
+        "Google.gemini-cli-vscode-ide-companion",
+        "ms-vscode-remote.remote-containers"
+      ]
+    }
+  }
+}
