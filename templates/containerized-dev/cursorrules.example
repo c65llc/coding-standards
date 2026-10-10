@@ -1,0 +1,11 @@
+# Containerized execution rules for Cursor (arch-09 §7).
+# Copy the relevant lines into the project root .cursorrules.
+
+- Always execute terminal commands inside the Docker dev container, e.g.
+  `docker compose -f docker-compose.dev.yml exec dev <command>`. Never run
+  project build/test/deploy commands directly on the host.
+- Prefer `/workspace` as the absolute path root for all file operations inside
+  the container.
+- Before running a batch of unattended, destructive-capable commands, create a
+  git checkpoint (a commit or `git stash`) so the run is instantly recoverable
+  (arch-09 §6).

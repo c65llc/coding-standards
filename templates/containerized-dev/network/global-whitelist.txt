@@ -1,0 +1,32 @@
+# Global egress allow-list (arch-09 §4, Global Layer).
+#
+# Baseline destinations every containerized dev environment needs. Ships with the
+# standards. Projects add their own entries in proxy/project-whitelist.txt — do
+# not edit this file per-project.
+#
+# One host per line. '#' comments and blank lines are ignored.
+
+# --- AI provider APIs -----------------------------------------------------
+api.anthropic.com
+generativelanguage.googleapis.com
+aiplatform.googleapis.com
+
+# --- Git host + GitHub CLI/API --------------------------------------------
+github.com
+api.github.com
+codeload.github.com
+objects.githubusercontent.com
+
+# --- Package registries ---------------------------------------------------
+registry.npmjs.org
+pypi.org
+files.pythonhosted.org
+proxy.golang.org
+sum.golang.org
+
+# --- OS package + tooling repos (base image builds) -----------------------
+deb.nodesource.com
+cli.github.com
+download.docker.com
+archive.ubuntu.com
+security.ubuntu.com
