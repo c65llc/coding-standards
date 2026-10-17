@@ -21,6 +21,8 @@
 #                     does not exist on disk
 #                   * an agent config or structure doc that omits a standards
 #                     file that does exist
+#                   * an agent config that lacks a generated region it is
+#                     expected to carry
 #                   * a catalog row for a file that does not exist
 #   --quiet       Suppress per-file "unchanged" output in write mode.
 #
@@ -69,6 +71,15 @@ AGENT_CONFIGS=".cursorrules .github/copilot-instructions.md .gemini/GEMINI.md AG
 DOC_INDEXES="standards/README.md STRUCTURE.md docs/getting-started/project-structure.md"
 # Files that may reference standards but are not required to be exhaustive.
 REFERENCE_ONLY="standards/shared/core-standards.md"
+# Generated regions each file must carry, as <path>:<id>[,<id>...]. Discovery
+# alone would silently accept a region that was deleted wholesale; this is the
+# manifest that --check and write mode validate against.
+REQUIRED_REGIONS=".cursorrules:standards-list,language-detection \
+.github/copilot-instructions.md:standards-list,language-detection \
+.gemini/GEMINI.md:standards-list \
+AGENTS.md:standards-list \
+CLAUDE.md:standards-list \
+standards/README.md:standards-list"
 
 PASS_COUNT=0; WARN_COUNT=0; FAIL_COUNT=0
 report_pass() { PASS_COUNT=$((PASS_COUNT + 1)); echo "PASS $1 $2"; }
@@ -110,10 +121,61 @@ discover_targets() {
     done | LC_ALL=C sort -u
 }
 
-# standards_file_exists <basename> — true when standards/*/<basename> exists.
+# Pattern for a standards-file reference: an optional category directory
+# followed by a prefixed filename (arch-NN_*.md, lang-NN_*.md, ...) or the
+# shared core-standards.md. grep -o is leftmost-longest, so a reference
+# written with its directory is captured together with that directory.
+STANDARDS_REF_REGEX='((architecture|languages|process|security|shared)/)?((arch|lang|proc|sec)-[0-9]+_[A-Za-z0-9_]+|core-standards)\.md'
+
+# standards_file_exists <ref> — true when <ref> resolves to a standards file.
+# A directory-qualified ref (languages/lang-01_python_standards.md) must exist
+# at exactly that path; a bare basename may live in any category directory.
 standards_file_exists() {
-    set -- "$STANDARDS_DIR"/*/"$1"
-    [ -f "$1" ]
+    case "$1" in
+        */*) [ -f "$STANDARDS_DIR/$1" ] ;;
+        *)
+            set -- "$STANDARDS_DIR"/*/"$1"
+            [ -f "$1" ]
+            ;;
+    esac
+}
+
+# missing_required_regions <relpath> — prints the region ids <relpath> is
+# required to carry but does not, one per line. Prints nothing when the file
+# is not in the manifest or carries every required region.
+missing_required_regions() {
+    local entry ids id
+    for entry in $REQUIRED_REGIONS; do
+        [ "${entry%%:*}" = "$1" ] || continue
+        ids="${entry#*:}"
+        for id in $(printf '%s' "$ids" | tr ',' ' '); do
+            file_has_region "$ROOT/$1" "$id" || printf '%s\n' "$id"
+        done
+    done
+}
+
+# required_region_files — manifest paths that exist under ROOT.
+required_region_files() {
+    local entry
+    for entry in $REQUIRED_REGIONS; do
+        [ -f "$ROOT/${entry%%:*}" ] && printf '%s\n' "${entry%%:*}"
+    done
+    return 0
+}
+
+# replace_file <src> <dest> — atomically replace <dest> with the contents of
+# <src>, preserving <dest>'s mode. Writes to a sibling temp file and renames,
+# so a failed write (read-only tree, full disk) never truncates <dest>.
+replace_file() {
+    local src="$1" dest="$2" tmp
+    tmp="$(dirname "$dest")/.$(basename "$dest").tmp.$$"
+    if cp -p "$dest" "$tmp" 2>/dev/null \
+        && cat "$src" > "$tmp" 2>/dev/null \
+        && mv -f "$tmp" "$dest" 2>/dev/null; then
+        return 0
+    fi
+    rm -f "$tmp" 2>/dev/null
+    return 1
 }
 
 # unique_existing <space-separated relpaths...> — echo those present under ROOT.
@@ -128,7 +190,21 @@ unique_existing() {
 # Write mode
 # ---------------------------------------------------------------------------
 run_write() {
-    local target out rc=0 changed=0
+    local target out rc=0 changed=0 missing
+
+    # A required region that was deleted wholesale has no sentinels left to
+    # splice into, so it cannot be regenerated: fail loudly instead of
+    # silently producing a config that will never list new standards.
+    while IFS= read -r target; do
+        [ -n "$target" ] || continue
+        missing=$(missing_required_regions "$target" | tr '\n' ' ')
+        if [ -n "$missing" ]; then
+            echo "ERROR: $target is missing required generated region(s): ${missing% }— restore the BEGIN/END GENERATED sentinels" >&2
+            rc=1
+        fi
+    done <<EOF
+$(required_region_files)
+EOF
 
     while IFS= read -r target; do
         [ -n "$target" ] || continue
@@ -140,10 +216,12 @@ run_write() {
         fi
         if cmp -s "$ROOT/$target" "$out"; then
             [ "$QUIET" = true ] || echo "unchanged: $target"
-        else
-            cat "$out" > "$ROOT/$target"
+        elif replace_file "$out" "$ROOT/$target"; then
             echo "updated:   $target"
             changed=$((changed + 1))
+        else
+            echo "ERROR: could not write $target (left untouched)" >&2
+            rc=1
         fi
     done <<EOF
 $(discover_targets)
@@ -182,6 +260,21 @@ EOF
     fi
 }
 
+check_required_regions() {
+    local f missing
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        missing=$(missing_required_regions "$f" | tr '\n' ' ')
+        if [ -z "$missing" ]; then
+            report_pass "required-region" "$f carries every required generated region"
+        else
+            report_fail "required-region" "$f is missing required generated region(s): ${missing% }— restore the BEGIN/END GENERATED sentinels and run 'make generate-standards-lists'"
+        fi
+    done <<EOF
+$(required_region_files)
+EOF
+}
+
 check_references() {
     local f ref missing
     for f in "$@"; do
@@ -190,7 +283,7 @@ check_references() {
             [ -n "$ref" ] || continue
             standards_file_exists "$ref" || missing="$missing $ref"
         done <<EOF
-$(grep -ohE '(arch|lang|proc|sec)-[0-9]+_[A-Za-z0-9_]+\.md' "$ROOT/$f" 2>/dev/null | LC_ALL=C sort -u)
+$(grep -ohE "$STANDARDS_REF_REGEX" "$ROOT/$f" 2>/dev/null | LC_ALL=C sort -u)
 EOF
         if [ -z "$missing" ]; then
             report_pass "standards-reference" "$f references only existing standards files"
@@ -262,6 +355,7 @@ run_check() {
     indexes=$(unique_existing $DOC_INDEXES)
 
     check_drift
+    check_required_regions
 
     # Reference check: everything that enumerates or cites standards files,
     # plus the consumer base templates (which carry no lists but may cite files).

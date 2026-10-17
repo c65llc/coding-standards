@@ -286,21 +286,90 @@ cp "$stale/.cursorrules" "$TMP_BASE/stale.before"
 "$GEN" --root "$stale" --check >/dev/null 2>&1 || true
 if cmp -s "$stale/.cursorrules" "$TMP_BASE/stale.before"; then pass; else fail "--check modified .cursorrules"; fi
 
+echo -n "Test 23: --check FAILs when a reference cites the right basename under the wrong directory... "
+wrongdir=$(make_fixture "check-wrong-dir")
+"$GEN" --root "$wrongdir" >/dev/null 2>&1
+printf '\nSee `standards/languages/arch-01_project_standards_and_architecture.md`.\n' >> "$wrongdir/CLAUDE.md"
+out=$("$GEN" --root "$wrongdir" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL standards-reference.*languages/arch-01_project_standards_and_architecture.md'; then
+    pass
+else
+    fail "misdirected reference not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 24: --check FAILs when a reference cites core-standards.md under the wrong directory... "
+printf '\nSee `standards/architecture/core-standards.md`.\n' >> "$wrongdir/AGENTS.md"
+out=$("$GEN" --root "$wrongdir" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL standards-reference.*AGENTS.md.*architecture/core-standards.md'; then
+    pass
+else
+    fail "misdirected core-standards reference not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 25: --check FAILs when a required generated region is deleted wholesale... "
+noregion=$(make_fixture "check-no-region")
+"$GEN" --root "$noregion" >/dev/null 2>&1
+# Drop the entire language-detection block (sentinels included) from .cursorrules;
+# its standards-list stays current, so only the manifest can catch this.
+sed -i.bak "/$BEGIN_LANG/,/$END_LANG/d" "$noregion/.cursorrules" && rm -f "$noregion/.cursorrules.bak"
+out=$("$GEN" --root "$noregion" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL required-region .cursorrules.*language-detection' \
+   && echo "$out" | grep -q '^PASS generated-region .cursorrules'; then
+    pass
+else
+    fail "missing required region not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 26: write mode errors on a missing required region instead of silently succeeding... "
+cp "$noregion/.cursorrules" "$TMP_BASE/noregion.before"
+if "$GEN" --root "$noregion" >/dev/null 2>"$TMP_BASE/noregion.err"; then
+    fail "write mode exited 0 despite missing required region"
+elif grep -q 'language-detection' "$TMP_BASE/noregion.err" && cmp -s "$noregion/.cursorrules" "$TMP_BASE/noregion.before"; then
+    pass
+else
+    fail "expected an error naming language-detection and an untouched file:
+$(cat "$TMP_BASE/noregion.err")"
+fi
+
+echo -n "Test 27: a failed write is reported, exits non-zero, and leaves the file intact... "
+if [ "$(id -u)" -eq 0 ]; then
+    echo "skipped (running as root, permission checks do not apply)"
+else
+    ro=$(make_fixture "write-ro")
+    "$GEN" --root "$ro" >/dev/null 2>&1
+    printf '# Go Standards\n' > "$ro/standards/languages/lang-03_go_standards.md"
+    cp "$ro/.cursorrules" "$TMP_BASE/ro.before"
+    chmod a-w "$ro" "$ro/.github" "$ro/.gemini"
+    "$GEN" --root "$ro" >/dev/null 2>"$TMP_BASE/ro.err"; rc=$?
+    chmod u+w "$ro" "$ro/.github" "$ro/.gemini"
+    if [ "$rc" -ne 0 ] && grep -q 'could not write' "$TMP_BASE/ro.err" \
+       && cmp -s "$ro/.cursorrules" "$TMP_BASE/ro.before" \
+       && ! ls "$ro"/.*.tmp.* >/dev/null 2>&1; then
+        pass
+    else
+        fail "write failure not propagated (rc=$rc):
+$(cat "$TMP_BASE/ro.err")"
+    fi
+fi
+
 # --- Dogfood: the real repository ----------------------------------------------
 
-echo -n "Test 23: the repo's own agent configs pass --check (no drift)... "
+echo -n "Test 28: the repo's own agent configs pass --check (no drift)... "
 out=$("$GEN" --root "$REPO_ROOT" --check 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass; else fail "repo is out of sync — run make generate-standards-lists:
 $out"; fi
 
-echo -n "Test 24: every real agent config carries a generated standards-list region... "
+echo -n "Test 29: every real agent config carries a generated standards-list region... "
 missing=""
 for f in .cursorrules .github/copilot-instructions.md .gemini/GEMINI.md AGENTS.md CLAUDE.md standards/README.md; do
     grep -qF -- "$BEGIN_LIST" "$REPO_ROOT/$f" || missing="$missing $f"
 done
 if [ -z "$missing" ]; then pass; else fail "no standards-list region in:$missing"; fi
 
-echo -n "Test 25: every real language standard has catalog triggers (no name fallback in detection maps)... "
+echo -n "Test 30: every real language standard has catalog triggers (no name fallback in detection maps)... "
 if grep -q 'source files →' "$REPO_ROOT/.cursorrules"; then
     fail "a language is missing its triggers column in standards/catalog.tsv"
 else
