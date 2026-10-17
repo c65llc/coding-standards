@@ -270,3 +270,8 @@ file_has_generated_regions() {
 file_has_region() {
     grep -q -- "^${GENERATED_BEGIN_PREFIX}$2${GENERATED_SUFFIX}\$" "$1" 2>/dev/null
 }
+
+# file_region_count <file> <region_id> — number of BEGIN sentinels for <region_id>.
+file_region_count() {
+    grep -c -- "^${GENERATED_BEGIN_PREFIX}$2${GENERATED_SUFFIX}\$" "$1" 2>/dev/null || true
+}

@@ -333,9 +333,9 @@ make check-agent-configs
 **`--check` mode** emits `PASS` / `WARN` / `FAIL` lines and exits non-zero on any `FAIL`:
 
 - a generated region whose content differs from a fresh render (stale)
-- an agent config that no longer carries a generated region it is required to have (e.g. the whole `language-detection` block was deleted from `.cursorrules`), or that has been deleted outright; write mode fails the same preflight and rewrites nothing, since there are no sentinels left to splice into
-- a file in a category directory (other than `README.md`) that does not follow `<prefix>-NN_<name>.md` — such files are never enumerated, so a malformed name would otherwise vanish from every list silently
-- an agent config, base template, or structure doc that references a standards file that does not exist — any complete `standards/….md` path must exist at exactly that path (a misspelt directory or filename fails), while a bare `<prefix>-NN_<name>.md` may live in any category
+- an agent config that does not carry a required generated region exactly once (e.g. the whole `language-detection` block was deleted from `.cursorrules`, or a merge left two copies), or that has been deleted outright; write mode fails the same preflight and rewrites nothing
+- a file in a category directory (other than `README.md`) that does not follow `<prefix>-NN_<name>.md` — such files are never enumerated, so a malformed name would otherwise vanish from every list silently — or two files sharing one `<prefix>-NN` identifier
+- an agent config, base template, or structure doc that references a standards file that does not exist — any complete `standards/….md` path must exist at exactly that path (a misspelt directory or filename fails), while a bare `<prefix>-NN_<name>.md` or `core-standards.md` may live in any category
 - an agent config or structure doc (`standards/README.md`, `STRUCTURE.md`, `docs/getting-started/project-structure.md`) that omits a standards file that does exist
 - a `catalog.tsv` row pointing at a file that does not exist, two rows for the same path, or a language standard with no triggers column (a non-language standards file without a row is only a `WARN`; its H1 title is used)
 

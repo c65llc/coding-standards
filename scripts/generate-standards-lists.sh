@@ -22,9 +22,11 @@
 #                   * an agent config or structure doc that omits a standards
 #                     file that does exist
 #                   * an agent config that lacks a generated region it is
-#                     expected to carry, or that does not exist at all
+#                     expected to carry (or carries it twice), or that does
+#                     not exist at all
 #                   * a file in a category directory that does not follow the
-#                     <prefix>-NN_<name>.md naming convention
+#                     <prefix>-NN_<name>.md naming convention, or two files
+#                     sharing one <prefix>-NN identifier
 #                   * a catalog row for a file that does not exist, or two
 #                     rows for the same file
 #                   * a language standard with no triggers column in the catalog
@@ -146,11 +148,12 @@ discover_targets() {
 #     must exist at exactly that path (catches a misspelt directory, a wrong
 #     category, or a typo anywhere in the name). The leading boundary keeps
 #     ".standards/standards/..." consumer paths from being mis-captured.
-#   * a bare prefixed basename, "<arch|lang|proc|sec>-NN_<name>.md", which may
-#     live in any category directory. Hyphens are allowed in <name> so a typo
-#     such as lang-99_missing-standard.md is still extracted and rejected.
+#   * a bare basename, "<arch|lang|proc|sec>-NN_<name>.md" or the canonical
+#     "core-standards.md", which may live in any category directory. Hyphens
+#     are allowed in <name> so a typo such as lang-99_missing-standard.md is
+#     still extracted and rejected.
 STANDARDS_PATH_REGEX='(^|[^A-Za-z0-9_./-])standards/[A-Za-z0-9_./-]+\.md'
-STANDARDS_BASENAME_REGEX='(arch|lang|proc|sec)-[0-9]+_[A-Za-z0-9_-]+\.md'
+STANDARDS_BASENAME_REGEX='((arch|lang|proc|sec)-[0-9]+_[A-Za-z0-9_-]+|core-standards)\.md'
 
 # standards_path_exists <standards/...md> — true when the path exists under ROOT.
 standards_path_exists() {
@@ -172,16 +175,23 @@ standards_refs() {
     } | LC_ALL=C sort -u
 }
 
-# missing_required_regions <relpath> — prints the region ids <relpath> is
-# required to carry but does not, one per line. Prints nothing when the file
-# is not in the manifest or carries every required region.
-missing_required_regions() {
-    local entry ids id
+# required_region_problems <relpath> — one line per required region that
+# <relpath> does not carry exactly once: "<id> missing" or "<id> duplicated
+# (N copies)". A duplicated block would be regenerated identically in both
+# places and still pass the drift check, so it has to be rejected here.
+# Prints nothing when the file is not in the manifest or is well-formed.
+required_region_problems() {
+    local entry ids id n
     for entry in $REQUIRED_REGIONS; do
         [ "${entry%%:*}" = "$1" ] || continue
         ids="${entry#*:}"
         for id in $(printf '%s' "$ids" | tr ',' ' '); do
-            file_has_region "$ROOT/$1" "$id" || printf '%s\n' "$id"
+            n=$(file_region_count "$ROOT/$1" "$id")
+            if [ "${n:-0}" -eq 0 ]; then
+                printf '%s missing\n' "$id"
+            elif [ "$n" -gt 1 ]; then
+                printf '%s duplicated (%s copies)\n' "$id" "$n"
+            fi
         done
     done
 }
@@ -223,7 +233,7 @@ unique_existing() {
 # Write mode
 # ---------------------------------------------------------------------------
 run_write() {
-    local target out rc=0 changed=0 missing
+    local target out rc=0 changed=0 problems
 
     # A required region that was deleted wholesale has no sentinels left to
     # splice into, so it cannot be regenerated: fail loudly instead of
@@ -235,9 +245,9 @@ run_write() {
             rc=1
             continue
         fi
-        missing=$(missing_required_regions "$target" | tr '\n' ' ')
-        if [ -n "$missing" ]; then
-            echo "ERROR: $target is missing required generated region(s): ${missing% } — restore the BEGIN/END GENERATED sentinels" >&2
+        problems=$(required_region_problems "$target" | tr '\n' ';')
+        if [ -n "$problems" ]; then
+            echo "ERROR: $target has malformed required generated region(s): ${problems%;} — each must appear exactly once between its BEGIN/END GENERATED sentinels" >&2
             rc=1
         fi
     done <<EOF
@@ -303,18 +313,18 @@ EOF
 }
 
 check_required_regions() {
-    local f missing
+    local f problems
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         if [ ! -f "$ROOT/$f" ]; then
             report_fail "required-file" "$f does not exist — every agent config in the manifest must be present"
             continue
         fi
-        missing=$(missing_required_regions "$f" | tr '\n' ' ')
-        if [ -z "$missing" ]; then
-            report_pass "required-region" "$f carries every required generated region"
+        problems=$(required_region_problems "$f" | tr '\n' ';')
+        if [ -z "$problems" ]; then
+            report_pass "required-region" "$f carries every required generated region exactly once"
         else
-            report_fail "required-region" "$f is missing required generated region(s): ${missing% } — restore the BEGIN/END GENERATED sentinels and run 'make generate-standards-lists'"
+            report_fail "required-region" "$f has malformed required generated region(s): ${problems%;} — each must appear exactly once; fix the BEGIN/END GENERATED sentinels and run 'make generate-standards-lists'"
         fi
     done <<EOF
 $(required_region_files)
@@ -325,23 +335,37 @@ EOF
 # be <prefix>-NN_<name>.md. The generator only enumerates files that match, so
 # a malformed name would otherwise be silently dropped from every list.
 check_naming() {
-    local cat prefix f base bad=""
+    local cat prefix f base id ids bad="" dup=""
     for cat in $STANDARDS_LIST_CATEGORIES; do
         prefix=$(standards_category_prefix "$cat")
         [ -d "$STANDARDS_DIR/$cat" ] || continue
+        ids=""
         for f in "$STANDARDS_DIR/$cat"/*.md; do
             [ -f "$f" ] || continue
             base=$(basename "$f")
             [ "$base" = "README.md" ] && continue
             if ! printf '%s\n' "$base" | grep -qE "^${prefix}-[0-9][0-9]_[A-Za-z0-9_]+\.md\$"; then
                 bad="$bad $cat/$base"
+                continue
             fi
+            # <prefix>-NN must be unique within its category: two files sharing
+            # an identifier would both be enumerated under the same number.
+            id="${base%%_*}"
+            case " $ids " in
+                *" $id "*) dup="$dup $cat/$id" ;;
+                *) ids="$ids $id" ;;
+            esac
         done
     done
     if [ -z "$bad" ]; then
         report_pass "standards-naming" "every standards file follows <prefix>-NN_<name>.md"
     else
         report_fail "standards-naming" "file(s) in standards/ do not follow <prefix>-NN_<name>.md and are not enumerated:$bad"
+    fi
+    if [ -z "$dup" ]; then
+        report_pass "standards-naming" "every <prefix>-NN identifier is unique within its category"
+    else
+        report_fail "standards-naming" "identifier(s) reused by more than one file:$dup"
     fi
 }
 

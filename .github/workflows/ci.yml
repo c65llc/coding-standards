@@ -105,8 +105,8 @@ jobs:
       - name: website CSP post-build functional tests
         run: ./website/scripts/test-csp-postbuild.sh
 
-      - name: generate-standards-lists functional tests
-        run: make test-generate-standards-lists
+  # The generator's functional tests run in check-agent-configs (agent_configs
+  # lane), which the routing table also selects for generator script changes.
 
   check-agent-configs:
     name: Agent Config Drift
@@ -138,9 +138,9 @@ jobs:
       - name: Validate references, completeness and catalog
         run: make check-agent-configs
 
-      # The generator's own functional tests live in the agent_configs lane
-      # too, so a catalog-only or standards-only PR (which never triggers the
-      # shell lane) still exercises them.
+      # The generator's functional tests run here, and only here: this lane
+      # is selected for generator script changes as well as catalog-only or
+      # standards-only PRs, which never trigger the shell lane.
       - name: generate-standards-lists functional tests
         run: make test-generate-standards-lists
 

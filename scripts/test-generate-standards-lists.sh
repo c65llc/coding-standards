@@ -325,7 +325,7 @@ noregion=$(make_fixture "check-no-region")
 # its standards-list stays current, so only the manifest can catch this.
 sed -i.bak "/$BEGIN_LANG/,/$END_LANG/d" "$noregion/.cursorrules" && rm -f "$noregion/.cursorrules.bak"
 out=$("$GEN" --root "$noregion" --check 2>&1); rc=$?
-if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL required-region .cursorrules.*language-detection' \
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL required-region .cursorrules.*language-detection missing' \
    && echo "$out" | grep -q '^PASS generated-region .cursorrules'; then
     pass
 else
@@ -436,7 +436,48 @@ else
 $out"
 fi
 
-echo -n "Test 33: temporaries live under .standards_tmp and are cleaned up... "
+echo -n "Test 33: --check FAILs on a bare core-standards.md reference once the file is gone... "
+nocore=$(make_fixture "check-no-core")
+rm -f "$nocore/standards/shared/core-standards.md"
+grep -v 'core-standards.md' "$nocore/standards/catalog.tsv" > "$nocore/standards/catalog.tmp" && mv "$nocore/standards/catalog.tmp" "$nocore/standards/catalog.tsv"
+"$GEN" --root "$nocore" >/dev/null 2>&1
+printf '\nAll agents follow `core-standards.md`.\n' >> "$nocore/CLAUDE.md"
+out=$("$GEN" --root "$nocore" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL standards-reference CLAUDE.md.*core-standards.md'; then
+    pass
+else
+    fail "bare core-standards.md reference not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 34: --check FAILs when a required generated region appears twice... "
+dupregion=$(make_fixture "check-dup-region")
+"$GEN" --root "$dupregion" >/dev/null 2>&1
+awk -v b="$BEGIN_LANG" -v e="$END_LANG" '{print} $0==b{inb=1} inb{buf=buf $0 "\n"} $0==e{inb=0; printf "%s", buf}' "$dupregion/.cursorrules" > "$dupregion/.cursorrules.new" && mv "$dupregion/.cursorrules.new" "$dupregion/.cursorrules"
+out=$("$GEN" --root "$dupregion" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL required-region .cursorrules.*language-detection duplicated (2 copies)' \
+   && echo "$out" | grep -q '^PASS generated-region .cursorrules'; then
+    pass
+else
+    fail "duplicated region not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 35: --check FAILs when two files share one <prefix>-NN identifier... "
+dupid=$(make_fixture "check-dup-id")
+"$GEN" --root "$dupid" >/dev/null 2>&1
+printf '# COBOL Standards\n' > "$dupid/standards/languages/lang-01_cobol_standards.md"
+printf 'languages/lang-01_cobol_standards.md\tCOBOL\t`.cob` files\n' >> "$dupid/standards/catalog.tsv"
+"$GEN" --root "$dupid" >/dev/null 2>&1
+out=$("$GEN" --root "$dupid" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL standards-naming .*reused.*languages/lang-01'; then
+    pass
+else
+    fail "reused identifier not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 36: temporaries live under .standards_tmp and are cleaned up... "
 tmpfx=$(make_fixture "tmpdir")
 "$GEN" --root "$tmpfx" >/dev/null 2>&1
 if [ -d "$tmpfx/.standards_tmp" ] && [ -z "$(ls -A "$tmpfx/.standards_tmp")" ] \
@@ -448,19 +489,19 @@ fi
 
 # --- Dogfood: the real repository ----------------------------------------------
 
-echo -n "Test 34: the repo's own agent configs pass --check (no drift)... "
+echo -n "Test 37: the repo's own agent configs pass --check (no drift)... "
 out=$("$GEN" --root "$REPO_ROOT" --check 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass; else fail "repo is out of sync — run make generate-standards-lists:
 $out"; fi
 
-echo -n "Test 35: every real agent config carries a generated standards-list region... "
+echo -n "Test 38: every real agent config carries a generated standards-list region... "
 missing=""
 for f in .cursorrules .github/copilot-instructions.md .gemini/GEMINI.md AGENTS.md CLAUDE.md standards/README.md; do
     grep -qF -- "$BEGIN_LIST" "$REPO_ROOT/$f" || missing="$missing $f"
 done
 if [ -z "$missing" ]; then pass; else fail "no standards-list region in:$missing"; fi
 
-echo -n "Test 36: every real language standard has catalog triggers (no name fallback in detection maps)... "
+echo -n "Test 39: every real language standard has catalog triggers (no name fallback in detection maps)... "
 if grep -q 'source files →' "$REPO_ROOT/.cursorrules"; then
     fail "a language is missing its triggers column in standards/catalog.tsv"
 else
