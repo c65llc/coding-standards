@@ -233,10 +233,14 @@ runs:
           case "$TITLE_STATUS" in
             fail)
               # The title is untrusted: strip markdown-active characters (backtick,
-              # @, brackets, parens, angle brackets), drop non-printables and cap the
-              # length so it cannot break out of the code span, @-mention anyone, or
-              # inject links/HTML into a bot comment.
-              SAFE_TITLE=$(printf '%s' "$PR_TITLE" | tr -d '\140@[]()<>' | tr -cd '[:print:]' | cut -c1-120)
+              # @, brackets, parens, angle brackets), drop control characters and cap
+              # the length so it cannot break out of the code span, @-mention anyone,
+              # or inject links/HTML into a bot comment. The strip list is ASCII-only
+              # (UTF-8 continuation bytes are >= 0x80, so tr -d cannot split a
+              # character); control removal and the 120-character cap run in sed
+              # under a UTF-8 locale so non-ASCII titles survive intact.
+              SAFE_TITLE=$(printf '%s' "$PR_TITLE" | tr -d '\140@[]()<>\n\r' \
+                | LC_ALL=C.UTF-8 sed -E 's/[[:cntrl:]]//g; s/^(.{120}).*/\1/')
               if [ "$TITLE_MODE" = "warn" ]; then
                 printf ":warning: **PR title** is not a Conventional Commit: \`%s\`\n\n" "$SAFE_TITLE"
               else
