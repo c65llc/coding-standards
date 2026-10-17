@@ -50,7 +50,7 @@ These templates are what `scripts/setup.sh` copies into your projects. Customize
 
 ### .cursorrules
 
-The `.cursorrules` file at the repository root is copied directly into projects. Update it whenever you add or rename standards files.
+The `.cursorrules` file at the repository root is the standards repo's own Cursor config. Its standards list and language-detection map are generated from the `standards/` tree: after adding or renaming standards files, add a row to `standards/catalog.tsv` and run `make generate-standards-lists` rather than editing the list by hand. The same applies to `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `CLAUDE.md`, and `standards/README.md`.
 
 ### Gemini Configuration
 
@@ -121,7 +121,7 @@ curl -fsSL https://raw.githubusercontent.com/<your-org>/coding-standards/main/in
 If a single project needs extra rules beyond what the shared standards cover:
 
 1. Create a file like `standards/languages/lang-99_project_specific.md`.
-2. Update `.cursorrules` to reference it.
+2. Run `make generate-standards-lists` so every agent config references it (or add the reference by hand if the file lives only in the project).
 3. Commit to the project repository (not the standards repo) if the rule only applies to that project.
 
 This keeps the shared standards clean while allowing per-project overrides.

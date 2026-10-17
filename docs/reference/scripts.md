@@ -295,3 +295,46 @@ If no PR number is given, the script looks up the PR associated with the current
 | Argument | Default | Description |
 |----------|---------|-------------|
 | `base-branch` | `main` | Branch to diff against |
+
+---
+
+## generate-standards-lists.sh
+
+**Purpose:** Keep the enumerable sections of the repo's agent configs (standards file lists and language-detection maps) in sync with the `standards/` tree, and gate CI on drift.
+
+**Usage:**
+
+```bash
+./scripts/generate-standards-lists.sh            # rewrite generated regions in place
+./scripts/generate-standards-lists.sh --check    # validate only; exit 1 on drift
+./scripts/generate-standards-lists.sh --root <dir> --check
+```
+
+Or via Make:
+
+```bash
+make generate-standards-lists
+make check-agent-configs
+```
+
+**What it does:**
+
+1. Finds every file in the repository that carries a generated region delimited by `<!-- BEGIN GENERATED: <id> -->` and `<!-- END GENERATED: <id> -->` (today: `.cursorrules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `CLAUDE.md`, `standards/README.md`).
+2. Re-renders each region body from the files actually present under `standards/` (`architecture/arch-NN_*.md`, `languages/lang-NN_*.md`, `process/proc-NN_*.md`, `security/sec-NN_*.md`, plus `shared/core-standards.md`). Text outside the sentinels is never touched.
+3. Reads optional descriptions and language triggers from `standards/catalog.tsv`; a file with no row still appears, described by its H1 title.
+
+**Region ids:**
+
+| Id | Renders |
+| --- | --- |
+| `standards-list` | Every standards document grouped by category, with a description |
+| `language-detection` | `<file triggers> → <language standard>` for each language standard |
+
+**`--check` mode** emits `PASS` / `WARN` / `FAIL` lines and exits non-zero on any `FAIL`:
+
+- a generated region whose content differs from a fresh render (stale)
+- an agent config, base template, or structure doc that references a standards file that does not exist
+- an agent config or structure doc (`standards/README.md`, `STRUCTURE.md`, `docs/getting-started/project-structure.md`) that omits a standards file that does exist
+- a `catalog.tsv` row pointing at a file that does not exist (a standards file without a row is a `WARN`)
+
+The rendering and splicing functions live in `scripts/lib/standards-lists.sh` and can be sourced independently. Tests: `scripts/test-generate-standards-lists.sh`.
