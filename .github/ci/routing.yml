@@ -31,13 +31,10 @@ shell: # make: make test-scripts test-bootstrap test-gh-task test-setup-safe tes
 
 agent_configs: # make: make generate-standards-lists check-agent-configs test-generate-standards-lists
   - "standards/**" # the tree is the manifest; catalog.tsv supplies descriptions/triggers
+  - "**/*.md" # any Markdown file may opt in by carrying a GENERATED region
+  - "**/.cursorrules" # likewise .cursorrules at any depth
   - ".cursorrules"
   - ".gemini/**"
-  - ".github/copilot-instructions.md"
-  - "AGENTS.md"
-  - "CLAUDE.md"
-  - "STRUCTURE.md"
-  - "docs/getting-started/project-structure.md"
   - "scripts/generate-standards-lists.sh"
   - "scripts/lib/standards-lists.sh"
   - "scripts/test-generate-standards-lists.sh"

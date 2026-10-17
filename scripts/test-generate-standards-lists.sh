@@ -311,12 +311,15 @@ else
 $out"
 fi
 
-echo -n "Test 24: --check FAILs on a wrong-directory core-standards ref, a misspelt directory, and a hyphenated typo... "
-printf '\nSee `standards/architecture/core-standards.md`, `standards/architectures/arch-01_project_standards_and_architecture.md` and `standards/languages/lang-99_missing-standard.md`.\n' >> "$wrongdir/AGENTS.md"
+echo -n "Test 24: --check FAILs on a wrong-directory core ref, a misspelt directory, a hyphenated typo, and a .md.bak suffix... "
+printf '\nSee `standards/architecture/core-standards.md`, `standards/architectures/arch-01_project_standards_and_architecture.md`, `standards/languages/lang-99_missing-standard.md`, standards/languages/lang-01_python_standards.md.bak and lang-01_python_standards.md.orig. Also fine: standards/languages/lang-01_python_standards.md.\n' >> "$wrongdir/AGENTS.md"
 out=$("$GEN" --root "$wrongdir" --check 2>&1); rc=$?
 if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL standards-reference.*AGENTS.md.*architecture/core-standards.md' \
    && echo "$out" | grep -q 'standards/architectures/arch-01_project_standards_and_architecture.md' \
-   && echo "$out" | grep -q 'lang-99_missing-standard.md'; then
+   && echo "$out" | grep -q 'lang-99_missing-standard.md' \
+   && echo "$out" | grep -q 'standards/languages/lang-01_python_standards.md.bak' \
+   && echo "$out" | grep -q ' lang-01_python_standards.md.orig' \
+   && ! echo "$out" | grep -q 'lang-01_python_standards.md[ .]*$'; then
     pass
 else
     fail "misdirected core-standards reference not detected (rc=$rc):

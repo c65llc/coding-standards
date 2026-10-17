@@ -156,8 +156,12 @@ discover_targets() {
 #     "core-standards.md", which may live in any category directory. Hyphens
 #     are allowed in <name> so a typo such as lang-99_missing-standard.md is
 #     still extracted and rejected.
-STANDARDS_PATH_REGEX='(^|[^A-Za-z0-9_./-])standards/[A-Za-z0-9_./-]+\.md'
-STANDARDS_BASENAME_REGEX='((arch|lang|proc|sec)-[0-9]+_[A-Za-z0-9_-]+|core-standards)\.md'
+# Both take the whole bounded token, not just up to the first ".md", so a
+# mistyped suffix (lang-01_python_standards.md.bak) is validated as written
+# and fails instead of being trimmed to its valid prefix. Only sentence-
+# ending dots are stripped afterwards.
+STANDARDS_PATH_REGEX='(^|[^A-Za-z0-9_./-])standards/[A-Za-z0-9_./-]*\.md[A-Za-z0-9_./-]*'
+STANDARDS_BASENAME_REGEX='(^|[^A-Za-z0-9_./-])((arch|lang|proc|sec)-[0-9]+_[A-Za-z0-9_-]+|core-standards)\.md[A-Za-z0-9_.-]*'
 
 # standards_path_exists <standards/...md> — true when the path exists under
 # ROOT and stays inside standards/: a "." or ".." component is rejected even
@@ -180,8 +184,8 @@ standards_basename_exists() {
 standards_refs() {
     {
         grep -ohE "$STANDARDS_PATH_REGEX" "$1" 2>/dev/null | sed -E 's/^[^s]*(standards\/)/\1/'
-        grep -ohE "$STANDARDS_BASENAME_REGEX" "$1" 2>/dev/null
-    } | LC_ALL=C sort -u
+        grep -ohE "$STANDARDS_BASENAME_REGEX" "$1" 2>/dev/null | sed -E 's/^[^a-z]*//'
+    } | sed -E 's/\.+$//' | LC_ALL=C sort -u
 }
 
 # required_region_problems <relpath> — one line per required region that
