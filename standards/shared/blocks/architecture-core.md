@@ -11,3 +11,5 @@ Define typed custom errors in Domain. No generic exceptions.
 Use structured logging with request ID, user ID, and operation context.
 Secondary/derived subsystems (mirrors, indexes, sync, telemetry) are best-effort and error-isolated — a failure there must never break the primary write path.
 When you catch-and-degrade, preserve and surface the original cause; never swallow it behind a generic "failed" message.
+Every user-facing error message states what happened and the next step (retry, fix a named input, check a named setting, contact support with a reference id) — never a bare "Something went wrong" or a raw exception.
+A late async response must never overwrite newer state: tag in-flight requests (sequence or request id) and discard out-of-order completions.

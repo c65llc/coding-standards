@@ -151,3 +151,40 @@ Degrading gracefully (§4) does **not** mean discarding the diagnostic.
   out"`) swallowed sends every future investigation down dead ends.
 * Wrapping errors to add context (§4) must chain the underlying error, not replace
   it.
+
+## 10. Late Async Responses Must Not Overwrite Newer State
+
+Any state updated by asynchronous responses — search-as-you-type, autosave
+acknowledgements, sync pulls, streaming tokens, background fetches — must be
+guarded against **out-of-order completion**. A slow response for an old input
+that lands after a fast response for a newer input is dropped, not applied.
+
+### Pattern
+
+```text
+input changes   →  seq = ++latest; fire request(seq)
+response(seq)   →  if seq != latest: discard   (stale — log it)
+                   else:              apply     (current)
+```
+
+### Rules
+
+* **Tag every in-flight request** with a monotonic sequence number, the request
+  id, or the exact input it was computed from. On completion compare the tag
+  with the current value and discard on mismatch. "Last write wins" by arrival
+  order is a bug, not a strategy.
+* **Cancel when you can, guard regardless.** Use `AbortController`, cancellation
+  tokens or task cancellation to stop stale work, but still check the tag on
+  completion — cancellation is best-effort and races with completion.
+* **Streaming is the same problem per chunk.** Attach the stream's id to every
+  chunk; a chunk from a superseded stream is dropped even if that stream has not
+  closed yet.
+* **Optimistic writes reconcile by version, not by time.** When a pending write's
+  acknowledgement arrives, apply it only if local state has not advanced past
+  the version the write was based on; otherwise merge or re-send.
+* **Test it explicitly.** Resolve two requests out of order in a unit test and
+  assert the view shows the newer input's result. The race does not reproduce
+  on a fast local network, so it ships broken unless tested.
+* **Surface the discard in diagnostics** (debug log with both sequence numbers),
+  per §9 — a silently dropped response is as hard to debug as a wrongly applied
+  one.

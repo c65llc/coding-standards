@@ -45,3 +45,11 @@ Maintain `.gemini/active_mission.log` (gitignored) with timestamped steps for an
 - Run `git diff` before committing to verify the change matches intent.
 - Commits must be atomic (one logical change per commit) and follow Conventional Commits format.
 - Reference specific file paths in all responses and explanations.
+
+## Known Traps
+
+Project-specific pitfalls that have already cost a debugging session. Each row carries the issue that documented it and the date it was recorded, so a reader can judge whether it is still live. Add a row whenever a bug's root cause was "the agent did not know this"; delete the row when the trap is engineered away and say so in the issue.
+
+| Trap | Why it bites | Issue | Date |
+|------|--------------|-------|------|
+| Example: run `make ci` from the repo root, not from a package directory | Sub-make targets resolve paths from the working directory and silently skip suites | #000 | YYYY-MM-DD |

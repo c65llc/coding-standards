@@ -68,6 +68,8 @@ Strict adherence required. Violations must be justified in code comments.
 - **Typed Errors:** Custom error classes in Domain layer. No generic exceptions.
 - **Error Propagation:** Let errors bubble up. Handle at appropriate layer (UI, API gateway).
 - **Logging:** Structured logging. Include context (request ID, user ID, operation).
+- **User-Facing Error Copy:** Every error a person can see (UI, CLI, API `detail`) states what happened **and the next step** — retry, fix a named input, check a named setting, or contact support with a reference id. Never a bare "Something went wrong", a raw exception message, or an error code alone.
+- **Stale Responses:** A late asynchronous response must never overwrite newer state. Tag in-flight requests and discard out-of-order completions (see `arch-05` §10).
 
 ### Type Safety
 
@@ -228,7 +230,7 @@ Example: `feat(domain): add user email validation`
 
 - **API Docs:** Generate from code (JSDoc, docstrings, rustdoc).
 - **README:** Every package/app must have README with setup instructions.
-- **Architecture Decisions:** Document in `docs/adr/` using ADR format.
+- **Architecture Decisions:** Document in `docs/adr/` using the ADR template (bullet metadata: Status, Date, Related, Supersedes/Extends; sections Context, Decision, Consequences). Spec, plan, design-pass and verification templates live in `templates/docs/` (`proc-01` §11).
 
 ### Inline Documentation
 

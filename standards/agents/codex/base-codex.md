@@ -28,3 +28,11 @@ Instructions for OpenAI Codex CLI.
 - Make minimal changes — touch only the files required to satisfy the task.
 - No secrets or credentials in any file; check before committing config files.
 - If sync-standards reports customized files, pending updates are in `.standards-pending/`. See `.standards/docs/reference/merge-standards-prompt.md` to merge.
+
+## Known Traps
+
+Project-specific pitfalls that have already cost a debugging session. Each row carries the issue that documented it and the date it was recorded, so a reader can judge whether it is still live. Add a row whenever a bug's root cause was "the agent did not know this"; delete the row when the trap is engineered away and say so in the issue.
+
+| Trap | Why it bites | Issue | Date |
+|------|--------------|-------|------|
+| Example: run `make ci` from the repo root, not from a package directory | Sub-make targets resolve paths from the working directory and silently skip suites | #000 | YYYY-MM-DD |
