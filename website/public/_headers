@@ -1,14 +1,28 @@
 # Cloudflare Pages response headers (served from the deployed site root).
 # https://developers.cloudflare.com/pages/configuration/headers/
 #
-# CSP note: this is a static Starlight site that ships inline <script>/<style>
-# (theme toggle, expressive-code) without nonces, so script/style-src require
-# 'unsafe-inline'. There is no user-generated content, so the XSS surface is
-# minimal. Tightening to hashes/nonces is tracked as a follow-up; verify any
-# CSP change against a preview deploy before shipping.
+# This file is a TEMPLATE. `npm run build` runs scripts/csp-postbuild.mjs after
+# `astro build`, which replaces the two placeholders below in dist/_headers:
+#   __CSP_SCRIPT_HASHES__  SHA-256 hashes of every inline <script> Starlight
+#                          emits (theme provider, sidebar state, search shortcut)
+#   __CSP_STYLE_HASHES__   SHA-256 hashes of any inline <style> (normally none;
+#                          astro.config sets build.inlineStylesheets: 'never')
+# so script-src and style-src never need 'unsafe-inline'.
+#
+# 'wasm-unsafe-eval' is required by Pagefind (Starlight search), which compiles
+# a WebAssembly module; it does not permit JavaScript eval().
+#
+# style-src-attr 'unsafe-inline' is the one residual: Expressive Code and
+# Starlight render thousands of inline `style="--0:…"` attributes, whose hashes
+# do not fit Cloudflare's 2,000-character limit for a _headers line. The
+# post-build step therefore adds a per-page <meta http-equiv=CSP> with
+# `style-src-attr 'unsafe-hashes' <hashes>`; browsers enforce both policies, so
+# the effective policy allows only the exact attribute values on that page.
+# See docs/deploy.md ("Content-Security-Policy") before changing anything here,
+# and verify every CSP change against a Cloudflare Pages preview deploy.
 /*
   X-Content-Type-Options: nosniff
   X-Frame-Options: SAMEORIGIN
   Referrer-Policy: strict-origin-when-cross-origin
   Strict-Transport-Security: max-age=31536000; includeSubDomains
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' __CSP_SCRIPT_HASHES__; style-src 'self' __CSP_STYLE_HASHES__; style-src-attr 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'

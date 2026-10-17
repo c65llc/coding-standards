@@ -62,6 +62,9 @@ jobs:
       - name: lint-standards functional tests
         run: ./scripts/test-lint-standards.sh
 
+      - name: website CSP post-build functional tests
+        run: ./website/scripts/test-csp-postbuild.sh
+
   markdown-lint:
     name: Markdown Lint
     runs-on: ubuntu-latest
