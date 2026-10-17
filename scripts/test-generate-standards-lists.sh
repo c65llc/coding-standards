@@ -303,10 +303,12 @@ else
 $out"
 fi
 
-echo -n "Test 24: --check FAILs when a reference cites core-standards.md under the wrong directory... "
-printf '\nSee `standards/architecture/core-standards.md`.\n' >> "$wrongdir/AGENTS.md"
+echo -n "Test 24: --check FAILs on a wrong-directory core-standards ref, a misspelt directory, and a hyphenated typo... "
+printf '\nSee `standards/architecture/core-standards.md`, `standards/architectures/arch-01_project_standards_and_architecture.md` and `standards/languages/lang-99_missing-standard.md`.\n' >> "$wrongdir/AGENTS.md"
 out=$("$GEN" --root "$wrongdir" --check 2>&1); rc=$?
-if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL standards-reference.*AGENTS.md.*architecture/core-standards.md'; then
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL standards-reference.*AGENTS.md.*architecture/core-standards.md' \
+   && echo "$out" | grep -q 'standards/architectures/arch-01_project_standards_and_architecture.md' \
+   && echo "$out" | grep -q 'lang-99_missing-standard.md'; then
     pass
 else
     fail "misdirected core-standards reference not detected (rc=$rc):
@@ -373,10 +375,12 @@ else
 $out"
 fi
 
-echo -n "Test 29: write mode errors when a required agent config file is missing... "
+echo -n "Test 29: write mode errors on a missing required file and rewrites nothing... "
+printf '# Go Standards\n' > "$nofile/standards/languages/lang-03_go_standards.md"
 if "$GEN" --root "$nofile" >/dev/null 2>"$TMP_BASE/nofile.err"; then
     fail "write mode exited 0 despite a missing required file"
-elif grep -q 'required agent config .cursorrules does not exist' "$TMP_BASE/nofile.err"; then
+elif grep -q 'required agent config .cursorrules does not exist' "$TMP_BASE/nofile.err" \
+     && ! grep -q 'lang-03_go_standards.md' "$nofile/AGENTS.md"; then
     pass
 else
     fail "expected an error naming .cursorrules:
@@ -403,7 +407,19 @@ enumerated: $enum
 $out"
 fi
 
-echo -n "Test 31: temporaries live under .standards_tmp and are cleaned up... "
+echo -n "Test 31: --check FAILs when the catalog has two rows for the same path... "
+dupcat=$(make_fixture "check-dup-catalog")
+"$GEN" --root "$dupcat" >/dev/null 2>&1
+printf 'languages/lang-01_python_standards.md\tPython (second row)\t`.py` files\n' >> "$dupcat/standards/catalog.tsv"
+out=$("$GEN" --root "$dupcat" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL catalog .*duplicate.*languages/lang-01_python_standards.md'; then
+    pass
+else
+    fail "duplicate catalog row not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 32: temporaries live under .standards_tmp and are cleaned up... "
 tmpfx=$(make_fixture "tmpdir")
 "$GEN" --root "$tmpfx" >/dev/null 2>&1
 if [ -d "$tmpfx/.standards_tmp" ] && [ -z "$(ls -A "$tmpfx/.standards_tmp")" ] \
@@ -415,19 +431,19 @@ fi
 
 # --- Dogfood: the real repository ----------------------------------------------
 
-echo -n "Test 32: the repo's own agent configs pass --check (no drift)... "
+echo -n "Test 33: the repo's own agent configs pass --check (no drift)... "
 out=$("$GEN" --root "$REPO_ROOT" --check 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass; else fail "repo is out of sync — run make generate-standards-lists:
 $out"; fi
 
-echo -n "Test 33: every real agent config carries a generated standards-list region... "
+echo -n "Test 34: every real agent config carries a generated standards-list region... "
 missing=""
 for f in .cursorrules .github/copilot-instructions.md .gemini/GEMINI.md AGENTS.md CLAUDE.md standards/README.md; do
     grep -qF -- "$BEGIN_LIST" "$REPO_ROOT/$f" || missing="$missing $f"
 done
 if [ -z "$missing" ]; then pass; else fail "no standards-list region in:$missing"; fi
 
-echo -n "Test 34: every real language standard has catalog triggers (no name fallback in detection maps)... "
+echo -n "Test 35: every real language standard has catalog triggers (no name fallback in detection maps)... "
 if grep -q 'source files →' "$REPO_ROOT/.cursorrules"; then
     fail "a language is missing its triggers column in standards/catalog.tsv"
 else

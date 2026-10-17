@@ -25,7 +25,8 @@
 #                     expected to carry, or that does not exist at all
 #                   * a file in a category directory that does not follow the
 #                     <prefix>-NN_<name>.md naming convention
-#                   * a catalog row for a file that does not exist
+#                   * a catalog row for a file that does not exist, or two
+#                     rows for the same file
 #   --quiet       Suppress per-file "unchanged" output in write mode.
 #
 # Temporary files live under <root>/.standards_tmp/ (per arch-02) and are
@@ -139,23 +140,35 @@ discover_targets() {
     done | LC_ALL=C sort -u
 }
 
-# Pattern for a standards-file reference: an optional category directory
-# followed by a prefixed filename (arch-NN_*.md, lang-NN_*.md, ...) or the
-# shared core-standards.md. grep -o is leftmost-longest, so a reference
-# written with its directory is captured together with that directory.
-STANDARDS_REF_REGEX='((architecture|languages|process|security|shared)/)?((arch|lang|proc|sec)-[0-9]+_[A-Za-z0-9_]+|core-standards)\.md'
+# Two kinds of reference are validated:
+#   * a complete repository-relative path, "standards/<anything>.md", which
+#     must exist at exactly that path (catches a misspelt directory, a wrong
+#     category, or a typo anywhere in the name). The leading boundary keeps
+#     ".standards/standards/..." consumer paths from being mis-captured.
+#   * a bare prefixed basename, "<arch|lang|proc|sec>-NN_<name>.md", which may
+#     live in any category directory. Hyphens are allowed in <name> so a typo
+#     such as lang-99_missing-standard.md is still extracted and rejected.
+STANDARDS_PATH_REGEX='(^|[^A-Za-z0-9_./-])standards/[A-Za-z0-9_./-]+\.md'
+STANDARDS_BASENAME_REGEX='(arch|lang|proc|sec)-[0-9]+_[A-Za-z0-9_-]+\.md'
 
-# standards_file_exists <ref> — true when <ref> resolves to a standards file.
-# A directory-qualified ref (languages/lang-01_python_standards.md) must exist
-# at exactly that path; a bare basename may live in any category directory.
-standards_file_exists() {
-    case "$1" in
-        */*) [ -f "$STANDARDS_DIR/$1" ] ;;
-        *)
-            set -- "$STANDARDS_DIR"/*/"$1"
-            [ -f "$1" ]
-            ;;
-    esac
+# standards_path_exists <standards/...md> — true when the path exists under ROOT.
+standards_path_exists() {
+    [ -f "$ROOT/$1" ]
+}
+
+# standards_basename_exists <basename> — true when standards/*/<basename> exists.
+standards_basename_exists() {
+    set -- "$STANDARDS_DIR"/*/"$1"
+    [ -f "$1" ]
+}
+
+# standards_refs <file> — every reference in <file>, one per line, deduplicated:
+# complete paths first (boundary stripped), then bare basenames.
+standards_refs() {
+    {
+        grep -ohE "$STANDARDS_PATH_REGEX" "$1" 2>/dev/null | sed -E 's/^[^s]*(standards\/)/\1/'
+        grep -ohE "$STANDARDS_BASENAME_REGEX" "$1" 2>/dev/null
+    } | LC_ALL=C sort -u
 }
 
 # missing_required_regions <relpath> — prints the region ids <relpath> is
@@ -229,6 +242,10 @@ run_write() {
     done <<EOF
 $(required_region_files)
 EOF
+    if [ "$rc" -ne 0 ]; then
+        echo "ERROR: preflight failed; no files were rewritten" >&2
+        return "$rc"
+    fi
 
     while IFS= read -r target; do
         [ -n "$target" ] || continue
@@ -333,9 +350,12 @@ check_references() {
         missing=""
         while IFS= read -r ref; do
             [ -n "$ref" ] || continue
-            standards_file_exists "$ref" || missing="$missing $ref"
+            case "$ref" in
+                standards/*) standards_path_exists "$ref" || missing="$missing $ref" ;;
+                *)           standards_basename_exists "$ref" || missing="$missing $ref" ;;
+            esac
         done <<EOF
-$(grep -ohE "$STANDARDS_REF_REGEX" "$ROOT/$f" 2>/dev/null | LC_ALL=C sort -u)
+$(standards_refs "$ROOT/$f")
 EOF
         if [ -z "$missing" ]; then
             report_pass "standards-reference" "$f references only existing standards files"
@@ -382,6 +402,16 @@ EOF
         report_pass "catalog" "every catalog row points at an existing standards file"
     else
         report_fail "catalog" "standards/$STANDARDS_CATALOG_FILE lists file(s) that do not exist:$stale"
+    fi
+
+    # Lookups take the first matching row, so a duplicate path would have its
+    # later description/triggers silently ignored.
+    local dups
+    dups=$(standards_catalog_paths "$STANDARDS_DIR" | LC_ALL=C sort | uniq -d | tr '\n' ' ')
+    if [ -z "$dups" ]; then
+        report_pass "catalog" "every catalog path is unique"
+    else
+        report_fail "catalog" "standards/$STANDARDS_CATALOG_FILE has duplicate row(s) for: ${dups% }"
     fi
 
     while IFS= read -r rel; do

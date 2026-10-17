@@ -62,7 +62,7 @@ This document explains the repository layout so you can find what you need quick
 │   ├── shared/                     # Shared standards for all agents
 │   │   └── core-standards.md
 │   │
-│   └── catalog.tsv                 # Descriptions/triggers for generated standards lists
+│   ├── catalog.tsv                 # Descriptions/triggers for generated standards lists
 │   │
 │   └── agents/                     # AI agent configuration templates
 │       ├── claude-code/            # → assembled to CLAUDE.md

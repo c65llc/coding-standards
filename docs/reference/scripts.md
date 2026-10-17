@@ -333,10 +333,10 @@ make check-agent-configs
 **`--check` mode** emits `PASS` / `WARN` / `FAIL` lines and exits non-zero on any `FAIL`:
 
 - a generated region whose content differs from a fresh render (stale)
-- an agent config that no longer carries a generated region it is required to have (e.g. the whole `language-detection` block was deleted from `.cursorrules`), or that has been deleted outright; write mode refuses to run on the same conditions, since there are no sentinels left to splice into
+- an agent config that no longer carries a generated region it is required to have (e.g. the whole `language-detection` block was deleted from `.cursorrules`), or that has been deleted outright; write mode fails the same preflight and rewrites nothing, since there are no sentinels left to splice into
 - a file in a category directory (other than `README.md`) that does not follow `<prefix>-NN_<name>.md` — such files are never enumerated, so a malformed name would otherwise vanish from every list silently
-- an agent config, base template, or structure doc that references a standards file that does not exist — a directory-qualified reference such as `standards/languages/arch-01_….md` must exist at exactly that path, a bare filename may live in any category
+- an agent config, base template, or structure doc that references a standards file that does not exist — any complete `standards/….md` path must exist at exactly that path (a misspelt directory or filename fails), while a bare `<prefix>-NN_<name>.md` may live in any category
 - an agent config or structure doc (`standards/README.md`, `STRUCTURE.md`, `docs/getting-started/project-structure.md`) that omits a standards file that does exist
-- a `catalog.tsv` row pointing at a file that does not exist (a standards file without a row is a `WARN`)
+- a `catalog.tsv` row pointing at a file that does not exist, or two rows for the same path (a standards file without a row is a `WARN`)
 
 The rendering and splicing functions live in `scripts/lib/standards-lists.sh` and can be sourced independently. Tests: `scripts/test-generate-standards-lists.sh`.
