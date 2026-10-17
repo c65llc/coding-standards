@@ -16,8 +16,11 @@ LIB="$REPO_ROOT/scripts/lib/standards-lists.sh"
 RED='\033[0;31m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
 PASS=0; FAIL=0
 
-TMP_BASE="$(mktemp -d "${TMPDIR:-/tmp}/test-generate-standards-lists.XXXXXX")"
-trap 'rm -rf "$TMP_BASE"' EXIT
+# Fixtures live under the repo's ignored .standards_tmp/ (arch-02), never /tmp.
+STANDARDS_TMP="$REPO_ROOT/.standards_tmp"
+mkdir -p "$STANDARDS_TMP" || { echo "cannot create $STANDARDS_TMP" >&2; exit 1; }
+TMP_BASE="$(mktemp -d "$STANDARDS_TMP/test-generate-standards-lists.XXXXXX")" || exit 1
+trap 'chmod -R u+w "$TMP_BASE" 2>/dev/null; rm -rf "$TMP_BASE"' EXIT
 
 pass() { echo -e "${GREEN}✓${NC}"; PASS=$((PASS + 1)); }
 fail() { echo -e "${RED}✗${NC}"; echo "  Error: $1"; FAIL=$((FAIL + 1)); }

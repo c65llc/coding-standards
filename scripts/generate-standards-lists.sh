@@ -101,11 +101,19 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 # ---------------------------------------------------------------------------
 # Target discovery: every markdown-ish file under ROOT with a BEGIN sentinel.
-# Uses git when available (respects .gitignore, skips nested worktrees), else
-# a pruned find. Paths are printed relative to ROOT.
+# Uses git when ROOT is the top of a work tree (respects .gitignore, skips
+# nested worktrees), else a pruned find. A ROOT nested inside a repository,
+# such as a test fixture under .standards_tmp/, is ignored by git and so must
+# take the find path. Paths are printed relative to ROOT.
 # ---------------------------------------------------------------------------
+root_is_git_toplevel() {
+    local top
+    top="$(git -C "$ROOT" rev-parse --show-toplevel 2>/dev/null)" || return 1
+    [ "$top" = "$ROOT" ]
+}
+
 candidate_files() {
-    if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    if root_is_git_toplevel; then
         git -C "$ROOT" ls-files --cached --others --exclude-standard -z -- . 2>/dev/null \
             | tr '\0' '\n'
     else
