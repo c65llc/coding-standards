@@ -104,6 +104,35 @@ jobs:
       - name: website CSP post-build functional tests
         run: ./website/scripts/test-csp-postbuild.sh
 
+      - name: generate-standards-lists functional tests
+        run: ./scripts/test-generate-standards-lists.sh
+
+  check-agent-configs:
+    name: Agent Config Drift
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The enumerable sections of every agent config (.cursorrules,
+      # copilot-instructions.md, GEMINI.md, AGENTS.md, CLAUDE.md, standards/
+      # README.md) are generated from the standards/ tree between
+      # <!-- BEGIN/END GENERATED --> sentinels. Regenerate and fail on any diff
+      # so a standards file can never be added, renamed, or removed without the
+      # configs following.
+      - name: Regenerate standards lists and fail on diff
+        run: |
+          make generate-standards-lists
+          if ! git diff --exit-code --stat; then
+            echo "::error::Agent configs are out of date. Run 'make generate-standards-lists' locally and commit the result."
+            exit 1
+          fi
+
+      # Independent of the diff above: every agent config must reference only
+      # standards files that exist and must mention every one that does.
+      - name: Validate references and completeness
+        run: make check-agent-configs
+
   markdown-lint:
     name: Markdown Lint
     needs: changes
