@@ -87,8 +87,48 @@ Coverage thresholds enforced by standards.
 
 | Sub-field | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `minimum` | integer (0-100) | `95` | Overall minimum coverage percentage |
+| `minimum` | integer (0-100) | `95` | Overall minimum coverage percentage; applies to any path no scope claims |
 | `domain` | integer (0-100) | `100` | Domain layer minimum coverage percentage |
+| `scopes` | list of objects | none | Per-path coverage floors (proc-05 § 6). See below. |
+
+#### `coverage.scopes`
+
+Each scope is measured and gated on its own. Validated by
+`scripts/lint-checks/common/coverage-config.sh`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `path` | string | **yes** | Directory or glob the floor applies to. Must be unique. |
+| `layer` | string | no | `domain`, `core`, `application`, `infrastructure`, `inherited`, `native`, `generated` |
+| `minimum` | integer (0-100) | **yes** | Floor for this scope. `domain`/`core` scopes MUST be `100`. |
+| `reason` | string | when `minimum` < `coverage.minimum` | Why the code cannot be measured and where it is verified instead |
+
+```yaml
+coverage:
+  minimum: 95
+  domain: 100
+  scopes:
+    - path: src/domain
+      layer: domain
+      minimum: 100
+    - path: vendor/engine
+      layer: inherited
+      minimum: 0
+      reason: Upstream engine vendored verbatim; covered by upstream's suite (#210)
+```
+
+---
+
+### `tests`
+
+Type: object
+
+Test governance settings (proc-05).
+
+| Sub-field | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `quarantine_file` | string | `test-quarantine.json` | Path (relative to the project root) of the flaky-test quarantine registry. Validated by `quarantine-policy`; a declared file that is missing fails closed. |
+| `slow_threshold_ms` | integer | `2000` | Fast-tier per-test ceiling in milliseconds; also the slow-test top-N report cutoff. |
 
 ---
 
@@ -167,6 +207,17 @@ role: service
 coverage:
   minimum: 95
   domain: 100
+  scopes:
+    - path: src/domain
+      layer: domain
+      minimum: 100
+    - path: src/generated
+      layer: generated
+      minimum: 0
+      reason: protobuf stubs regenerated at build time
+tests:
+  quarantine_file: test-quarantine.json
+  slow_threshold_ms: 2000
 architecture: clean
 security: strict
 ```

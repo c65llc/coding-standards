@@ -121,6 +121,8 @@ Projects MUST build testing infrastructure that supports:
 
 Coverage gates MUST be enforced in CI. A PR that drops coverage below 95% in any module MUST NOT be merged.
 
+Projects with inherited, generated, or native code that no CI runner can execute declare **per-scope floors** in `.standards.yml` (`coverage.scopes`) instead of a single blanket number. Domain/core scopes stay at 100%; any scope below the overall minimum states a `reason` and where the code is verified instead. See `proc-05_test_governance.md` § 6.
+
 ### Untestable Boundaries
 
 Some runtime surfaces genuinely cannot run in CI — a real filesystem-access API,
@@ -148,6 +150,18 @@ The coverage floor is met with **real tests**, never by gaming the number.
 - Mirror source structure: `src/domain/user.py` → `tests/domain/test_user.py`
 - Use descriptive test names: `test_should_raise_error_when_email_is_invalid`
 - One assertion per test when possible.
+
+### Test Governance
+
+Flaky and slow tests, change-scoped suites, and gates that can pass without running are governed by `standards/process/proc-05_test_governance.md`:
+
+- **Flaky tests** go in the committed quarantine registry (`test-quarantine.json`: exact test id, issue, owner, reason, `added`, `expires` ≤ 30 days). Never retry, skip, or disable a test in place. Expired entries fail CI. Quarantine never lowers a coverage threshold. `make test-quarantined` runs the queue.
+- **Flakes are surfaced, not gated:** retried-then-passed tests are reported to the step summary and never fail the build.
+- **Fast/slow tiers** with per-test timeouts and a slow-test top-N report; the fast tier runs on every PR.
+- **Scoped suites:** `ci-routing.yml` maps changed paths to the minimum checks; CI and agents read the same table; unmatched paths run everything.
+- **PR evidence:** tested commit SHA plus a slow-check evidence table. Never report an unrun check as passing.
+- **Gates** self-test on every run, fail closed on an empty scan, and require a reason on every escape marker.
+- **E2E lanes never target production**; they use protected test identities, and human-only operations ship as runbooks.
 
 ## Dependency Management
 
@@ -338,6 +352,7 @@ Reference detailed process standards in:
 - `standards/process/proc-01_documentation_standards.md`
 - `standards/process/proc-02_git_version_control_standards.md`
 - `standards/process/proc-03_code_review_expectations.md`
+- `standards/process/proc-05_test_governance.md`
 
 ## Architecture Patterns
 
