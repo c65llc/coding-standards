@@ -1,0 +1,620 @@
+#!/bin/bash
+# Functional tests for generate-standards-lists.sh and lib/standards-lists.sh —
+# the generator that keeps the enumerable sections of agent configs (standards
+# file lists, language-detection maps) in sync with the standards/ tree, and
+# the --check drift gate CI runs on every PR.
+#
+# Each test builds a fixture repo with a known standards/ tree and asserts
+# rendering, splicing, and check outcomes. The last tests dogfood the real repo.
+set -u
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+GEN="$REPO_ROOT/scripts/generate-standards-lists.sh"
+LIB="$REPO_ROOT/scripts/lib/standards-lists.sh"
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; BLUE='\033[0;34m'; NC='\033[0m'
+PASS=0; FAIL=0
+
+# Fixtures live under the repo's ignored .standards_tmp/ (arch-02), never /tmp.
+STANDARDS_TMP="$REPO_ROOT/.standards_tmp"
+mkdir -p "$STANDARDS_TMP" || { echo "cannot create $STANDARDS_TMP" >&2; exit 1; }
+TMP_BASE="$(mktemp -d "$STANDARDS_TMP/test-generate-standards-lists.XXXXXX")" || exit 1
+trap 'chmod -R u+w "$TMP_BASE" 2>/dev/null; rm -rf "$TMP_BASE"' EXIT
+
+pass() { echo -e "${GREEN}✓${NC}"; PASS=$((PASS + 1)); }
+fail() { echo -e "${RED}✗${NC}"; echo "  Error: $1"; FAIL=$((FAIL + 1)); }
+
+BEGIN_LIST='<!-- BEGIN GENERATED: standards-list -->'
+END_LIST='<!-- END GENERATED: standards-list -->'
+BEGIN_LANG='<!-- BEGIN GENERATED: language-detection -->'
+END_LANG='<!-- END GENERATED: language-detection -->'
+
+# make_fixture <name> — builds a minimal repo-shaped tree with a standards/
+# directory, a catalog, and agent configs carrying generated regions.
+make_fixture() {
+    local dir="$TMP_BASE/$1"
+    mkdir -p "$dir/standards/architecture" "$dir/standards/languages" \
+             "$dir/standards/process" "$dir/standards/security" \
+             "$dir/standards/shared" "$dir/.github" "$dir/.gemini"
+    printf '# Project Standards & Architecture\n' > "$dir/standards/architecture/arch-01_project_standards_and_architecture.md"
+    printf '# Document 2: Automation & Workflows\n' > "$dir/standards/architecture/arch-02_automation_standards.md"
+    printf '# Python Standards\n' > "$dir/standards/languages/lang-01_python_standards.md"
+    printf '# Ruby on Rails Standards\n' > "$dir/standards/languages/lang-02_rails_standards.md"
+    printf '# Documentation Standards\n' > "$dir/standards/process/proc-01_documentation_standards.md"
+    printf '# Security Standards\n' > "$dir/standards/security/sec-01_security_standards.md"
+    printf '# Core Standards\n' > "$dir/standards/shared/core-standards.md"
+    # Not a standard: must never be enumerated.
+    printf '# Schema\n' > "$dir/standards/shared/standards-yml-schema.md"
+    printf '# Notes\n' > "$dir/standards/architecture/README.md"
+    cat > "$dir/standards/catalog.tsv" <<'EOF'
+# path	description	triggers
+architecture/arch-01_project_standards_and_architecture.md	Core architecture, SOLID principles
+languages/lang-01_python_standards.md	Python (uv, ruff, mypy, pytest)	`.py` files
+languages/lang-02_rails_standards.md	Ruby on Rails	`.erb` files, `Gemfile`
+EOF
+    cat > "$dir/.cursorrules" <<EOF
+# Cursor rules
+
+Intro paragraph that must survive.
+
+$BEGIN_LIST
+stale content that must be replaced
+$END_LIST
+
+## Language Detection
+
+$BEGIN_LANG
+$END_LANG
+
+Trailing paragraph that must survive.
+EOF
+    cp "$dir/.cursorrules" "$dir/AGENTS.md"
+    cp "$dir/.cursorrules" "$dir/CLAUDE.md"
+    cp "$dir/.cursorrules" "$dir/.github/copilot-instructions.md"
+    cp "$dir/.cursorrules" "$dir/.gemini/GEMINI.md"
+    cp "$dir/.cursorrules" "$dir/standards/README.md"
+    mkdir -p "$dir/docs/getting-started"
+    cp "$dir/.cursorrules" "$dir/STRUCTURE.md"
+    cp "$dir/.cursorrules" "$dir/docs/getting-started/project-structure.md"
+    echo "$dir"
+}
+
+echo -e "${BLUE}Testing generate-standards-lists.sh and lib/standards-lists.sh${NC}"
+echo ""
+
+# --- Existence / syntax ------------------------------------------------------
+
+echo -n "Test 1: generate-standards-lists.sh exists and is executable... "
+if [ -x "$GEN" ]; then pass; else fail "$GEN not executable"; fi
+
+echo -n "Test 2: lib/standards-lists.sh is sourceable and exposes the API... "
+if bash -c "source '$LIB' && type list_standards_files render_region splice_generated_regions" >/dev/null 2>&1; then
+    pass
+else
+    fail "expected functions not defined after sourcing $LIB"
+fi
+
+echo -n "Test 3: lib and generator pass bash -n... "
+if bash -n "$LIB" && bash -n "$GEN"; then pass; else fail "syntax error"; fi
+
+# --- Enumeration --------------------------------------------------------------
+
+fx=$(make_fixture "enum")
+
+echo -n "Test 4: list_standards_files enumerates prefixed files + core-standards only... "
+out=$(bash -c "source '$LIB' && list_standards_files '$fx/standards'")
+expected="architecture/arch-01_project_standards_and_architecture.md
+architecture/arch-02_automation_standards.md
+languages/lang-01_python_standards.md
+languages/lang-02_rails_standards.md
+process/proc-01_documentation_standards.md
+security/sec-01_security_standards.md
+shared/core-standards.md"
+if [ "$out" = "$expected" ]; then pass; else fail "unexpected enumeration:
+$out"; fi
+
+echo -n "Test 5: list_standards_files filters by category... "
+out=$(bash -c "source '$LIB' && list_standards_files '$fx/standards' languages")
+if [ "$out" = "languages/lang-01_python_standards.md
+languages/lang-02_rails_standards.md" ]; then pass; else fail "got: $out"; fi
+
+# --- Rendering ----------------------------------------------------------------
+
+echo -n "Test 6: standards-list uses the catalog description when present... "
+out=$(bash -c "source '$LIB' && render_region standards-list '$fx/standards' 'standards/'")
+if echo "$out" | grep -qF -- '- `standards/languages/lang-01_python_standards.md` — Python (uv, ruff, mypy, pytest)'; then
+    pass
+else
+    fail "catalog description missing from:
+$out"
+fi
+
+echo -n "Test 7: standards-list falls back to the H1 title (minus 'Document N:' prefix)... "
+if echo "$out" | grep -qF -- '- `standards/architecture/arch-02_automation_standards.md` — Automation & Workflows'; then
+    pass
+else
+    fail "H1 fallback missing from:
+$out"
+fi
+
+echo -n "Test 8: standards-list groups by category with labels and includes shared core... "
+if echo "$out" | grep -qF '**Architecture Standards:**' \
+   && echo "$out" | grep -qF '**Language Standards:**' \
+   && echo "$out" | grep -qF '**Process Standards:**' \
+   && echo "$out" | grep -qF '**Security Standards:**' \
+   && echo "$out" | grep -qF '**Shared Standards:**' \
+   && echo "$out" | grep -qF -- '- `standards/shared/core-standards.md`'; then
+    pass
+else
+    fail "category labels / shared entry missing from:
+$out"
+fi
+
+echo -n "Test 9: standards-list never enumerates non-standard files... "
+if echo "$out" | grep -qE 'standards-yml-schema|architecture/README'; then
+    fail "non-standard file leaked into list"
+else
+    pass
+fi
+
+echo -n "Test 10: language-detection uses catalog triggers and a name fallback... "
+fb=$(make_fixture "fallback")
+grep -v 'lang-02_rails_standards.md' "$fb/standards/catalog.tsv" > "$fb/standards/catalog.tmp" && mv "$fb/standards/catalog.tmp" "$fb/standards/catalog.tsv"
+out=$(bash -c "source '$LIB' && render_region language-detection '$fb/standards' 'standards/'")
+if echo "$out" | grep -qF -- '- `.py` files → `standards/languages/lang-01_python_standards.md`' \
+   && echo "$out" | grep -qF -- '- Ruby on Rails source files → `standards/languages/lang-02_rails_standards.md`'; then
+    pass
+else
+    fail "language-detection output wrong:
+$out"
+fi
+
+echo -n "Test 11: render_region rejects an unknown region id... "
+if bash -c "source '$LIB' && render_region bogus-region '$fx/standards' 'standards/'" >/dev/null 2>&1; then
+    fail "unknown region did not fail"
+else
+    pass
+fi
+
+# --- Splicing -----------------------------------------------------------------
+
+echo -n "Test 12: generator replaces region bodies and preserves surrounding text... "
+"$GEN" --root "$fx" >/dev/null 2>&1; rc=$?
+if [ "$rc" -eq 0 ] \
+   && grep -qF 'Intro paragraph that must survive.' "$fx/.cursorrules" \
+   && grep -qF 'Trailing paragraph that must survive.' "$fx/.cursorrules" \
+   && ! grep -qF 'stale content that must be replaced' "$fx/.cursorrules" \
+   && grep -qF 'lang-02_rails_standards.md' "$fx/.cursorrules" \
+   && grep -qF -- "$BEGIN_LIST" "$fx/.cursorrules" \
+   && grep -qF -- "$END_LIST" "$fx/.cursorrules" \
+   && grep -qF -- '- `.py` files →' "$fx/.cursorrules"; then
+    pass
+else
+    fail "splice result wrong (rc=$rc):
+$(cat "$fx/.cursorrules")"
+fi
+
+echo -n "Test 13: generator is idempotent (second run changes nothing)... "
+cp "$fx/.cursorrules" "$TMP_BASE/first.cursorrules"
+"$GEN" --root "$fx" >/dev/null 2>&1
+if cmp -s "$fx/.cursorrules" "$TMP_BASE/first.cursorrules"; then pass; else fail "second run altered output"; fi
+
+echo -n "Test 14: generator regenerates every file carrying a sentinel... "
+if grep -qF 'lang-02_rails_standards.md' "$fx/AGENTS.md" \
+   && grep -qF 'lang-02_rails_standards.md' "$fx/CLAUDE.md" \
+   && grep -qF 'lang-02_rails_standards.md' "$fx/.github/copilot-instructions.md" \
+   && grep -qF 'lang-02_rails_standards.md' "$fx/.gemini/GEMINI.md" \
+   && grep -qF 'lang-02_rails_standards.md' "$fx/standards/README.md"; then
+    pass
+else
+    fail "not every target was regenerated"
+fi
+
+echo -n "Test 15: unterminated region is an error; no file is rewritten, not even earlier targets... "
+bad=$(make_fixture "unterminated")
+printf '# X\n%s\nbody\n' "$BEGIN_LIST" > "$bad/CLAUDE.md"
+cp "$bad/CLAUDE.md" "$TMP_BASE/bad.before"
+if "$GEN" --root "$bad" >/dev/null 2>&1; then
+    fail "unterminated region did not fail"
+elif cmp -s "$bad/CLAUDE.md" "$TMP_BASE/bad.before" \
+     && grep -qF 'stale content that must be replaced' "$bad/.cursorrules" \
+     && grep -qF 'stale content that must be replaced' "$bad/AGENTS.md"; then
+    pass
+else
+    fail "a file was modified despite the error"
+fi
+
+# --- Check mode ---------------------------------------------------------------
+
+ok=$(make_fixture "check-ok")
+"$GEN" --root "$ok" >/dev/null 2>&1
+
+echo -n "Test 16: --check passes on a consistent tree and emits PASS lines... "
+out=$("$GEN" --root "$ok" --check 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && echo "$out" | grep -q '^PASS ' && ! echo "$out" | grep -q '^FAIL '; then
+    pass
+else
+    fail "expected clean check (rc=$rc):
+$out"
+fi
+
+echo -n "Test 17: --check FAILs when a generated region is stale... "
+stale=$(make_fixture "check-stale")
+"$GEN" --root "$stale" >/dev/null 2>&1
+printf '# Go Standards\n' > "$stale/standards/languages/lang-03_go_standards.md"
+out=$("$GEN" --root "$stale" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL ' && echo "$out" | grep -q 'generate-standards-lists'; then
+    pass
+else
+    fail "stale region not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 18: --check FAILs when a config references a standards file that does not exist... "
+broken=$(make_fixture "check-broken-ref")
+"$GEN" --root "$broken" >/dev/null 2>&1
+printf '\nSee `standards/languages/lang-99_cobol_standards.md`.\n' >> "$broken/CLAUDE.md"
+out=$("$GEN" --root "$broken" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL ' && echo "$out" | grep -q 'lang-99_cobol_standards.md'; then
+    pass
+else
+    fail "broken reference not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 19: --check FAILs when an agent config omits an existing standards file... "
+omit=$(make_fixture "check-omit")
+"$GEN" --root "$omit" >/dev/null 2>&1
+# An agent config with no generated region at all cannot be regenerated, so it
+# must be caught by the completeness check instead.
+printf '# AGENTS.md\n\nOnly `standards/languages/lang-01_python_standards.md` here.\n' > "$omit/AGENTS.md"
+out=$("$GEN" --root "$omit" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL ' && echo "$out" | grep -q 'AGENTS.md' && echo "$out" | grep -q 'sec-01_security_standards.md'; then
+    pass
+else
+    fail "omission not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 20: --check FAILs when the catalog lists a file that does not exist... "
+cat_bad=$(make_fixture "check-catalog")
+"$GEN" --root "$cat_bad" >/dev/null 2>&1
+printf 'languages/lang-77_fortran_standards.md\tFortran\t`.f90` files\n' >> "$cat_bad/standards/catalog.tsv"
+out=$("$GEN" --root "$cat_bad" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL ' && echo "$out" | grep -q 'lang-77_fortran_standards.md'; then
+    pass
+else
+    fail "stale catalog entry not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 21: --check WARNs (not FAILs) for a standards file without a catalog entry... "
+out=$("$GEN" --root "$ok" --check 2>&1)
+if echo "$out" | grep -q '^WARN .*arch-02_automation_standards.md'; then pass; else fail "expected WARN for uncatalogued file:
+$out"; fi
+
+echo -n "Test 22: --check never modifies files... "
+cp "$stale/.cursorrules" "$TMP_BASE/stale.before"
+"$GEN" --root "$stale" --check >/dev/null 2>&1 || true
+if cmp -s "$stale/.cursorrules" "$TMP_BASE/stale.before"; then pass; else fail "--check modified .cursorrules"; fi
+
+echo -n "Test 23: --check FAILs when a reference cites the right basename under the wrong directory... "
+wrongdir=$(make_fixture "check-wrong-dir")
+"$GEN" --root "$wrongdir" >/dev/null 2>&1
+printf '\nSee `standards/languages/arch-01_project_standards_and_architecture.md`.\n' >> "$wrongdir/CLAUDE.md"
+out=$("$GEN" --root "$wrongdir" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL standards-reference.*languages/arch-01_project_standards_and_architecture.md'; then
+    pass
+else
+    fail "misdirected reference not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 24: --check FAILs on a wrong-directory core ref, a misspelt directory, a hyphenated typo, and a .md.bak suffix... "
+printf '\nSee `standards/architecture/core-standards.md`, `standards/architectures/arch-01_project_standards_and_architecture.md`, `standards/languages/lang-99_missing-standard.md`, standards/languages/lang-01_python_standards.md.bak and lang-01_python_standards.md.orig. Also fine: standards/languages/lang-01_python_standards.md.\n' >> "$wrongdir/AGENTS.md"
+out=$("$GEN" --root "$wrongdir" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL standards-reference.*AGENTS.md.*architecture/core-standards.md' \
+   && echo "$out" | grep -q 'standards/architectures/arch-01_project_standards_and_architecture.md' \
+   && echo "$out" | grep -q 'lang-99_missing-standard.md' \
+   && echo "$out" | grep -q 'standards/languages/lang-01_python_standards.md.bak' \
+   && echo "$out" | grep -q ' lang-01_python_standards.md.orig' \
+   && ! echo "$out" | grep -q 'lang-01_python_standards.md[ .]*$'; then
+    pass
+else
+    fail "misdirected core-standards reference not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 25: --check FAILs when a required generated region is deleted wholesale... "
+noregion=$(make_fixture "check-no-region")
+"$GEN" --root "$noregion" >/dev/null 2>&1
+# Drop the entire language-detection block (sentinels included) from .cursorrules;
+# its standards-list stays current, so only the manifest can catch this.
+sed -i.bak "/$BEGIN_LANG/,/$END_LANG/d" "$noregion/.cursorrules" && rm -f "$noregion/.cursorrules.bak"
+out=$("$GEN" --root "$noregion" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL required-region .cursorrules.*language-detection missing' \
+   && echo "$out" | grep -q '^PASS generated-region .cursorrules'; then
+    pass
+else
+    fail "missing required region not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 26: write mode errors on a missing required region instead of silently succeeding... "
+cp "$noregion/.cursorrules" "$TMP_BASE/noregion.before"
+if "$GEN" --root "$noregion" >/dev/null 2>"$TMP_BASE/noregion.err"; then
+    fail "write mode exited 0 despite missing required region"
+elif grep -q 'language-detection' "$TMP_BASE/noregion.err" && cmp -s "$noregion/.cursorrules" "$TMP_BASE/noregion.before"; then
+    pass
+else
+    fail "expected an error naming language-detection and an untouched file:
+$(cat "$TMP_BASE/noregion.err")"
+fi
+
+echo -n "Test 27: a failed write is reported, exits non-zero, and leaves the file intact... "
+if [ "$(id -u)" -eq 0 ]; then
+    echo "skipped (running as root, permission checks do not apply)"
+else
+    ro=$(make_fixture "write-ro")
+    "$GEN" --root "$ro" >/dev/null 2>&1
+    printf '# Go Standards\n' > "$ro/standards/languages/lang-03_go_standards.md"
+    cp "$ro/.cursorrules" "$TMP_BASE/ro.before"
+    chmod a-w "$ro" "$ro/.github" "$ro/.gemini"
+    "$GEN" --root "$ro" >/dev/null 2>"$TMP_BASE/ro.err"; rc=$?
+    chmod u+w "$ro" "$ro/.github" "$ro/.gemini"
+    if [ "$rc" -ne 0 ] && grep -q 'could not write' "$TMP_BASE/ro.err" \
+       && cmp -s "$ro/.cursorrules" "$TMP_BASE/ro.before" \
+       && ! ls "$ro"/.*.tmp.* >/dev/null 2>&1 \
+       && [ -z "$(ls -A "$ro/.standards_tmp" 2>/dev/null)" ]; then
+        pass
+    else
+        fail "write failure not propagated (rc=$rc):
+$(cat "$TMP_BASE/ro.err")"
+    fi
+fi
+
+echo -n "Test 28: --check FAILs when a required agent config file is deleted outright... "
+nofile=$(make_fixture "check-no-file")
+"$GEN" --root "$nofile" >/dev/null 2>&1
+rm -f "$nofile/.cursorrules"
+out=$("$GEN" --root "$nofile" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL required-file .cursorrules'; then
+    pass
+else
+    fail "deleted required file not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 29: write mode errors on a missing required file and rewrites nothing... "
+printf '# Go Standards\n' > "$nofile/standards/languages/lang-03_go_standards.md"
+if "$GEN" --root "$nofile" >/dev/null 2>"$TMP_BASE/nofile.err"; then
+    fail "write mode exited 0 despite a missing required file"
+elif grep -q 'required agent config .cursorrules does not exist' "$TMP_BASE/nofile.err" \
+     && ! grep -q 'lang-03_go_standards.md' "$nofile/AGENTS.md"; then
+    pass
+else
+    fail "expected an error naming .cursorrules:
+$(cat "$TMP_BASE/nofile.err")"
+fi
+
+echo -n "Test 30: non-zero-padded or malformed standards names are not enumerated and FAIL --check... "
+badname=$(make_fixture "check-bad-name")
+"$GEN" --root "$badname" >/dev/null 2>&1
+printf '# COBOL Standards\n' > "$badname/standards/languages/lang-1_cobol_standards.md"
+printf '# Example\n' > "$badname/standards/architecture/arch-100_example.md"
+printf '# Misplaced\n' > "$badname/standards/languages/arch-03_misplaced.md"
+enum=$(bash -c "source '$LIB' && list_standards_files '$badname/standards'")
+out=$("$GEN" --root "$badname" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] \
+   && ! echo "$enum" | grep -qE 'lang-1_|arch-100_|arch-03_misplaced' \
+   && echo "$out" | grep -q '^FAIL standards-naming .*languages/lang-1_cobol_standards.md' \
+   && echo "$out" | grep -q 'architecture/arch-100_example.md' \
+   && echo "$out" | grep -q 'languages/arch-03_misplaced.md'; then
+    pass
+else
+    fail "malformed names not rejected (rc=$rc):
+enumerated: $enum
+$out"
+fi
+
+echo -n "Test 31: --check FAILs when the catalog has two rows for the same path... "
+dupcat=$(make_fixture "check-dup-catalog")
+"$GEN" --root "$dupcat" >/dev/null 2>&1
+printf 'languages/lang-01_python_standards.md\tPython (second row)\t`.py` files\n' >> "$dupcat/standards/catalog.tsv"
+out=$("$GEN" --root "$dupcat" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL catalog .*duplicate.*languages/lang-01_python_standards.md'; then
+    pass
+else
+    fail "duplicate catalog row not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 32: --check FAILs when a language standard has no catalog triggers... "
+notrig=$(make_fixture "check-no-triggers")
+"$GEN" --root "$notrig" >/dev/null 2>&1
+printf '# Go Standards\n' > "$notrig/standards/languages/lang-03_go_standards.md"
+"$GEN" --root "$notrig" >/dev/null 2>&1
+out=$("$GEN" --root "$notrig" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL catalog .*triggers.*languages/lang-03_go_standards.md' \
+   && grep -q 'Go source files →' "$notrig/.cursorrules"; then
+    pass
+else
+    fail "missing language triggers not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 33: --check FAILs on a bare core-standards.md reference once the file is gone... "
+nocore=$(make_fixture "check-no-core")
+rm -f "$nocore/standards/shared/core-standards.md"
+grep -v 'core-standards.md' "$nocore/standards/catalog.tsv" > "$nocore/standards/catalog.tmp" && mv "$nocore/standards/catalog.tmp" "$nocore/standards/catalog.tsv"
+"$GEN" --root "$nocore" >/dev/null 2>&1
+printf '\nAll agents follow `core-standards.md`.\n' >> "$nocore/CLAUDE.md"
+out=$("$GEN" --root "$nocore" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL standards-reference CLAUDE.md.*core-standards.md'; then
+    pass
+else
+    fail "bare core-standards.md reference not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 34: --check FAILs when a required generated region appears twice... "
+dupregion=$(make_fixture "check-dup-region")
+"$GEN" --root "$dupregion" >/dev/null 2>&1
+awk -v b="$BEGIN_LANG" -v e="$END_LANG" '{print} $0==b{inb=1} inb{buf=buf $0 "\n"} $0==e{inb=0; printf "%s", buf}' "$dupregion/.cursorrules" > "$dupregion/.cursorrules.new" && mv "$dupregion/.cursorrules.new" "$dupregion/.cursorrules"
+out=$("$GEN" --root "$dupregion" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL required-region .cursorrules.*language-detection duplicated (2 copies)' \
+   && echo "$out" | grep -q '^PASS generated-region .cursorrules'; then
+    pass
+else
+    fail "duplicated region not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 35: --check FAILs when two files share one <prefix>-NN identifier... "
+dupid=$(make_fixture "check-dup-id")
+"$GEN" --root "$dupid" >/dev/null 2>&1
+printf '# COBOL Standards\n' > "$dupid/standards/languages/lang-01_cobol_standards.md"
+printf 'languages/lang-01_cobol_standards.md\tCOBOL\t`.cob` files\n' >> "$dupid/standards/catalog.tsv"
+"$GEN" --root "$dupid" >/dev/null 2>&1
+out=$("$GEN" --root "$dupid" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL standards-naming .*reused.*languages/lang-01'; then
+    pass
+else
+    fail "reused identifier not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 36: --check FAILs (not just WARNs) when the whole catalog is deleted... "
+nocat=$(make_fixture "check-no-catalog")
+rm -f "$nocat/standards/catalog.tsv"
+"$GEN" --root "$nocat" >/dev/null 2>&1
+out=$("$GEN" --root "$nocat" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^WARN catalog .*not found' \
+   && echo "$out" | grep -q '^FAIL catalog .*catalog.tsv is missing.*languages/lang-01_python_standards.md'; then
+    pass
+else
+    fail "missing catalog did not fail the check (rc=$rc):
+$out"
+fi
+
+echo -n "Test 37: --check FAILs when a declared documentation index is deleted... "
+noidx=$(make_fixture "check-no-index")
+"$GEN" --root "$noidx" >/dev/null 2>&1
+rm -f "$noidx/STRUCTURE.md"
+out=$("$GEN" --root "$noidx" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL required-file .*STRUCTURE.md'; then
+    pass
+else
+    fail "deleted documentation index not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 38: --check FAILs on a standards path that escapes the tree via '..'... "
+trav=$(make_fixture "check-traversal")
+printf '# Standards\n' > "$trav/standards/README2.md"
+"$GEN" --root "$trav" >/dev/null 2>&1
+printf '\nSee `standards/../standards/README2.md` and `standards/languages/../README2.md`.\n' >> "$trav/CLAUDE.md"
+out=$("$GEN" --root "$trav" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL standards-reference CLAUDE.md.*standards/\.\./standards/README2.md' \
+   && echo "$out" | grep -q 'standards/languages/\.\./README2.md'; then
+    pass
+else
+    fail "traversal reference not rejected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 39: targets whose paths flatten to the same name are regenerated independently... "
+coll=$(make_fixture "collide")
+mkdir -p "$coll/a" "$coll/a_b"
+printf 'FIRST intro\n%s\nold\n%s\n' "$BEGIN_LIST" "$END_LIST" > "$coll/a/b_c.md"
+printf 'SECOND intro\n%s\nold\n%s\n' "$BEGIN_LIST" "$END_LIST" > "$coll/a_b/c.md"
+"$GEN" --root "$coll" >/dev/null 2>&1; rc=$?
+if [ "$rc" -eq 0 ] && grep -q '^FIRST intro' "$coll/a/b_c.md" && grep -q '^SECOND intro' "$coll/a_b/c.md" \
+   && grep -qF 'lang-01_python_standards.md' "$coll/a/b_c.md" && grep -qF 'lang-01_python_standards.md' "$coll/a_b/c.md"; then
+    pass
+else
+    fail "colliding render paths corrupted a target (rc=$rc):
+$(head -1 "$coll/a/b_c.md"; head -1 "$coll/a_b/c.md")"
+fi
+
+echo -n "Test 40: a non-git --root containing regex characters is still discovered... "
+rx=$(make_fixture "regex[1]")
+"$GEN" --root "$rx" >/dev/null 2>&1; rc=$?
+if [ "$rc" -eq 0 ] && grep -qF 'lang-02_rails_standards.md' "$rx/.cursorrules" \
+   && ! grep -qF 'stale content that must be replaced' "$rx/.cursorrules"; then
+    pass
+else
+    fail "fixture under a regex-character path was not regenerated (rc=$rc)"
+fi
+
+echo -n "Test 41: temporaries live under .standards_tmp and are cleaned up... "
+tmpfx=$(make_fixture "tmpdir")
+"$GEN" --root "$tmpfx" >/dev/null 2>&1
+if [ -d "$tmpfx/.standards_tmp" ] && [ -z "$(ls -A "$tmpfx/.standards_tmp")" ] \
+   && ! ls "$tmpfx"/.*.tmp.* >/dev/null 2>&1; then
+    pass
+else
+    fail "expected an empty $tmpfx/.standards_tmp and no sibling temp files"
+fi
+
+echo -n "Test 42: --check FAILs when the catalog lists an existing file that is not an enumerated standard... "
+cat_nonstd=$(make_fixture "check-catalog-nonstandard")
+"$GEN" --root "$cat_nonstd" >/dev/null 2>&1
+# Both files exist on disk but neither is enumerated: a plain -f test passes them.
+printf 'shared/standards-yml-schema.md\tSchema\n' >> "$cat_nonstd/standards/catalog.tsv"
+printf 'architecture/README.md\tNotes\n' >> "$cat_nonstd/standards/catalog.tsv"
+out=$("$GEN" --root "$cat_nonstd" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL catalog.*shared/standards-yml-schema.md' \
+   && echo "$out" | grep -q '^FAIL catalog.*architecture/README.md'; then
+    pass
+else
+    fail "catalog rows for non-standard files not rejected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 43: --check validates references in an opted-in target whose path contains a space... "
+sp=$(make_fixture "check-space-path")
+mkdir -p "$sp/docs/space dir"
+printf '# Notes\n\n%s\n%s\n' "$BEGIN_LANG" "$END_LANG" > "$sp/docs/space dir/space target.md"
+"$GEN" --root "$sp" >/dev/null 2>&1
+printf '\nSee `standards/languages/lang-99_missing.md`.\n' >> "$sp/docs/space dir/space target.md"
+out=$("$GEN" --root "$sp" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -qF 'FAIL standards-reference docs/space dir/space target.md' \
+   && echo "$out" | grep -q 'lang-99_missing.md' \
+   && ! echo "$out" | grep -qE 'standards-reference (docs/space|dir/space|target\.md) references'; then
+    pass
+else
+    fail "reference check on a spaced path was split or skipped (rc=$rc):
+$out"
+fi
+
+# --- Dogfood: the real repository ----------------------------------------------
+
+echo -n "Test 44: the repo's own agent configs pass --check (no drift)... "
+out=$("$GEN" --root "$REPO_ROOT" --check 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass; else fail "repo is out of sync — run make generate-standards-lists:
+$out"; fi
+
+echo -n "Test 45: every real agent config carries a generated standards-list region... "
+missing=""
+for f in .cursorrules .github/copilot-instructions.md .gemini/GEMINI.md AGENTS.md CLAUDE.md standards/README.md; do
+    grep -qF -- "$BEGIN_LIST" "$REPO_ROOT/$f" || missing="$missing $f"
+done
+if [ -z "$missing" ]; then pass; else fail "no standards-list region in:$missing"; fi
+
+echo -n "Test 46: every real language standard has catalog triggers (no name fallback in detection maps)... "
+if grep -q 'source files →' "$REPO_ROOT/.cursorrules"; then
+    fail "a language is missing its triggers column in standards/catalog.tsv"
+else
+    pass
+fi
+
+echo ""
+if [ "$FAIL" -eq 0 ]; then
+    echo -e "${GREEN}All $PASS tests passed!${NC}"
+    exit 0
+else
+    echo -e "${RED}$FAIL of $((PASS + FAIL)) tests failed.${NC}"
+    exit 1
+fi

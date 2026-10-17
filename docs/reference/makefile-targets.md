@@ -125,6 +125,24 @@ Validate shell script syntax for `setup.sh` and `sync-standards.sh` using `bash 
 make test-scripts
 ```
 
+### `generate-standards-lists`
+
+Regenerate the standards file lists and language-detection maps inside the repo's agent configs (`.cursorrules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `CLAUDE.md`, `standards/README.md`) from the `standards/` tree. Only content between `<!-- BEGIN GENERATED -->` / `<!-- END GENERATED -->` sentinels is rewritten.
+
+```bash
+make generate-standards-lists
+```
+
+Run it after adding, renaming, or removing a standards file (and after updating its row in `standards/catalog.tsv`).
+
+### `check-agent-configs`
+
+Verify the agent configs match the `standards/` tree without writing anything. Fails when a generated region is stale, when any agent config references a standards file that does not exist, or when one omits a standards file that does. CI runs this on every pull request.
+
+```bash
+make check-agent-configs
+```
+
 ## Quick Reference
 
 | Target | Description |
@@ -141,3 +159,5 @@ make test-scripts
 | `lint` | Lint Markdown files |
 | `format` | Format Markdown files |
 | `test-scripts` | Validate script syntax |
+| `generate-standards-lists` | Regenerate standards lists in agent configs |
+| `check-agent-configs` | Fail on agent-config drift (CI gate) |

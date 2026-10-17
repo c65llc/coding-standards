@@ -56,8 +56,13 @@ This document explains the repository layout so you can find what you need quick
 │   │   ├── proc-04_agent_workflow_standards.md
 │   │   └── proc-05_test_governance.md
 │   │
+│   ├── security/                   # Security standards (P0-P2 severity model)
+│   │   └── sec-01_security_standards.md
+│   │
 │   ├── shared/                     # Shared standards for all agents
 │   │   └── core-standards.md
+│   │
+│   ├── catalog.tsv                 # Descriptions/triggers for generated standards lists
 │   │
 │   └── agents/                     # AI agent configuration templates
 │       ├── claude-code/            # → assembled to CLAUDE.md
@@ -110,14 +115,15 @@ Standards are organized by category so you only look at what applies:
 | Category | Path | Content |
 | -------- | ---- | ------- |
 | Architecture | `standards/architecture/` | Clean Architecture, automation, Cursor integration |
-| Languages | `standards/languages/` | Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby on Rails |
+| Languages | `standards/languages/` | Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby on Rails, Go, Elixir |
 | Process | `standards/process/` | Documentation, git workflow, code review, agent workflow |
+| Security | `standards/security/` | Security guidelines with P0-P2 severity model |
 | Shared | `standards/shared/` | Core standards that apply across all agents |
 | Agent configs | `standards/agents/` | Templates for each AI agent |
 
 ### Scalability
 
-Adding support for a new language means creating one file in `standards/languages/`. Adding a new AI agent means creating a directory under `standards/agents/` and updating the setup script.
+Adding support for a new language means creating one file in `standards/languages/` and running `make generate-standards-lists`, which rewrites the standards lists inside every agent config from the tree (CI fails on drift). Adding a new AI agent means creating a directory under `standards/agents/` and updating the setup script.
 
 ### Separation of Concerns
 

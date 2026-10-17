@@ -33,6 +33,7 @@ jobs:
       shell: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.shell == 'true' }}
       markdown: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.markdown == 'true' }}
       website: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.website == 'true' }}
+      agent_configs: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.agent_configs == 'true' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -103,6 +104,45 @@ jobs:
 
       - name: website CSP post-build functional tests
         run: ./website/scripts/test-csp-postbuild.sh
+
+  # The generator's functional tests run in check-agent-configs (agent_configs
+  # lane), which the routing table also selects for generator script changes.
+
+  check-agent-configs:
+    name: Agent Config Drift
+    needs: changes
+    if: needs.changes.outputs.agent_configs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The enumerable sections of every agent config (.cursorrules,
+      # copilot-instructions.md, GEMINI.md, AGENTS.md, CLAUDE.md, standards/
+      # README.md) are generated from the standards/ tree between
+      # <!-- BEGIN/END GENERATED --> sentinels. Regenerate and fail on any diff
+      # so a standards file can never be added, renamed, or removed without the
+      # configs following.
+      - name: Regenerate standards lists and fail on diff
+        run: |
+          make generate-standards-lists
+          if ! git diff --exit-code --stat; then
+            echo "::error::Agent configs are out of date. Run 'make generate-standards-lists' locally and commit the result."
+            exit 1
+          fi
+
+      # Independent of the diff above: every agent config must reference only
+      # standards files that exist and must mention every one that does, and
+      # every language standard must have catalog triggers.
+      - name: Validate references, completeness and catalog
+        run: make check-agent-configs
+
+      # The generator's functional tests run here, and only here: this lane
+      # is selected for generator script changes as well as catalog-only or
+      # standards-only PRs, which never trigger the shell lane.
+      - name: generate-standards-lists functional tests
+        run: make test-generate-standards-lists
 
   markdown-lint:
     name: Markdown Lint
@@ -206,7 +246,7 @@ jobs:
   # soft budget in the step summary (arch-08 §3).
   ci-gate:
     name: CI Gate
-    needs: [changes, shellcheck, test-scripts, markdown-lint, build-website, lint-standards-selfhost]
+    needs: [changes, shellcheck, test-scripts, check-agent-configs, markdown-lint, build-website, lint-standards-selfhost]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
