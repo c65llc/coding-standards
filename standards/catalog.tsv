@@ -27,7 +27,7 @@ languages/lang-10_ruby_standards.md	Ruby (bundler, rubocop, sorbet, rspec)	`.rb`
 languages/lang-11_ruby_on_rails_standards.md	Ruby on Rails (Rails 7.2+, rubocop-rails)	`.erb` files, `Gemfile`, `Rakefile`
 languages/lang-12_go_standards.md	Go (go modules, gofmt, go vet, golangci-lint, table-driven tests)	`.go` files, `go.mod`
 languages/lang-13_elixir_standards.md	Elixir (mix, mix format, credo, ExUnit)	`.ex`, `.exs` files, `mix.exs`
-process/proc-01_documentation_standards.md	ADR, code docs, changelog, user docs
+process/proc-01_documentation_standards.md	ADR (bullet metadata), spec/plan/design-pass/verification docs, changelog, user docs
 process/proc-02_git_version_control_standards.md	Git workflow, commits, branching
 process/proc-03_code_review_expectations.md	Code review process and expectations
 process/proc-04_agent_workflow_standards.md	Agent worktree/PR workflow

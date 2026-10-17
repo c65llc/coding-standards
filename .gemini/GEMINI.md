@@ -136,7 +136,7 @@ When working with this repository, agents must follow the A-P-E (Analyze, Plan, 
 
 **Process Standards:**
 
-- `standards/process/proc-01_documentation_standards.md` — ADR, code docs, changelog, user docs
+- `standards/process/proc-01_documentation_standards.md` — ADR (bullet metadata), spec/plan/design-pass/verification docs, changelog, user docs
 - `standards/process/proc-02_git_version_control_standards.md` — Git workflow, commits, branching
 - `standards/process/proc-03_code_review_expectations.md` — Code review process and expectations
 - `standards/process/proc-04_agent_workflow_standards.md` — Agent worktree/PR workflow
