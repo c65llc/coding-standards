@@ -88,7 +88,9 @@ list_standards_files() {
         fi
         prefix=$(standards_category_prefix "$cat")
         [ -d "$dir/$cat" ] || continue
-        for f in "$dir/$cat/$prefix"-[0-9]*_*.md; do
+        # Exactly two digits: lang-1_x.md or arch-100_x.md violate the NN
+        # convention and are left to check_naming to report.
+        for f in "$dir/$cat/$prefix"-[0-9][0-9]_*.md; do
             [ -f "$f" ] || continue
             echo "$cat/$(basename "$f")"
         done | LC_ALL=C sort

@@ -69,6 +69,7 @@ EOF
     cp "$dir/.cursorrules" "$dir/CLAUDE.md"
     cp "$dir/.cursorrules" "$dir/.github/copilot-instructions.md"
     cp "$dir/.cursorrules" "$dir/.gemini/GEMINI.md"
+    cp "$dir/.cursorrules" "$dir/standards/README.md"
     echo "$dir"
 }
 
@@ -194,7 +195,8 @@ echo -n "Test 14: generator regenerates every file carrying a sentinel... "
 if grep -qF 'lang-02_rails_standards.md' "$fx/AGENTS.md" \
    && grep -qF 'lang-02_rails_standards.md' "$fx/CLAUDE.md" \
    && grep -qF 'lang-02_rails_standards.md' "$fx/.github/copilot-instructions.md" \
-   && grep -qF 'lang-02_rails_standards.md' "$fx/.gemini/GEMINI.md"; then
+   && grep -qF 'lang-02_rails_standards.md' "$fx/.gemini/GEMINI.md" \
+   && grep -qF 'lang-02_rails_standards.md' "$fx/standards/README.md"; then
     pass
 else
     fail "not every target was regenerated"
@@ -347,7 +349,8 @@ else
     chmod u+w "$ro" "$ro/.github" "$ro/.gemini"
     if [ "$rc" -ne 0 ] && grep -q 'could not write' "$TMP_BASE/ro.err" \
        && cmp -s "$ro/.cursorrules" "$TMP_BASE/ro.before" \
-       && ! ls "$ro"/.*.tmp.* >/dev/null 2>&1; then
+       && ! ls "$ro"/.*.tmp.* >/dev/null 2>&1 \
+       && [ -z "$(ls -A "$ro/.standards_tmp" 2>/dev/null)" ]; then
         pass
     else
         fail "write failure not propagated (rc=$rc):
@@ -355,21 +358,73 @@ $(cat "$TMP_BASE/ro.err")"
     fi
 fi
 
+echo -n "Test 28: --check FAILs when a required agent config file is deleted outright... "
+nofile=$(make_fixture "check-no-file")
+"$GEN" --root "$nofile" >/dev/null 2>&1
+rm -f "$nofile/.cursorrules"
+out=$("$GEN" --root "$nofile" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL required-file .cursorrules'; then
+    pass
+else
+    fail "deleted required file not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 29: write mode errors when a required agent config file is missing... "
+if "$GEN" --root "$nofile" >/dev/null 2>"$TMP_BASE/nofile.err"; then
+    fail "write mode exited 0 despite a missing required file"
+elif grep -q 'required agent config .cursorrules does not exist' "$TMP_BASE/nofile.err"; then
+    pass
+else
+    fail "expected an error naming .cursorrules:
+$(cat "$TMP_BASE/nofile.err")"
+fi
+
+echo -n "Test 30: non-zero-padded or malformed standards names are not enumerated and FAIL --check... "
+badname=$(make_fixture "check-bad-name")
+"$GEN" --root "$badname" >/dev/null 2>&1
+printf '# COBOL Standards\n' > "$badname/standards/languages/lang-1_cobol_standards.md"
+printf '# Example\n' > "$badname/standards/architecture/arch-100_example.md"
+printf '# Misplaced\n' > "$badname/standards/languages/arch-03_misplaced.md"
+enum=$(bash -c "source '$LIB' && list_standards_files '$badname/standards'")
+out=$("$GEN" --root "$badname" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] \
+   && ! echo "$enum" | grep -qE 'lang-1_|arch-100_|arch-03_misplaced' \
+   && echo "$out" | grep -q '^FAIL standards-naming .*languages/lang-1_cobol_standards.md' \
+   && echo "$out" | grep -q 'architecture/arch-100_example.md' \
+   && echo "$out" | grep -q 'languages/arch-03_misplaced.md'; then
+    pass
+else
+    fail "malformed names not rejected (rc=$rc):
+enumerated: $enum
+$out"
+fi
+
+echo -n "Test 31: temporaries live under .standards_tmp and are cleaned up... "
+tmpfx=$(make_fixture "tmpdir")
+"$GEN" --root "$tmpfx" >/dev/null 2>&1
+if [ -d "$tmpfx/.standards_tmp" ] && [ -z "$(ls -A "$tmpfx/.standards_tmp")" ] \
+   && ! ls "$tmpfx"/.*.tmp.* >/dev/null 2>&1; then
+    pass
+else
+    fail "expected an empty $tmpfx/.standards_tmp and no sibling temp files"
+fi
+
 # --- Dogfood: the real repository ----------------------------------------------
 
-echo -n "Test 28: the repo's own agent configs pass --check (no drift)... "
+echo -n "Test 32: the repo's own agent configs pass --check (no drift)... "
 out=$("$GEN" --root "$REPO_ROOT" --check 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass; else fail "repo is out of sync — run make generate-standards-lists:
 $out"; fi
 
-echo -n "Test 29: every real agent config carries a generated standards-list region... "
+echo -n "Test 33: every real agent config carries a generated standards-list region... "
 missing=""
 for f in .cursorrules .github/copilot-instructions.md .gemini/GEMINI.md AGENTS.md CLAUDE.md standards/README.md; do
     grep -qF -- "$BEGIN_LIST" "$REPO_ROOT/$f" || missing="$missing $f"
 done
 if [ -z "$missing" ]; then pass; else fail "no standards-list region in:$missing"; fi
 
-echo -n "Test 30: every real language standard has catalog triggers (no name fallback in detection maps)... "
+echo -n "Test 34: every real language standard has catalog triggers (no name fallback in detection maps)... "
 if grep -q 'source files →' "$REPO_ROOT/.cursorrules"; then
     fail "a language is missing its triggers column in standards/catalog.tsv"
 else

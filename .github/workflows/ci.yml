@@ -105,7 +105,7 @@ jobs:
         run: ./website/scripts/test-csp-postbuild.sh
 
       - name: generate-standards-lists functional tests
-        run: ./scripts/test-generate-standards-lists.sh
+        run: make test-generate-standards-lists
 
   check-agent-configs:
     name: Agent Config Drift

@@ -22,9 +22,14 @@
 #                   * an agent config or structure doc that omits a standards
 #                     file that does exist
 #                   * an agent config that lacks a generated region it is
-#                     expected to carry
+#                     expected to carry, or that does not exist at all
+#                   * a file in a category directory that does not follow the
+#                     <prefix>-NN_<name>.md naming convention
 #                   * a catalog row for a file that does not exist
 #   --quiet       Suppress per-file "unchanged" output in write mode.
+#
+# Temporary files live under <root>/.standards_tmp/ (per arch-02) and are
+# removed on exit.
 #
 # Exit codes: 0 success / no drift, 1 drift or validation failure, 2 usage.
 
@@ -86,7 +91,12 @@ report_pass() { PASS_COUNT=$((PASS_COUNT + 1)); echo "PASS $1 $2"; }
 report_warn() { WARN_COUNT=$((WARN_COUNT + 1)); echo "WARN $1 $2"; }
 report_fail() { FAIL_COUNT=$((FAIL_COUNT + 1)); echo "FAIL $1 $2"; }
 
-TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/generate-standards-lists.XXXXXX")"
+# All temporaries go under the repo's ignored .standards_tmp/ (arch-02). Keeping
+# them inside ROOT also keeps replace_file's rename on the same filesystem.
+STANDARDS_TMP="$ROOT/.standards_tmp"
+mkdir -p "$STANDARDS_TMP" 2>/dev/null || { echo "ERROR: cannot create $STANDARDS_TMP" >&2; exit 2; }
+TMP_DIR="$(mktemp -d "$STANDARDS_TMP/generate-standards-lists.XXXXXX")" \
+    || { echo "ERROR: cannot create a work directory under $STANDARDS_TMP" >&2; exit 2; }
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 # ---------------------------------------------------------------------------
@@ -154,21 +164,22 @@ missing_required_regions() {
     done
 }
 
-# required_region_files — manifest paths that exist under ROOT.
+# required_region_files — every manifest path, whether or not it exists. A
+# missing one is a failure for the callers, never something to skip.
 required_region_files() {
     local entry
     for entry in $REQUIRED_REGIONS; do
-        [ -f "$ROOT/${entry%%:*}" ] && printf '%s\n' "${entry%%:*}"
+        printf '%s\n' "${entry%%:*}"
     done
-    return 0
 }
 
 # replace_file <src> <dest> — atomically replace <dest> with the contents of
-# <src>, preserving <dest>'s mode. Writes to a sibling temp file and renames,
-# so a failed write (read-only tree, full disk) never truncates <dest>.
+# <src>, preserving <dest>'s mode. Stages the new content in TMP_DIR (under
+# ROOT/.standards_tmp, same filesystem) and renames it into place, so a failed
+# write (read-only tree, full disk) never truncates <dest>.
 replace_file() {
     local src="$1" dest="$2" tmp
-    tmp="$(dirname "$dest")/.$(basename "$dest").tmp.$$"
+    tmp="$TMP_DIR/replace_$(basename "$dest").$$"
     if cp -p "$dest" "$tmp" 2>/dev/null \
         && cat "$src" > "$tmp" 2>/dev/null \
         && mv -f "$tmp" "$dest" 2>/dev/null; then
@@ -197,6 +208,11 @@ run_write() {
     # silently producing a config that will never list new standards.
     while IFS= read -r target; do
         [ -n "$target" ] || continue
+        if [ ! -f "$ROOT/$target" ]; then
+            echo "ERROR: required agent config $target does not exist" >&2
+            rc=1
+            continue
+        fi
         missing=$(missing_required_regions "$target" | tr '\n' ' ')
         if [ -n "$missing" ]; then
             echo "ERROR: $target is missing required generated region(s): ${missing% } — restore the BEGIN/END GENERATED sentinels" >&2
@@ -264,6 +280,10 @@ check_required_regions() {
     local f missing
     while IFS= read -r f; do
         [ -n "$f" ] || continue
+        if [ ! -f "$ROOT/$f" ]; then
+            report_fail "required-file" "$f does not exist — every agent config in the manifest must be present"
+            continue
+        fi
         missing=$(missing_required_regions "$f" | tr '\n' ' ')
         if [ -z "$missing" ]; then
             report_pass "required-region" "$f carries every required generated region"
@@ -273,6 +293,30 @@ check_required_regions() {
     done <<EOF
 $(required_region_files)
 EOF
+}
+
+# check_naming — every .md in a category directory (other than README.md) must
+# be <prefix>-NN_<name>.md. The generator only enumerates files that match, so
+# a malformed name would otherwise be silently dropped from every list.
+check_naming() {
+    local cat prefix f base bad=""
+    for cat in $STANDARDS_LIST_CATEGORIES; do
+        prefix=$(standards_category_prefix "$cat")
+        [ -d "$STANDARDS_DIR/$cat" ] || continue
+        for f in "$STANDARDS_DIR/$cat"/*.md; do
+            [ -f "$f" ] || continue
+            base=$(basename "$f")
+            [ "$base" = "README.md" ] && continue
+            if ! printf '%s\n' "$base" | grep -qE "^${prefix}-[0-9][0-9]_[A-Za-z0-9_]+\.md\$"; then
+                bad="$bad $cat/$base"
+            fi
+        done
+    done
+    if [ -z "$bad" ]; then
+        report_pass "standards-naming" "every standards file follows <prefix>-NN_<name>.md"
+    else
+        report_fail "standards-naming" "file(s) in standards/ do not follow <prefix>-NN_<name>.md and are not enumerated:$bad"
+    fi
 }
 
 check_references() {
@@ -356,6 +400,7 @@ run_check() {
 
     check_drift
     check_required_regions
+    check_naming
 
     # Reference check: everything that enumerates or cites standards files,
     # plus the consumer base templates (which carry no lists but may cite files).

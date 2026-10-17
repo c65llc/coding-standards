@@ -320,7 +320,7 @@ make check-agent-configs
 **What it does:**
 
 1. Finds every file in the repository that carries a generated region delimited by `<!-- BEGIN GENERATED: <id> -->` and `<!-- END GENERATED: <id> -->` (today: `.cursorrules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `CLAUDE.md`, `standards/README.md`).
-2. Re-renders each region body from the files actually present under `standards/` (`architecture/arch-NN_*.md`, `languages/lang-NN_*.md`, `process/proc-NN_*.md`, `security/sec-NN_*.md`, plus `shared/core-standards.md`). Text outside the sentinels is never touched. Files are replaced atomically (temp file + rename), so a failed write leaves the existing config intact and the script exits non-zero.
+2. Re-renders each region body from the files actually present under `standards/` (`architecture/arch-NN_*.md`, `languages/lang-NN_*.md`, `process/proc-NN_*.md`, `security/sec-NN_*.md`, plus `shared/core-standards.md`). Text outside the sentinels is never touched. Files are replaced atomically (staged under `.standards_tmp/`, then renamed into place), so a failed write leaves the existing config intact and the script exits non-zero. All temporaries live in `.standards_tmp/` and are removed on exit.
 3. Reads optional descriptions and language triggers from `standards/catalog.tsv`; a file with no row still appears, described by its H1 title.
 
 **Region ids:**
@@ -333,7 +333,8 @@ make check-agent-configs
 **`--check` mode** emits `PASS` / `WARN` / `FAIL` lines and exits non-zero on any `FAIL`:
 
 - a generated region whose content differs from a fresh render (stale)
-- an agent config that no longer carries a generated region it is required to have (e.g. the whole `language-detection` block was deleted from `.cursorrules`); write mode refuses to run on the same condition, since there are no sentinels left to splice into
+- an agent config that no longer carries a generated region it is required to have (e.g. the whole `language-detection` block was deleted from `.cursorrules`), or that has been deleted outright; write mode refuses to run on the same conditions, since there are no sentinels left to splice into
+- a file in a category directory (other than `README.md`) that does not follow `<prefix>-NN_<name>.md` — such files are never enumerated, so a malformed name would otherwise vanish from every list silently
 - an agent config, base template, or structure doc that references a standards file that does not exist — a directory-qualified reference such as `standards/languages/arch-01_….md` must exist at exactly that path, a bare filename may live in any category
 - an agent config or structure doc (`standards/README.md`, `STRUCTURE.md`, `docs/getting-started/project-structure.md`) that omits a standards file that does exist
 - a `catalog.tsv` row pointing at a file that does not exist (a standards file without a row is a `WARN`)
