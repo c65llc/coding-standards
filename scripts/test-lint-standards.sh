@@ -1164,6 +1164,56 @@ out=$(cd "$lh2" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
 if echo "$out" | grep 'Git Hooks' | grep -q 'WARN' && echo "$out" | grep 'Git Hooks' | grep -qi 'commit-msg'; then pass; else
     fail "expected commit-msg WARN: $(echo "$out" | grep 'Git Hooks')"; fi
 
+# --- review follow-ups (#201) -----------------------------------------------
+
+echo -n "Test 43: STANDARDS_COMMITS_SINCE (PR range) beats commits.window... "
+# With commits.window pinned, the module must still report "commits since
+# cc-base" (the CI PR range), not "commits (window 1)".
+printf 'version: 1\ncommits:\n  window: 1\n' > "$win/.standards.yml"
+out=$(cd "$win" && STANDARDS_COMMITS_SINCE=cc-base bash "$CC_MOD" "$win" 2>/dev/null || true)
+if echo "$out" | grep -q 'since cc-base' && echo "$out" | grep -qE '^(WARN|FAIL)'; then pass; else
+    fail "expected the PR range to win over commits.window, got: $out"; fi
+rm -f "$win/.standards.yml"
+
+echo -n "Test 44: commits.since beats STANDARDS_COMMITS_SINCE... "
+( cd "$win" && git tag cc-head HEAD )
+printf 'version: 1\ncommits:\n  since: cc-head\n' > "$win/.standards.yml"
+out=$(cd "$win" && STANDARDS_COMMITS_SINCE=cc-base bash "$CC_MOD" "$win" 2>/dev/null || true)
+if echo "$out" | grep -q 'cc-head'; then pass; else fail "expected commits.since to win, got: $out"; fi
+rm -f "$win/.standards.yml"
+
+echo -n "Test 45: single-quoted YAML scalars are parsed (window: '5', since: 'ref')... "
+printf "version: 1\ncommits:\n  window: '5'\n" > "$win/.standards.yml"
+out1=$(bash "$CC_MOD" "$win" 2>/dev/null || true)
+printf "version: 1\ncommits:\n  since: 'cc-base'\n" > "$win/.standards.yml"
+out2=$(bash "$CC_MOD" "$win" 2>/dev/null || true)
+rm -f "$win/.standards.yml"
+if echo "$out1" | grep -q 'window 5' && echo "$out2" | grep -q 'since cc-base'; then pass; else
+    fail "quoted scalars not parsed: [$out1] [$out2]"; fi
+
+echo -n "Test 46: a scope containing whitespace cannot match two allow-list entries... "
+printf 'version: 1\ncommits:\n  scopes: [api, domain]\n' > "$sc/.standards.yml"
+if ! bash "$CHK" --project-root "$sc" "feat(api domain): bypass" >/dev/null 2>&1; then pass; else
+    fail "'api domain' was accepted against [api, domain]"; fi
+
+echo -n "Test 47: check-commit-message.sh --no-exempt rejects merge/fixup/revert-style titles... "
+if ! bash "$CHK" --no-exempt "Merge branch 'topic'" >/dev/null 2>&1 \
+   && ! bash "$CHK" --no-exempt "fixup! feat: wip" >/dev/null 2>&1 \
+   && ! bash "$CHK" --no-exempt 'Revert "feat: thing"' >/dev/null 2>&1 \
+   && bash "$CHK" --no-exempt 'revert: "feat: thing"' >/dev/null 2>&1; then pass; else
+    fail "--no-exempt did not reject exempt-style subjects"; fi
+
+echo -n "Test 48: doctor.sh warns when lefthook.yml exists but hooks are not installed... "
+out=$(cd "$lh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Git Hooks' | grep -q 'not installed'; then pass; else
+    fail "expected 'not installed' WARN: $(echo "$out" | grep 'Git Hooks')"; fi
+
+echo -n "Test 49: doctor.sh passes once lefthook hooks are installed (core.hooksPath set)... "
+( cd "$lh" && git config core.hooksPath .lefthook-hooks )
+out=$(cd "$lh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Git Hooks' | grep -q 'hooks installed' && ! echo "$out" | grep 'Git Hooks' | grep -q 'not installed'; then pass; else
+    fail "expected installed PASS: $(echo "$out" | grep 'Git Hooks')"; fi
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"

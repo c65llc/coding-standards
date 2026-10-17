@@ -56,13 +56,14 @@ no automated check modules for them yet. Consumers should not assume
 
 Checks recent history for `<type>(<scope>): <subject>` subjects. Merge
 commits, `fixup!`/`squash!`/`amend!` prefixes and `git revert` subjects are
-exempt. One straggler is a `WARN`; more than 10% (or more than 3) is a `FAIL`.
+exempt. Violations up to max(3, 10% of the range) are a `WARN`; more than that is
+a `FAIL` (the floor of 3 keeps a short PR range from failing on one straggler).
 
 | Setting | Where | Effect |
 | --- | --- | --- |
 | `--window <n>` / `commits.window` | flag / `.standards.yml` | Inspect the last *n* non-merge commits (default **50**) |
 | `--since <ref>` / `commits.since` | flag / `.standards.yml` | Inspect `<ref>..HEAD` instead of a window (wins over `window`); an unknown ref is a `WARN` |
-| `STANDARDS_COMMITS_SINCE` | env | Default range when `.standards.yml` sets neither; the standards-review action sets it to `origin/<pr-base>` |
+| `STANDARDS_COMMITS_SINCE` | env | Range used when `commits.since` is unset; beats `commits.window` so the standards-review action (which sets it to `origin/<pr-base>`) always judges a PR on its own commits |
 | `commits.scopes` | `.standards.yml` | Allow-list; scoped commits must use a listed scope (unscoped commits pass). Inline `[a, b]` and block lists both work |
 
 ```yaml
@@ -73,7 +74,8 @@ commits:
   scopes: [api, domain, ui]
 ```
 
-Precedence: flags > `.standards.yml` > `STANDARDS_COMMITS_SINCE` > default.
+Precedence: flags > `commits.since` > `STANDARDS_COMMITS_SINCE` > `commits.window` > default
+(a range from any source beats a window).
 
 The same type list, regex and allow-list parser live in
 `scripts/lib/conventional-commits.sh` and back `scripts/check-commit-message.sh`

@@ -4,15 +4,13 @@
 # Outputs:  PASS|WARN|FAIL <check-name> <message>
 # Exit:     0=PASS, 1=FAIL, 2=WARN
 #
-# Range selection (first match wins):
+# Range selection (first match wins; a range always beats a window):
 #   1. --since <ref> / --window <n> flags
-#   2. .standards.yml:
-#        commits:
-#          since: origin/main   # check <ref>..HEAD
-#          window: 50           # or: the last N non-merge commits (default 50)
+#   2. .standards.yml  commits.since: origin/main   # check <ref>..HEAD
 #   3. STANDARDS_COMMITS_SINCE env (set by the standards-review action to the
 #      PR base so a PR is judged on its own commits)
-#   4. default: last 50 non-merge commits
+#   4. .standards.yml  commits.window: 50           # last N non-merge commits
+#   5. default: last 50 non-merge commits
 #
 # Scope allow-list (optional):
 #   commits:
@@ -73,17 +71,20 @@ if ! git -C "$PROJECT_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
     exit 2
 fi
 
-# Resolve the range: flags > .standards.yml > env default > 50 commits
+# Resolve the range: flags > commits.since > env (PR base) > commits.window > 50.
+# A range from any source beats a configured window, otherwise a project that
+# pins `window:` would make the action inspect the last N mainline commits
+# instead of the PR's own commits.
 yml_since=$(cc_config_get "$PROJECT_ROOT" since)
 yml_window=$(cc_config_get "$PROJECT_ROOT" window)
 
 if [ -z "$SINCE" ] && [ -z "$WINDOW" ]; then
     if [ -n "$yml_since" ]; then
         SINCE="$yml_since"
-    elif [ -n "$yml_window" ]; then
-        WINDOW="$yml_window"
     elif [ -n "${STANDARDS_COMMITS_SINCE:-}" ]; then
         SINCE="$STANDARDS_COMMITS_SINCE"
+    elif [ -n "$yml_window" ]; then
+        WINDOW="$yml_window"
     fi
 fi
 
@@ -177,7 +178,9 @@ if [ "$bad_scope" -gt 0 ]; then
     message="${message:+$message; }$scope_msg"
 fi
 
-# Tolerate a few stragglers (WARN); more than 10% — or more than 3 — FAILs.
+# Tolerance scales with the range: up to max(3, 10% of total) violations WARN,
+# anything above that FAILs. The floor of 3 keeps a short PR range from failing
+# on a single straggler; the 10% keeps long histories from hiding drift.
 threshold=$((total / 10))
 if [ "$threshold" -lt 3 ]; then
     threshold=3

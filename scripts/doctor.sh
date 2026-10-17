@@ -350,6 +350,24 @@ check_submodule() {
 # checked inside the manager's own config instead.
 # ---------------------------------------------------------------------------
 
+# hook_manager_installed <name> → 0 when git is actually wired to the manager:
+# either core.hooksPath is set (husky v9+, lefthook with a custom path) or the
+# repo's hooks directory contains hook scripts written by the manager.
+# A config file alone (lefthook.yml, .husky/) does not install anything.
+hook_manager_installed() {
+    local name="$1" hooks_dir
+    if [ -n "$(git -C "$PROJECT_ROOT" config --get core.hooksPath 2>/dev/null)" ]; then
+        return 0
+    fi
+    hooks_dir=$(git -C "$PROJECT_ROOT" rev-parse --git-path hooks 2>/dev/null || echo ".git/hooks")
+    case "$hooks_dir" in
+        /*) ;;
+        *) hooks_dir="$PROJECT_ROOT/$hooks_dir" ;;
+    esac
+    [ -d "$hooks_dir" ] || return 1
+    grep -qil "$name" "$hooks_dir"/* 2>/dev/null
+}
+
 check_git_hooks() {
     local lefthook_cfg="" f
 
@@ -361,7 +379,12 @@ check_git_hooks() {
     done
 
     if [ -n "$lefthook_cfg" ]; then
-        check_pass "Git Hooks" "lefthook manages git hooks ($lefthook_cfg)"
+        if hook_manager_installed lefthook; then
+            check_pass "Git Hooks" "lefthook manages git hooks ($lefthook_cfg, hooks installed)"
+        else
+            check_warn "Git Hooks" "$lefthook_cfg present but lefthook hooks are not installed (nothing in $lefthook_cfg runs yet)" \
+                "Run: lefthook install"
+        fi
         if grep -qE '^commit-msg:' "$PROJECT_ROOT/$lefthook_cfg" 2>/dev/null; then
             check_pass "Git Hooks" "$lefthook_cfg has a commit-msg hook"
         else
@@ -378,7 +401,12 @@ check_git_hooks() {
     fi
 
     if [ -d "$PROJECT_ROOT/.husky" ]; then
-        check_pass "Git Hooks" "husky manages git hooks (.husky/)"
+        if hook_manager_installed husky; then
+            check_pass "Git Hooks" "husky manages git hooks (.husky/, hooks installed)"
+        else
+            check_warn "Git Hooks" ".husky/ present but husky hooks are not installed (core.hooksPath unset; nothing in .husky/ runs yet)" \
+                "Run: npx husky  (or npm install, which runs the prepare script)"
+        fi
         if [ -f "$PROJECT_ROOT/.husky/commit-msg" ]; then
             check_pass "Git Hooks" ".husky/commit-msg hook present"
         else

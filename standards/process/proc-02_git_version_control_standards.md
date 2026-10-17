@@ -106,7 +106,8 @@ commits:
 
 The module also accepts `--since <ref>` / `--window <n>` flags, and the
 standards-review action defaults the range to the PR base so a PR is judged on
-its own commits. Merge commits, `fixup!`/`squash!` prefixes and `git revert`
+its own commits (that PR range beats a configured `window`; only `since` or an
+explicit flag overrides it). Merge commits, `fixup!`/`squash!` prefixes and `git revert`
 subjects are exempt.
 
 ### Examples

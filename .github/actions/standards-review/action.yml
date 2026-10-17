@@ -38,7 +38,9 @@ runs:
         fi
         chmod +x "$CHECKER"
 
-        if DETAIL=$("$CHECKER" "$PR_TITLE" 2>&1); then
+        # --no-exempt: fixup!/Merge/Revert "..." exemptions are for branch commits
+        # that git rewrites; a PR title lands verbatim on squash-merge.
+        if DETAIL=$("$CHECKER" --no-exempt "$PR_TITLE" 2>&1); then
           echo "status=pass" >> "$GITHUB_OUTPUT"
           echo "PR title follows Conventional Commits: $PR_TITLE"
           exit 0

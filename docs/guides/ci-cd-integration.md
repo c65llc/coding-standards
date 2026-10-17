@@ -140,7 +140,8 @@ by default:
 
 The same action also narrows the `conventional-commits` lint module to the
 PR's own commits (`origin/<base>..HEAD`) unless `.standards.yml` sets
-`commits.since` or `commits.window`.
+`commits.since`; a configured `commits.window` applies only when no range is
+available, so it never widens a PR check to unrelated mainline history.
 
 ## Manual Sync
 

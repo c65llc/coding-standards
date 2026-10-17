@@ -3,15 +3,20 @@
 # against Conventional Commits and the optional commits.scopes allow-list.
 #
 # Usage:
-#   check-commit-message.sh [--project-root <dir>] [--quiet] "<message>"
+#   check-commit-message.sh [--project-root <dir>] [--quiet] [--no-exempt] "<message>"
 #   check-commit-message.sh [--project-root <dir>] [--quiet] --file <path>
 #
 # The --file form is what commit-msg hooks use (git passes the message file
 # path as $1). The positional form is what the standards-review action uses
 # for the PR title — on squash-merge, the PR title *is* the mainline commit.
 #
-# Exit codes: 0 valid (or exempt: fixup!/squash!/merge/revert), 1 invalid,
-#             2 usage error.
+# Exemptions: fixup!/squash!/amend! prefixes, merge commits and `git revert`
+# subjects pass because git rewrites or generates them before they reach
+# mainline. --no-exempt disables that — a PR title is never rewritten, so a
+# squash-merged "Merge branch x" or "fixup! wip" title would land verbatim.
+# Use `revert: ...` / `revert(scope): ...` for revert PR titles.
+#
+# Exit codes: 0 valid (or exempt), 1 invalid, 2 usage error.
 #
 # Scope allow-list: when <project-root>/.standards.yml has
 #   commits:
@@ -28,9 +33,10 @@ PROJECT_ROOT=""
 MSG_FILE=""
 MESSAGE=""
 QUIET=false
+EXEMPT=true
 
 usage() {
-    echo "Usage: $0 [--project-root <dir>] [--quiet] (\"<message>\" | --file <path>)" >&2
+    echo "Usage: $0 [--project-root <dir>] [--quiet] [--no-exempt] (\"<message>\" | --file <path>)" >&2
     exit 2
 }
 
@@ -56,6 +62,10 @@ while [ $# -gt 0 ]; do
             ;;
         --quiet|-q)
             QUIET=true
+            shift
+            ;;
+        --no-exempt)
+            EXEMPT=false
             shift
             ;;
         -h|--help)
@@ -101,7 +111,7 @@ if [ -z "$subject" ]; then
     exit 1
 fi
 
-if cc_is_exempt "$subject"; then
+if [ "$EXEMPT" = true ] && cc_is_exempt "$subject"; then
     exit 0
 fi
 

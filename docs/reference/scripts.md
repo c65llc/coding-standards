@@ -187,12 +187,12 @@ The script prompts before overwriting any existing alias that has a different va
 **Usage:**
 
 ```bash
-./scripts/check-commit-message.sh "feat(api): add user endpoint"          # positional (PR titles)
+./scripts/check-commit-message.sh --no-exempt "feat(api): add user endpoint" # positional (PR titles)
 ./scripts/check-commit-message.sh --file .git/COMMIT_EDITMSG              # commit-msg hook form
 ./scripts/check-commit-message.sh --project-root /path/to/project "fix: x" # read that project's .standards.yml
 ```
 
-**Exit codes:** `0` valid or exempt (`fixup!`/`squash!`/`amend!` prefixes, merge commits, `git revert` subjects), `1` invalid (with an explanation on stderr; `--quiet` suppresses it), `2` usage error.
+**Exit codes:** `0` valid or exempt (`fixup!`/`squash!`/`amend!` prefixes, merge commits, `git revert` subjects; `--no-exempt` disables the exemptions, which is how the action checks PR titles since a squash-merged title lands verbatim), `1` invalid (with an explanation on stderr; `--quiet` suppresses it), `2` usage error.
 
 **Used by:**
 

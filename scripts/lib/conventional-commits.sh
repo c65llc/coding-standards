@@ -37,7 +37,8 @@ cc_is_exempt() {
 }
 
 # cc_config_get <project_root> <key> → scalar value of commits.<key> in
-# .standards.yml (inline comments stripped); prints nothing when unset.
+# .standards.yml (inline comments and single/double quotes stripped); prints
+# nothing when unset.
 cc_config_get() {
     local yml="$1/.standards.yml"
     local key="$2"
@@ -49,7 +50,7 @@ cc_config_get() {
             sub("^[[:space:]]+" key ":[[:space:]]*", "")
             sub(/[[:space:]]+#.*$/, "")
             sub(/[[:space:]]+$/, "")
-            gsub(/"/, "")
+            gsub(/["\047]/, "")
             print
             exit
         }
@@ -71,7 +72,7 @@ cc_config_scopes() {
             if (line ~ /^\[/) {
                 gsub(/[][]/, "", line)
                 gsub(/,/, " ", line)
-                gsub(/"/, "", line)
+                gsub(/["\047]/, "", line)
                 print line
                 exit
             }
@@ -82,7 +83,7 @@ cc_config_scopes() {
             item = $0
             sub(/^[[:space:]]+-[[:space:]]*/, "", item)
             sub(/[[:space:]]+#.*$/, "", item)
-            gsub(/"/, "", item)
+            gsub(/["\047]/, "", item)
             printf "%s ", item
             next
         }
@@ -91,14 +92,16 @@ cc_config_scopes() {
 }
 
 # cc_scope_allowed <scope> <allowlist> → 0 when the scope is empty, the
-# allow-list is empty, or the scope is in the (space-separated) allow-list.
+# allow-list is empty, or the scope exactly equals one entry of the
+# (space-separated) allow-list. Compared token by token so a scope that
+# contains whitespace ("api domain") can never match two adjacent entries.
 cc_scope_allowed() {
     local scope="$1"
-    local allow=" $2 "
+    local entry
     [ -z "$scope" ] && return 0
     [ -z "$2" ] && return 0
-    case "$allow" in
-        *" $scope "*) return 0 ;;
-    esac
+    for entry in $2; do
+        [ "$entry" = "$scope" ] && return 0
+    done
     return 1
 }
