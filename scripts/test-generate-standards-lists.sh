@@ -558,21 +558,52 @@ else
     fail "expected an empty $tmpfx/.standards_tmp and no sibling temp files"
 fi
 
+echo -n "Test 42: --check FAILs when the catalog lists an existing file that is not an enumerated standard... "
+cat_nonstd=$(make_fixture "check-catalog-nonstandard")
+"$GEN" --root "$cat_nonstd" >/dev/null 2>&1
+# Both files exist on disk but neither is enumerated: a plain -f test passes them.
+printf 'shared/standards-yml-schema.md\tSchema\n' >> "$cat_nonstd/standards/catalog.tsv"
+printf 'architecture/README.md\tNotes\n' >> "$cat_nonstd/standards/catalog.tsv"
+out=$("$GEN" --root "$cat_nonstd" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL catalog.*shared/standards-yml-schema.md' \
+   && echo "$out" | grep -q '^FAIL catalog.*architecture/README.md'; then
+    pass
+else
+    fail "catalog rows for non-standard files not rejected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 43: --check validates references in an opted-in target whose path contains a space... "
+sp=$(make_fixture "check-space-path")
+mkdir -p "$sp/docs/space dir"
+printf '# Notes\n\n%s\n%s\n' "$BEGIN_LANG" "$END_LANG" > "$sp/docs/space dir/space target.md"
+"$GEN" --root "$sp" >/dev/null 2>&1
+printf '\nSee `standards/languages/lang-99_missing.md`.\n' >> "$sp/docs/space dir/space target.md"
+out=$("$GEN" --root "$sp" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -qF 'FAIL standards-reference docs/space dir/space target.md' \
+   && echo "$out" | grep -q 'lang-99_missing.md' \
+   && ! echo "$out" | grep -qE 'standards-reference (docs/space|dir/space|target\.md) references'; then
+    pass
+else
+    fail "reference check on a spaced path was split or skipped (rc=$rc):
+$out"
+fi
+
 # --- Dogfood: the real repository ----------------------------------------------
 
-echo -n "Test 42: the repo's own agent configs pass --check (no drift)... "
+echo -n "Test 44: the repo's own agent configs pass --check (no drift)... "
 out=$("$GEN" --root "$REPO_ROOT" --check 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass; else fail "repo is out of sync — run make generate-standards-lists:
 $out"; fi
 
-echo -n "Test 43: every real agent config carries a generated standards-list region... "
+echo -n "Test 45: every real agent config carries a generated standards-list region... "
 missing=""
 for f in .cursorrules .github/copilot-instructions.md .gemini/GEMINI.md AGENTS.md CLAUDE.md standards/README.md; do
     grep -qF -- "$BEGIN_LIST" "$REPO_ROOT/$f" || missing="$missing $f"
 done
 if [ -z "$missing" ]; then pass; else fail "no standards-list region in:$missing"; fi
 
-echo -n "Test 44: every real language standard has catalog triggers (no name fallback in detection maps)... "
+echo -n "Test 46: every real language standard has catalog triggers (no name fallback in detection maps)... "
 if grep -q 'source files →' "$REPO_ROOT/.cursorrules"; then
     fail "a language is missing its triggers column in standards/catalog.tsv"
 else

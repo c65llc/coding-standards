@@ -422,9 +422,14 @@ check_naming() {
     fi
 }
 
+# check_references — reads one repository-relative path per line on stdin.
+# Paths come from discover_targets and may contain spaces, so they are never
+# passed as word-split arguments: a split path would be checked as two files
+# that do not exist (and so hold no references) and pass vacuously.
 check_references() {
     local f ref missing
-    for f in "$@"; do
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
         missing=""
         while IFS= read -r ref; do
             [ -n "$ref" ] || continue
@@ -443,9 +448,12 @@ EOF
     done
 }
 
+# check_completeness — reads one repository-relative path per line on stdin
+# (same contract as check_references).
 check_completeness() {
     local f rel omitted
-    for f in "$@"; do
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
         omitted=""
         while IFS= read -r rel; do
             [ -n "$rel" ] || continue
@@ -470,16 +478,21 @@ check_catalog() {
     # fails for every language standard, so deleting the file cannot turn
     # the detection maps into "<Language> source files" unnoticed.
     if [ -f "$catalog" ]; then
+        # A row must name a file the generator enumerates, not merely one
+        # that exists: shared/standards-yml-schema.md or ../README.md are
+        # real files, but a row for them can never enrich any rendered list.
+        local manifest
+        manifest=$(list_standards_files "$STANDARDS_DIR")
         while IFS= read -r p; do
             [ -n "$p" ] || continue
-            [ -f "$STANDARDS_DIR/$p" ] || stale="$stale $p"
+            printf '%s\n' "$manifest" | grep -qxF -- "$p" || stale="$stale $p"
         done <<EOF
 $(standards_catalog_paths "$STANDARDS_DIR")
 EOF
         if [ -z "$stale" ]; then
-            report_pass "catalog" "every catalog row points at an existing standards file"
+            report_pass "catalog" "every catalog row points at an enumerated standards file"
         else
-            report_fail "catalog" "standards/$STANDARDS_CATALOG_FILE lists file(s) that do not exist:$stale"
+            report_fail "catalog" "standards/$STANDARDS_CATALOG_FILE lists path(s) that are not enumerated standards files:$stale"
         fi
 
         # Lookups take the first matching row, so a duplicate path would have
@@ -554,8 +567,9 @@ ${tpl#"$ROOT"/}"
     ref_set=$(printf '%s\n%s\n%s\n%s\n%s\n' "$targets" "$configs" "$indexes" \
         "$(unique_existing $REFERENCE_ONLY)" "$templates" \
         | LC_ALL=C sort -u | grep -v '^$' || true)
-    # shellcheck disable=SC2086
-    check_references $ref_set
+    check_references <<EOF
+$ref_set
+EOF
 
     # Completeness check: agent configs, hand-maintained indexes, and any other
     # file that opted in by carrying a standards-list region.
@@ -568,8 +582,9 @@ ${tpl#"$ROOT"/}"
     done <<EOF
 $targets
 EOF
-    # shellcheck disable=SC2086
-    check_completeness $complete_set
+    check_completeness <<EOF
+$complete_set
+EOF
 
     check_catalog
 
