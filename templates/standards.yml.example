@@ -26,6 +26,23 @@ role: service
 coverage:
   minimum: 95    # Overall minimum (%)
   domain: 100    # Domain layer minimum (%)
+  # Scoped floors (proc-05 § 6) — optional. Each scope is measured and gated on
+  # its own; paths no scope claims fall back to `minimum`.
+  #   layer:   domain | core | application | infrastructure | inherited | native | generated
+  #   minimum: integer 0-100. domain/core scopes MUST be 100.
+  #   reason:  REQUIRED when minimum is below coverage.minimum — say why the code
+  #            cannot be measured and where it is verified instead.
+  # scopes:
+  #   - path: src/domain
+  #     layer: domain
+  #     minimum: 100
+  #   - path: src/app
+  #     layer: application
+  #     minimum: 95
+  #   - path: vendor/engine
+  #     layer: inherited
+  #     minimum: 0
+  #     reason: Upstream engine vendored verbatim; covered by upstream's suite (#210)
 
 # Architecture enforcement
 # Options: clean (Clean Architecture enforced), none (no architecture constraints)
@@ -36,3 +53,14 @@ architecture: clean
 # moderate: P0 blocks merge, P1 warns
 # permissive: all security issues are warnings
 security: strict
+
+# Test governance (proc-05)
+tests:
+  # Flaky-test quarantine registry. Validated by lint-standards (quarantine-policy):
+  # six required fields, exact test ids, <= 30-day windows, expired entries fail CI.
+  # See templates/test-quarantine.json.example. Default lookup: test-quarantine.json
+  # at the project root. Declare a path to move it; a declared file that is
+  # missing fails closed.
+  # quarantine_file: .github/ci/test-quarantine.json
+  # Fast-tier per-test ceiling in milliseconds; also the slow-test top-N report cutoff.
+  slow_threshold_ms: 2000

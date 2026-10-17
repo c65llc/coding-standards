@@ -53,7 +53,8 @@ This document explains the repository layout so you can find what you need quick
 │   │   ├── proc-01_documentation_standards.md
 │   │   ├── proc-02_git_version_control_standards.md
 │   │   ├── proc-03_code_review_expectations.md
-│   │   └── proc-04_agent_workflow_standards.md
+│   │   ├── proc-04_agent_workflow_standards.md
+│   │   └── proc-05_test_governance.md
 │   │
 │   ├── shared/                     # Shared standards for all agents
 │   │   └── core-standards.md

@@ -12,7 +12,7 @@ mean the linter enforces it — the table below is the source of truth.
 
 | Category | Machine-enforced by `lint-standards.sh`? | Checks |
 | --- | --- | --- |
-| Common (all repos) | ✅ | ci-workflow-hygiene, conventional-commits, coverage-config, headless-ci, no-secrets, test-directory-structure |
+| Common (all repos) | ✅ | ci-workflow-hygiene, conventional-commits, coverage-config, headless-ci, no-secrets, quarantine-policy, test-directory-structure |
 | Python (lang-01) | ✅ | banned-functions, ruff-config, type-annotations |
 | Swift (lang-04) | ✅ | swift-format-config, package-resolved, warnings-as-errors |
 | TypeScript (lang-06) | ✅ | banned-functions, eslint-config, strict-tsconfig |
@@ -43,8 +43,9 @@ no automated check modules for them yet. Consumers should not assume
 | Check | Standard | What it looks at | Severity on finding |
 | --- | --- | --- | --- |
 | `conventional-commits` | proc-02 | Recent commit subjects match `type(scope): subject` | WARN/FAIL |
-| `coverage-config` | core-standards | A coverage gate exists in CI, test config, or `.standards.yml` | FAIL |
+| `coverage-config` | core-standards, proc-05 § 6 | A coverage gate exists in CI, test config, or `.standards.yml`; `coverage.scopes` entries have a path, an integer floor, 100% for domain/core, and a stated `reason` for any lowered scope | FAIL |
 | `no-secrets` | sec-01 | AWS keys, private-key blocks, hardcoded passwords/tokens in source | FAIL |
+| `quarantine-policy` | proc-05 § 2 | The flaky-test quarantine registry is valid JSON whose every `entries` element is a complete entry: non-blank required fields, exact unique test ids, real ISO dates, `added` not in the future, ≤ 30-day windows, no past-due entries, and no coverage overrides; fails closed when a declared registry is missing, empty, or not valid JSON | WARN/FAIL |
 | `test-directory-structure` | core-standards | A recognizable test directory exists | WARN/FAIL |
 | `ci-workflow-hygiene` | arch-08 §3 | Every `pull_request` workflow declares `concurrency` + `cancel-in-progress` (workflow-level or on every job), `timeout-minutes` on each job that runs steps, and path scoping (`paths:` on the PR trigger, a paths-filter + gate job, or `# ci-hygiene: paths-exempt <reason>`) | WARN |
 | `headless-ci` | arch-08 §6 | Workflows and composite actions free of `store-credentials`, `unlock-keychain … login`, `osascript`, `open -a` (steps that need an unlocked desktop) | WARN |
@@ -57,16 +58,59 @@ maturity): **JavaScript** (eslint/prettier config, banned functions, shared
 with the TypeScript modules) and **Kotlin** (ktlint/detekt config). Contributions
 welcome — see "Adding a check module" below.
 
+## Writing a gate
+
+These modules are gates: a `PASS` from one of them is treated as evidence that a
+rule holds. Three gates on a consumer project once reported clean without ever
+running — an empty scan, a rotted regex, and an unowned skip marker. Every module
+in this directory therefore follows the rules in
+[`proc-05_test_governance.md` § 7](../../standards/process/proc-05_test_governance.md#7-writing-a-gate):
+
+1. **Self-test on every run.** Before touching the project, run the detector
+   against a built-in fixture that MUST trip it (and, where cheap, one that must
+   not). If the fixture result is wrong, emit
+   `FAIL <check-name> self-test failed (detector rot, refusing to report): <why>`
+   and exit 1. A rotted detector must never print a clean result. (The runner
+   reserves exit 2 for `WARN`, so rot is signalled as `FAIL` with the
+   `self-test` message rather than a separate exit code; the message text is
+   what distinguishes it in JSON/SARIF output.)
+   See `quarantine-policy.sh` and `coverage-config.sh` for the pattern.
+2. **Fail closed on an empty scan.** If the module scans a path set and the set
+   is empty, or a declared input file is missing or unreadable, emit `FAIL` with
+   a message naming what was expected. An empty match is a configuration error,
+   not a clean result. A module whose domain is legitimately optional says so
+   in its `PASS` line (for example `No quarantine registry (none declared) —
+   nothing quarantined`) so a reader can tell "nothing to check" from "checked
+   and clean".
+3. **Escape markers state a reason.** If a module honors an inline suppression
+   (an allowlist file, a `# standards: allow-<rule>` comment), it MUST require a
+   reason on the same line and reject a bare marker.
+4. **Never report an unrun check as passing.** If a required tool is missing or
+   the module cannot run, emit `WARN`/`FAIL` with the reason. Do not fall
+   through to `PASS`.
+5. **Deterministic across hosts.** The verdict must not depend on optional tools
+   (python3, node, GNU vs BSD `date`). Use bash 3.2 + POSIX `awk`/`sed`/`tr`
+   only, so macOS and Linux agree.
+6. **One line of output.** The runner reads the first token as the status and
+   the rest as the message; put details after the check name on the same line
+   and cap the list (first four problems, then `(+N more)`).
+
 ## Adding a check module
 
-1. Create `scripts/lint-checks/<lang-or-common>/<check-name>.sh`.
+1. Create `scripts/lint-checks/<lang-or-common>/<check-name>.sh` (`chmod +x`).
 2. Emit one status line per finding: `PASS <check-name> <message>`,
    `WARN <check-name> <message>`, or `FAIL <check-name> <message>`.
+   Exit 0 for PASS, 1 for FAIL, 2 for WARN, and document that in the header.
 3. Keep it POSIX/bash-3.2 compatible (macOS is a first-class dev platform) and
-   pass `shellcheck`.
-4. Language directories are auto-discovered: `lint-standards.sh` runs every
+   pass `shellcheck -x --severity=warning`.
+4. Follow **Writing a gate** above: self-test fixture, fail closed, no silent
+   skips.
+5. Language directories are auto-discovered: `lint-standards.sh` runs every
    `*.sh` under `lint-checks/<lang>/` when `<lang>` appears in the project's
    `.standards.yml` `languages:` list. Only the `common/` set needs no opt-in.
-5. Update the table above and add a functional test in
-   `scripts/test-lint-standards.sh` (one PASS fixture and one FAIL/WARN fixture
-   per module, plus a runner-wiring assertion for a new language directory).
+6. Add functional tests to [`scripts/test-lint-standards.sh`](../test-lint-standards.sh):
+   at least one fixture that trips the check and one clean fixture that passes
+   (plus a runner-wiring assertion for a new language directory). Write the
+   failing test first.
+7. Update the tables above and, if the check enforces a standard, the
+   "Enforcement" note in that standard.

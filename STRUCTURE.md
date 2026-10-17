@@ -43,7 +43,8 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │   │   ├── proc-01_documentation_standards.md
 │   │   ├── proc-02_git_version_control_standards.md
 │   │   ├── proc-03_code_review_expectations.md
-│   │   └── proc-04_agent_workflow_standards.md
+│   │   ├── proc-04_agent_workflow_standards.md
+│   │   └── proc-05_test_governance.md
 │   │
 │   ├── security/                  # Security standards
 │   │   └── sec-01_security_standards.md
@@ -130,7 +131,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 |----------|----------|-------|
 | Architecture | `standards/architecture/` | arch-01, arch-02, arch-04 through arch-08, arch-10 |
 | Languages | `standards/languages/` | lang-01 through lang-13 |
-| Process | `standards/process/` | proc-01 through proc-04 |
+| Process | `standards/process/` | proc-01 through proc-05 |
 | Security | `standards/security/` | sec-01 |
 
 ### Automation

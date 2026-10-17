@@ -528,6 +528,8 @@ setup_ai_agents() {
         echo "coverage:"
         echo "  minimum: 95"
         echo "  domain: 100"
+        echo "tests:"
+        echo "  slow_threshold_ms: 2000"
         echo "architecture: clean"
         echo "security: strict"
     } | dry_run_write "$PROJECT_ROOT/.standards.yml"
