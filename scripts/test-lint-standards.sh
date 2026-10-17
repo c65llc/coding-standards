@@ -2565,6 +2565,33 @@ out=$(cd "$zc" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
 if echo "$out" | grep -q 'Languages' && ! echo "$out" | grep 'Languages' | grep -q 'typescript'; then pass; else
     fail "root nagged about a sub-root language: $(echo "$out" | grep 'Languages')"; fi
 
+echo -n "Test 175: dot segments in members: entries are canonicalised and duplicate declarations are checked once... "
+mono15=$(make_monorepo "members-canonical" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - server/.\n  - ./server/\n  - server\n  - ./web//\n')")
+out=$("$LINT" --format json "$mono15" 2>/dev/null || true)
+server_runs=$(printf '%s' "$out" | tr -d '\n' | grep -o '"check": "python/banned-functions",[[:space:]]*"member": "server"' | wc -l | tr -d ' ')
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *, *"web" *\]' && [ "$server_runs" = "1" ]; then pass; else
+    fail "members=$(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') server_runs=$server_runs"; fi
+
+echo -n "Test 176: doctor.sh does not ask a CMake-only project to declare the unsupported 'cpp' key... "
+cm=$(make_project "doctor-cmake-only")
+printf 'version: 1\nlanguages: []\n' > "$cm/.standards.yml"
+printf 'cmake_minimum_required(VERSION 3.20)\nproject(demo)\n' > "$cm/CMakeLists.txt"
+out=$(cd "$cm" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep -q 'Languages' && ! echo "$out" | grep 'Languages' | grep -q 'cpp'; then pass; else
+    fail "doctor suggested cpp: $(echo "$out" | grep 'Languages')"; fi
+
+echo -n "Test 177: doctor.sh does not ask a parent member to declare a nested member's languages... "
+nest2=$(make_project "doctor-nested-members")
+mkdir -p "$nest2/packages/web"
+printf 'version: 1\nlanguages: []\nmembers:\n  - packages\n  - packages/web\n' > "$nest2/.standards.yml"
+printf 'version: 1\nlanguages: []\n' > "$nest2/packages/.standards.yml"
+printf 'version: 1\nlanguages:\n  - typescript\n' > "$nest2/packages/web/.standards.yml"
+printf '{"name":"web"}\n' > "$nest2/packages/web/package.json"
+printf '{"compilerOptions":{"strict":true}}\n' > "$nest2/packages/web/tsconfig.json"
+out=$(cd "$nest2" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep -q 'Languages (packages)' && ! echo "$out" | grep 'Languages (packages)' | grep -q 'typescript'; then pass; else
+    fail "parent nagged about child language: $(echo "$out" | grep 'Languages (packages')"; fi
+
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

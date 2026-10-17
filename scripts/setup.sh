@@ -297,17 +297,17 @@ setup_ai_agents() {
     # root, and listing typescript at the root would make lint-standards look
     # for a tsconfig.json there. The conventional sub-root walk still feeds
     # the agent configs, and a sub-root that is not a member is pointed out.
+    # sync-standards.sh and diff-standards.sh build the same union
+    # (root languages + subroot_languages + members), so they agree.
     local SUBROOT_LANGS=""
     if [ -n "$LANGUAGES_OVERRIDE" ]; then
-        # --languages names the root's own languages; the members still
-        # contribute theirs to the agent configs.
+        # --languages names the root's own languages; sub-roots and members
+        # still contribute theirs to the agent configs.
         ROOT_LANGS=$(echo "$LANGUAGES_OVERRIDE" | tr ',' ' ')
     elif [ -x "$DETECT_SCRIPT" ]; then
-        local detect_args=() m
         ROOT_LANGS=$("$DETECT_SCRIPT" --root-only "$PROJECT_ROOT")
-        for m in $MEMBERS; do detect_args+=(--skip "$m"); done
-        SUBROOT_LANGS=$("$DETECT_SCRIPT" ${detect_args[@]+"${detect_args[@]}"} "$PROJECT_ROOT")
     fi
+    SUBROOT_LANGS=$(subroot_languages "$PROJECT_ROOT" "$MEMBERS" "$DETECT_SCRIPT")
     DETECTED_LANGS=$(dedupe_words "$ROOT_LANGS" "$SUBROOT_LANGS")
     if [ -n "$MEMBERS" ]; then
         DETECTED_LANGS=$(aggregate_member_languages "$PROJECT_ROOT" "$DETECTED_LANGS" "$MEMBERS" "$DETECT_SCRIPT")
@@ -584,7 +584,7 @@ setup_ai_agents() {
             echo "# doctor and sync iterate them; the root agent configs cover their languages."
             if [ -n "$MEMBERS" ]; then
                 echo "members:"
-                for m in $MEMBERS; do echo "  - $m"; done
+                for m in $MEMBERS; do echo "  - $(member_yaml_scalar "$m")"; done
             else
                 echo "members: []"
             fi

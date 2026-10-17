@@ -701,6 +701,39 @@ echo "$setup_out" | grep -q "server' rejected: its .standards.yml is a symlink" 
 rm -rf "$link_target_dir"
 if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$setup_out" | grep -i 'symlink\|members' | head -3)"; fi
 
+echo -n "Test 53: setup.sh re-quotes a member path that YAML needs quoted, so the regenerated config re-reads to the same member... "
+proj=$(make_monorepo "setup-member-quoting")
+mkdir -p "$proj/#svc/src"
+printf 'version: 1\nlanguages:\n  - python\n' > "$proj/#svc/.standards.yml"
+printf 'version: 1\nlanguages: []\nagents:\n  - codex\nrole: service\nmembers:\n  - "#svc"\n  - web\n' > "$proj/.standards.yml"
+(cd "$proj" && "$SETUP" --agents codex >/dev/null 2>&1) || true
+errs=""
+grep -q '^  - "#svc"$' "$proj/.standards.yml"                      || errs="$errs svc-not-requoted"
+grep -q '^  - web$' "$proj/.standards.yml"                        || errs="$errs web-not-plain"
+lint_json=$(bash "$REPO_ROOT/scripts/lint-standards.sh" --format json "$proj" 2>/dev/null || true)
+printf '%s' "$lint_json" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"#svc" *, *"web" *\]' || errs="$errs svc-not-resolved-after-rewrite"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(grep -A3 '^members:' "$proj/.standards.yml" | tr '\n' '|')"; fi
+
+echo -n "Test 54: sync and diff build the same root + sub-root + member union as setup (no drift, sub-root block kept)... "
+proj=$(make_project "sync-subroot-union")
+fake_standards "$proj"
+mkdir -p "$proj/apps/web"
+printf '[project]\nname = "root"\n' > "$proj/pyproject.toml"
+printf '{"name":"web"}\n' > "$proj/apps/web/package.json"
+printf '{"compilerOptions":{"strict":true}}\n' > "$proj/apps/web/tsconfig.json"
+(cd "$proj" && "$SETUP" --agents codex >/dev/null 2>&1) || true
+errs=""
+grep -q '^  - python$' "$proj/.standards.yml"                     || errs="$errs python-not-in-root-languages"
+grep -q '^  - typescript$' "$proj/.standards.yml"                 && errs="$errs typescript-leaked-into-root-languages"
+[ -f "$proj/AGENTS.md" ] && grep -q 'tsc -b' "$proj/AGENTS.md"    || errs="$errs setup-typescript-block-missing"
+(cd "$proj" && "$SYNC" >/dev/null 2>&1) || true
+grep -q 'tsc -b' "$proj/AGENTS.md"                                || errs="$errs sync-dropped-typescript-block"
+grep -qi 'ruff' "$proj/AGENTS.md"                                 || errs="$errs sync-dropped-python-block"
+diff_rc=0
+(cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code >/dev/null 2>&1) || diff_rc=$?
+[ "$diff_rc" -eq 0 ]                                              || errs="$errs diff-reports-drift($diff_rc)"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

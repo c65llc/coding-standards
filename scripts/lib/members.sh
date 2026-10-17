@@ -65,8 +65,15 @@ member_normalize() {
         \#*) p="" ;;
         *)   p=$(printf '%s' "$p" | sed 's/[[:space:]]#.*$//; s/[[:space:]]*$//') ;;
     esac
+    # Canonicalize: collapse repeated separators and "." segments, so
+    # "server/." and "packages/./web" spell the same member as "server" and
+    # "packages/web" — the spelling --since/--changed re-basing compares
+    # against git's canonical paths.
+    local dslash='//' dotseg='/./' slash='/'
+    while [ "${p//"$dslash"/$slash}" != "$p" ]; do p="${p//"$dslash"/$slash}"; done
+    while [ "${p//"$dotseg"/$slash}" != "$p" ]; do p="${p//"$dotseg"/$slash}"; done
     while [ "${p#./}" != "$p" ]; do p="${p#./}"; done
-    while [ -n "$p" ] && [ "${p%/}" != "$p" ]; do p="${p%/}"; done
+    while [ -n "$p" ] && { [ "${p%/.}" != "$p" ] || [ "${p%/}" != "$p" ]; }; do p="${p%/.}"; p="${p%/}"; done
     case "$p" in
         ""|.|/*|..|../*|*/..|*/../*) return 1 ;;
     esac
@@ -125,9 +132,11 @@ member_escape_reason() {
 
 # member__each_declared <root> <callback>
 # Runs <callback> <accepted-path> or <callback> "" <reason> for every raw
-# `members:` entry of the root .standards.yml, in declaration order.
+# `members:` entry of the root .standards.yml, in declaration order. Two
+# entries that normalize to the same path ("server" and "./server/") are
+# reported once, at the first declaration, so no caller checks a member twice.
 member__each_declared() {
-    local root="$1" cb="$2" raw entry norm reason
+    local root="$1" cb="$2" raw entry norm reason seen=""
     [ -f "$root/.standards.yml" ] || return 0
     raw=$(yaml_list "members" "$root/.standards.yml" | tr ' ' '\n')
     # yaml_list splits inline lists on commas but joins everything with
@@ -136,7 +145,17 @@ member__each_declared() {
         [ -z "$entry" ] && continue
         if ! norm=$(member_normalize "$entry"); then
             "$cb" "" "ignoring invalid entry '$entry' (must be a relative path inside the project)"
-        elif reason=$(member_escape_reason "$root" "$norm"); then
+            continue
+        fi
+        case "$seen" in
+            *"
+$norm
+"*) continue ;;
+        esac
+        seen="$seen
+$norm
+"
+        if reason=$(member_escape_reason "$root" "$norm"); then
             "$cb" "" "$reason"
         else
             "$cb" "$norm"
@@ -231,6 +250,38 @@ resolve_members() {
     fi
 }
 
+# member_yaml_scalar <member>: the member path as a YAML list value — plain
+# when it is made of safe characters, otherwise double-quoted with "\" and
+# '"' escaped, so a regenerated .standards.yml re-reads to the same member
+# ("#svc" must not become a comment, "@org/team" must stay valid YAML).
+member_yaml_scalar() {
+    local p="$1"
+    case "$p" in
+        *[!A-Za-z0-9._/-]*|.*|-*) p="${p//\\/\\\\}"; p="${p//\"/\\\"}"; printf '"%s"\n' "$p" ;;
+        *) printf '%s\n' "$p" ;;
+    esac
+}
+
+# member_descendants <member> <all-members...>
+# Prints the members nested below <member>, re-based onto it ("packages/web"
+# → "web" for member "packages"; every member, as is, for "."), one per line.
+# Callers pass these as excludes/skips so a parent never judges a child's
+# files under the parent's config.
+member_descendants() {
+    local member="$1" m
+    shift
+    for m in "$@"; do
+        [ "$m" = "." ] && continue
+        if [ "$member" = "." ]; then
+            printf '%s\n' "$m"
+        else
+            case "$m" in
+                "$member"/*) printf '%s\n' "${m#"$member/"}" ;;
+            esac
+        fi
+    done
+}
+
 # member_root <root> <member>: absolute directory of a member ("." → root).
 member_root() {
     if [ "$2" = "." ]; then printf '%s\n' "$1"; else printf '%s/%s\n' "$1" "$2"; fi
@@ -294,6 +345,34 @@ dedupe_words() {
         case " $out " in
             *" $w "*) ;;
             *) out="${out:+$out }$w" ;;
+        esac
+    done
+    printf '%s\n' "$out"
+}
+
+# ---------------------------------------------------------------------------
+# subroot_languages <root> <members> <detect-script>
+#
+# Languages that <detect-script>'s conventional sub-root walk (apps/*,
+# packages/*, crates/*, core, server, web, shells/*) finds outside the members
+# and outside the root's own manifests. setup.sh, sync-standards.sh and
+# diff-standards.sh all add these to the root agent-config assembly (an agent
+# that only reads the root file still sees every sub-root's rules) — the same
+# way, so the three agree and diff never reports drift right after a sync.
+# The root's own manifests are left out on purpose: what the root declares is
+# the root's business (a tooling package.json next to a Python service must
+# not force a JavaScript block the user deliberately omitted).
+# ---------------------------------------------------------------------------
+subroot_languages() {
+    local root="$1" members="$2" detect="${3:-}" args=() m walk rootonly out="" l
+    [ -n "$detect" ] && [ -x "$detect" ] || return 0
+    for m in $members; do args+=(--skip "$m"); done
+    walk=$("$detect" ${args[@]+"${args[@]}"} "$root" 2>/dev/null | tr '\n' ' ')
+    rootonly=$("$detect" --root-only "$root" 2>/dev/null | tr '\n' ' ')
+    for l in $walk; do
+        case " $rootonly " in
+            *" $l "*) ;;
+            *) out="${out:+$out }$l" ;;
         esac
     done
     printf '%s\n' "$out"

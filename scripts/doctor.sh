@@ -317,24 +317,31 @@ check_languages_for() {
             "Remove '$unsupported' from the languages list in ${dir#"$PROJECT_ROOT/"}/.standards.yml, or contribute a lang-NN standard for it"
     fi
 
-    if [ -z "$declared" ] && [ -z "$detected" ]; then
+    # Only supported detections are ever suggested: an unsupported key such as
+    # cpp (a CMake-only project) has no standards or checks, so asking for it
+    # to be declared would only trip the unsupported warning above.
+    local supported_detected=""
+    for lang in $detected; do
+        if declare -f language_supported >/dev/null 2>&1 && ! language_supported "$lang"; then
+            continue
+        fi
+        supported_detected="${supported_detected:+$supported_detected }$lang"
+    done
+
+    if [ -z "$declared" ] && [ -z "$supported_detected" ]; then
         check_pass "$label" "No languages detected or declared"
         return
     fi
 
     if [ -z "$declared" ]; then
         check_warn "$label" "Languages detected but none declared in .standards.yml" \
-            "Add: declare 'languages: [${detected// /, }]' in .standards.yml"
+            "Add: declare 'languages: [${supported_detected// /, }]' in .standards.yml"
         return
     fi
 
-    # Detected (and supported) but not declared. Unsupported detections such
-    # as cpp are not demanded: declaring them would only trip the check above.
+    # Detected (and supported) but not declared.
     local undeclared=""
-    for lang in $detected; do
-        if declare -f language_supported >/dev/null 2>&1 && ! language_supported "$lang"; then
-            continue
-        fi
+    for lang in $supported_detected; do
         in_list "$lang" "$declared" || undeclared="${undeclared:+$undeclared }$lang"
     done
 
@@ -365,7 +372,10 @@ check_languages() {
     local m
     for m in $MEMBERS; do
         [ -d "$PROJECT_ROOT/$m" ] || continue
-        check_languages_for "$PROJECT_ROOT/$m" "Languages ($m)" ""
+        # Skip the members nested below this one (re-based onto it), so a
+        # parent member is not asked to declare a child member's languages.
+        # shellcheck disable=SC2086
+        check_languages_for "$PROJECT_ROOT/$m" "Languages ($m)" "$(member_descendants "$m" $MEMBERS | tr '\n' ' ')"
     done
 }
 

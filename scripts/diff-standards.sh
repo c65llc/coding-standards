@@ -166,9 +166,16 @@ if [ -z "$AGENTS_LIST" ]; then
     AGENTS_LIST="claude-code cursor copilot gemini codex aider"
 fi
 
-# Members contribute their languages to the root assembly, exactly as
-# sync-standards.sh does — otherwise this diff would report drift forever.
+# Same language union as setup.sh and sync-standards.sh — root (declared,
+# else its own manifests), non-member sub-roots, members — otherwise this diff
+# would report drift forever.
 MEMBERS=$(resolve_members "$PROJECT_ROOT" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+if [ -x "$SCRIPT_DIR/detect-languages.sh" ]; then
+    if [ -z "$DETECTED_LANGS" ]; then
+        DETECTED_LANGS=$("$SCRIPT_DIR/detect-languages.sh" --root-only "$PROJECT_ROOT")
+    fi
+    DETECTED_LANGS=$(dedupe_words "$DETECTED_LANGS" "$(subroot_languages "$PROJECT_ROOT" "$MEMBERS" "$SCRIPT_DIR/detect-languages.sh")")
+fi
 if [ -n "$MEMBERS" ]; then
     DETECTED_LANGS=$(aggregate_member_languages "$PROJECT_ROOT" "$DETECTED_LANGS" "$MEMBERS" "$SCRIPT_DIR/detect-languages.sh")
     printf "  %s\n\n" "Members: ${MEMBERS// /, } (languages: ${DETECTED_LANGS:-none})"

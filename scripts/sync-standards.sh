@@ -467,12 +467,14 @@ done <<EOF
 $(rejected_members "$PROJECT_ROOT" 2>/dev/null)
 EOF
 
-# If no languages from config, try auto-detection (members are skipped: each
-# contributes its own languages below).
-if [ -z "$DETECTED_LANGS" ] && [ -x "$SCRIPT_DIR/detect-languages.sh" ]; then
-    detect_args=()
-    for m in $MEMBERS; do detect_args+=(--skip "$m"); done
-    DETECTED_LANGS=$("$SCRIPT_DIR/detect-languages.sh" ${detect_args[@]+"${detect_args[@]}"} "$PROJECT_ROOT")
+# Same union as setup.sh: the root's languages (declared, else detected from
+# the root's own manifests), plus the conventional sub-roots that are not
+# members (lib/members.sh subroot_languages), plus every member below.
+if [ -x "$SCRIPT_DIR/detect-languages.sh" ]; then
+    if [ -z "$DETECTED_LANGS" ]; then
+        DETECTED_LANGS=$("$SCRIPT_DIR/detect-languages.sh" --root-only "$PROJECT_ROOT")
+    fi
+    DETECTED_LANGS=$(dedupe_words "$DETECTED_LANGS" "$(subroot_languages "$PROJECT_ROOT" "$MEMBERS" "$SCRIPT_DIR/detect-languages.sh")")
 fi
 
 if [ -n "$MEMBERS" ]; then
