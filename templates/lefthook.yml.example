@@ -1,0 +1,27 @@
+# lefthook.yml — git hooks via lefthook (coding-standards template)
+#
+# Install (not installed automatically by setup.sh):
+#   cp .standards/templates/lefthook.yml.example lefthook.yml   # or merge the blocks into yours
+#   lefthook install
+#
+# Squash-merge note: GitHub uses the PR *title* as the squash commit subject,
+# so the commit-msg hook alone does not protect mainline history. Pair it with
+# the PR-title check in the standards-review action
+# (.standards/.github/actions/standards-review, input `pr-title-check`).
+#
+# Adjust `.standards/` if the standards submodule lives elsewhere.
+
+commit-msg:
+  commands:
+    conventional-commits:
+      # {1} is the commit message file git hands to commit-msg hooks.
+      # Also enforces `commits.scopes` from .standards.yml when configured.
+      run: .standards/scripts/check-commit-message.sh --file {1}
+
+# Once lefthook is installed it owns core.hooksPath, so the native
+# .git/hooks/post-merge reminder that setup.sh writes no longer runs.
+# This block restores it.
+post-merge:
+  commands:
+    standards-sync-reminder:
+      run: make check-standards

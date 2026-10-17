@@ -99,6 +99,49 @@ if [ -d ".standards" ]; then
 fi
 ```
 
+### Commit Message Hooks (Conventional Commits)
+
+Branch commits are validated locally by a `commit-msg` hook. The standards repo
+ships templates for the two common hook managers; `setup.sh` prints the install
+commands but never installs a hook manager for you:
+
+```bash
+# husky (v9+)
+cp .standards/templates/husky-commit-msg.example .husky/commit-msg
+chmod +x .husky/commit-msg
+
+# lefthook
+cp .standards/templates/lefthook.yml.example lefthook.yml   # or merge the blocks into yours
+lefthook install
+```
+
+Both call `.standards/scripts/check-commit-message.sh --file <msg>`, which
+enforces `<type>(<scope>): <subject>` plus the optional `commits.scopes`
+allow-list from `.standards.yml`. `make doctor` recognises `lefthook.yml` and
+`.husky/` as hook managers and warns when no commit-msg hook is configured.
+
+Because lefthook and husky take over `core.hooksPath`, the native
+`.git/hooks/post-merge` reminder above stops running once they are installed —
+the lefthook template includes a `post-merge` block that restores it.
+
+### PR Title Check
+
+With squash-merge, GitHub writes the **PR title** as the mainline commit
+subject, so hooks on branch commits do not protect history. The
+`standards-review` action checks the PR title on every pull request and fails
+by default:
+
+```yaml
+      - name: Run standards review
+        uses: ./.standards/.github/actions/standards-review
+        with:
+          pr-title-check: fail   # fail (default) | warn | off
+```
+
+The same action also narrows the `conventional-commits` lint module to the
+PR's own commits (`origin/<base>..HEAD`) unless `.standards.yml` sets
+`commits.since` or `commits.window`.
+
 ## Manual Sync
 
 Run the sync script at any time to pull the latest standards and update all agent configuration files:

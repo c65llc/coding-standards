@@ -62,6 +62,53 @@ changes), `revert` (reverting a prior commit). Prefer the canonical types.
 * **Footer:** Reference issues/PRs: `Closes #123`, `Fixes #456`
 * **Scope:** Optional, indicates area of change (e.g., `domain`, `api`, `ui`)
 
+### Scope Allow-List
+
+Scopes drift when every author invents their own (`edit/macos`, `editor/windows`
+and `windows/edit` coexisting in one history). Projects SHOULD pin the accepted
+scopes in `.standards.yml`:
+
+```yaml
+commits:
+  scopes: [api, domain, ui, infra]
+```
+
+When the list is present, every *scoped* commit must use one of the listed
+scopes; unscoped commits (`fix: ...`) remain allowed. The linter module, the
+commit-msg hook templates and the PR-title check all read this one list.
+
+### Pull Request Titles Are Commits
+
+With **squash and merge** (the preferred strategy, § 4) GitHub writes the **PR
+title** — not the branch commits — as the commit subject on the mainline. A
+perfectly conventional branch squashed under a prose title ("Phase 1: repository
+scaffold") still lands a non-conventional commit in `main`, and a commit-msg
+hook never sees it.
+
+* PR titles MUST follow the same `<type>(<scope>): <subject>` format.
+* The `standards-review` composite action checks the title on every PR and
+  fails the check by default (`pr-title-check: warn` downgrades it to an
+  annotation, `off` disables it).
+* Validate a candidate title locally with
+  `.standards/scripts/check-commit-message.sh "feat(api): add endpoint"`.
+
+### Automated Enforcement
+
+`scripts/lint-checks/common/conventional-commits.sh` (run by `lint-standards.sh`)
+inspects the last **50** non-merge commits by default. Tune the range in
+`.standards.yml`:
+
+```yaml
+commits:
+  window: 100          # inspect the last N non-merge commits
+  since: origin/main   # or: inspect <ref>..HEAD (wins over window)
+```
+
+The module also accepts `--since <ref>` / `--window <n>` flags, and the
+standards-review action defaults the range to the PR base so a PR is judged on
+its own commits. Merge commits, `fixup!`/`squash!` prefixes and `git revert`
+subjects are exempt.
+
 ### Examples
 
 ```text
@@ -283,9 +330,36 @@ See [Git Aliases Reference](../../docs/reference/git-aliases.md) for the full al
 Use tools like:
 
 * **Husky** (Node.js)
+* **lefthook** (any stack; single binary)
 * **pre-commit** (Python)
 * **git-hooks** (Rust)
 * Custom shell scripts
+
+### Conventional Commits Hook Templates
+
+The standards repo ships ready-made commit-msg hooks that call
+`scripts/check-commit-message.sh` (format + `commits.scopes` allow-list).
+`setup.sh` prints the install commands but never installs a hook manager for
+you:
+
+```bash
+# husky (v9+)
+cp .standards/templates/husky-commit-msg.example .husky/commit-msg
+chmod +x .husky/commit-msg
+
+# lefthook
+cp .standards/templates/lefthook.yml.example lefthook.yml   # or merge the blocks into yours
+lefthook install
+```
+
+`make doctor` recognises `lefthook.yml` and `.husky/` as hook managers and
+warns when neither defines a commit-msg hook. Because both managers take over
+`core.hooksPath`, the native `.git/hooks/post-merge` reminder that `setup.sh`
+writes stops running; the lefthook template restores it with a `post-merge`
+block and doctor warns when a husky project lacks one.
+
+Hooks guard *branch* commits only — pair them with the PR-title check (§ 2,
+"Pull Request Titles Are Commits") to protect squash-merged history.
 
 ## 8. .gitignore Patterns
 

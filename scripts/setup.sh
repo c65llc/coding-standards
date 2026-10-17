@@ -532,6 +532,10 @@ setup_ai_agents() {
         echo "  slow_threshold_ms: 2000"
         echo "architecture: clean"
         echo "security: strict"
+        echo "# Conventional Commits: window of commits the linter inspects; optional"
+        echo "# since: <ref> (checks <ref>..HEAD) and scopes: [api, domain] allow-list."
+        echo "commits:"
+        echo "  window: 50"
     } | dry_run_write "$PROJECT_ROOT/.standards.yml"
     if [ "$DRY_RUN" = false ]; then
         echo "✅ .standards.yml created"
@@ -662,6 +666,17 @@ HOOK
 
     chmod +x "$GIT_HOOKS_DIR/post-merge"
     echo "✅ Git hooks installed"
+fi
+
+# Conventional Commits commit-msg hook templates — never auto-installed: the
+# hook manager is a project decision, so setup only prints how to adopt one.
+if [ -f "$STANDARDS_DIR/templates/husky-commit-msg.example" ] \
+   && [ ! -f "$PROJECT_ROOT/.husky/commit-msg" ] \
+   && [ ! -f "$PROJECT_ROOT/lefthook.yml" ] && [ ! -f "$PROJECT_ROOT/.lefthook.yml" ]; then
+    echo "ℹ️  Conventional Commits commit-msg hook templates available (not auto-installed):"
+    echo "   husky:    cp $STANDARDS_DIR/templates/husky-commit-msg.example .husky/commit-msg && chmod +x .husky/commit-msg"
+    echo "   lefthook: cp $STANDARDS_DIR/templates/lefthook.yml.example lefthook.yml && lefthook install"
+    echo "   Note: squash-merge uses the PR title; the standards-review action checks it in CI."
 fi
 
 # Install standards review workflow template

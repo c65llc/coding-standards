@@ -1,0 +1,34 @@
+#!/bin/sh
+# .husky/commit-msg — Conventional Commits validation (coding-standards template)
+#
+# Install (husky v9+; not installed automatically by setup.sh):
+#   npx husky init                                   # once, if .husky/ does not exist
+#   cp .standards/templates/husky-commit-msg.example .husky/commit-msg
+#   chmod +x .husky/commit-msg
+#
+# Squash-merge note: GitHub uses the PR *title* as the squash commit subject,
+# so this hook alone does not protect mainline history. Pair it with the
+# PR-title check in the standards-review action
+# (.standards/.github/actions/standards-review, input `pr-title-check`).
+#
+# `commits.scopes` in .standards.yml (scope allow-list) is enforced when the
+# standards submodule is present; the fallback below checks the format only.
+
+STANDARDS_DIR="${STANDARDS_DIR:-.standards}"
+
+if [ -x "$STANDARDS_DIR/scripts/check-commit-message.sh" ]; then
+    exec "$STANDARDS_DIR/scripts/check-commit-message.sh" --file "$1"
+fi
+
+# Fallback (standards submodule not checked out): format-only check.
+subject=$(grep -v '^#' "$1" | grep -m1 .)
+case "$subject" in
+    "fixup! "*|"squash! "*|"amend! "*|"Merge "*|"Revert \""*) exit 0 ;;
+esac
+
+if ! printf '%s' "$subject" | grep -qE '^(feat|fix|refactor|test|docs|chore|perf|ci|build|style|revert)(\([^)]+\))?!?:[[:space:]].+'; then
+    echo "error: not a Conventional Commit subject: $subject" >&2
+    echo "  expected: <type>(<scope>): <subject>   e.g. feat(api): add user endpoint" >&2
+    echo "  types:    feat fix refactor test docs chore perf ci (also build style revert)" >&2
+    exit 1
+fi

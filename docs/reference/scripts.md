@@ -180,6 +180,28 @@ The script prompts before overwriting any existing alias that has a different va
 
 ---
 
+## check-commit-message.sh
+
+**Purpose:** Validate a single commit message or PR title against Conventional Commits and the optional `commits.scopes` allow-list in `.standards.yml`.
+
+**Usage:**
+
+```bash
+./scripts/check-commit-message.sh "feat(api): add user endpoint"          # positional (PR titles)
+./scripts/check-commit-message.sh --file .git/COMMIT_EDITMSG              # commit-msg hook form
+./scripts/check-commit-message.sh --project-root /path/to/project "fix: x" # read that project's .standards.yml
+```
+
+**Exit codes:** `0` valid or exempt (`fixup!`/`squash!`/`amend!` prefixes, merge commits, `git revert` subjects), `1` invalid (with an explanation on stderr; `--quiet` suppresses it), `2` usage error.
+
+**Used by:**
+
+- `templates/husky-commit-msg.example` and `templates/lefthook.yml.example` (commit-msg hooks)
+- The PR-title step of the `standards-review` composite action
+- Shares its type list and regex with the `conventional-commits` lint module via `scripts/lib/conventional-commits.sh`
+
+---
+
 ## add-copilot-instructions-pr.sh
 
 **Purpose:** Create a pull request that adds GitHub Copilot custom instructions to a repository.

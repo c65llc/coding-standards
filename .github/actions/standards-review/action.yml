@@ -1,16 +1,72 @@
 name: 'Standards Review'
-description: 'Run standards compliance linter and post results as PR comment'
+description: 'Run standards compliance linter, check the PR title, and post results as PR comment'
 inputs:
   standards-path:
     description: 'Path to .standards/ submodule (default: .standards)'
     required: false
     default: '.standards'
+  pr-title-check:
+    description: >-
+      Conventional Commits check on the PR title. Squash-merge uses the PR title as
+      the mainline commit subject, so branch commits alone do not protect history.
+      One of: fail (default — blocks the check), warn (annotates only), off.
+    required: false
+    default: 'fail'
 runs:
   using: 'composite'
   steps:
+    - name: Check PR title (Conventional Commits)
+      id: title
+      if: github.event_name == 'pull_request' && inputs.pr-title-check != 'off'
+      shell: bash
+      env:
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        TITLE_MODE: ${{ inputs.pr-title-check }}
+        STANDARDS_PATH: ${{ inputs.standards-path }}
+      run: |
+        CHECKER="$STANDARDS_PATH/scripts/check-commit-message.sh"
+        if [ ! -f "$CHECKER" ]; then
+          CHECKER="scripts/check-commit-message.sh"
+        fi
+        if [ ! -f "$CHECKER" ]; then
+          CHECKER="${{ github.action_path }}/../../../scripts/check-commit-message.sh"
+        fi
+        if [ ! -f "$CHECKER" ]; then
+          echo "::warning::check-commit-message.sh not found; skipping PR title check"
+          echo "status=skipped" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        chmod +x "$CHECKER"
+
+        if DETAIL=$("$CHECKER" "$PR_TITLE" 2>&1); then
+          echo "status=pass" >> "$GITHUB_OUTPUT"
+          echo "PR title follows Conventional Commits: $PR_TITLE"
+          exit 0
+        fi
+
+        echo "status=fail" >> "$GITHUB_OUTPUT"
+        {
+          echo "detail<<DETAIL_EOF"
+          echo "$DETAIL"
+          echo "DETAIL_EOF"
+        } >> "$GITHUB_OUTPUT"
+        echo "$DETAIL"
+        echo ""
+        echo "Why this matters: with squash-merge, GitHub writes the PR title (not your"
+        echo "branch commits) as the commit subject on the default branch. A prose title"
+        echo "becomes a permanent non-Conventional commit in mainline history."
+        echo "Fix: edit the PR title to <type>(<scope>): <subject>, e.g. feat(api): add endpoint"
+        if [ "$TITLE_MODE" = "warn" ]; then
+          echo "::warning::PR title is not a Conventional Commit (pr-title-check: warn): $PR_TITLE"
+        else
+          echo "::error::PR title is not a Conventional Commit: $PR_TITLE"
+        fi
+
     - name: Run standards linter
       id: lint
       shell: bash
+      env:
+        PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
       run: |
         LINTER="${{ inputs.standards-path }}/scripts/lint-standards.sh"
         if [ ! -f "$LINTER" ]; then
@@ -18,6 +74,11 @@ runs:
         fi
         if [ -f "$LINTER" ]; then
           chmod +x "$LINTER"
+          # On a PR, default the conventional-commits range to the PR base so the
+          # PR is judged on its own commits (.standards.yml commits.* still wins).
+          if [ -n "$PR_BASE_REF" ] && git rev-parse --verify --quiet "origin/$PR_BASE_REF^{commit}" >/dev/null 2>&1; then
+            export STANDARDS_COMMITS_SINCE="origin/$PR_BASE_REF"
+          fi
           RESULTS=$("$LINTER" --format json 2>/dev/null || true)
           if [ -z "$RESULTS" ]; then
             RESULTS='{"summary":{"pass":0,"warn":0,"fail":0,"total":0},"results":[]}'
@@ -57,13 +118,16 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         LINT_RESULTS: ${{ steps.lint.outputs.results }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        TITLE_STATUS: ${{ steps.title.outputs.status }}
+        TITLE_MODE: ${{ inputs.pr-title-check }}
       run: |
         PASS="${{ steps.lint.outputs.pass }}"
         WARN="${{ steps.lint.outputs.warn }}"
         FAIL="${{ steps.lint.outputs.fail }}"
         TOTAL=$((PASS + WARN + FAIL))
 
-        if [ "$TOTAL" -eq 0 ]; then
+        if [ "$TOTAL" -eq 0 ] && [ "$TITLE_STATUS" != "fail" ]; then
           echo "No lint results to post"
           exit 0
         fi
@@ -80,6 +144,22 @@ runs:
           else
             printf ":white_check_mark: All checks passed\n\n"
           fi
+
+          case "$TITLE_STATUS" in
+            fail)
+              if [ "$TITLE_MODE" = "warn" ]; then
+                printf ":warning: **PR title** is not a Conventional Commit: \`%s\`\n\n" "$PR_TITLE"
+              else
+                printf ":x: **PR title** is not a Conventional Commit: \`%s\`\n\n" "$PR_TITLE"
+              fi
+              printf "Squash-merge writes the PR title as the mainline commit subject, so it must be "
+              printf "\`<type>(<scope>): <subject>\` (e.g. \`feat(api): add endpoint\`) even when every branch commit already is.\n\n"
+              ;;
+            pass)
+              printf ":white_check_mark: PR title follows Conventional Commits\n\n"
+              ;;
+          esac
+
           printf "| Status | Check | Details |\n"
           printf "|--------|-------|--------|\n"
 
@@ -97,8 +177,16 @@ runs:
         rm -f "$COMMENT_FILE"
 
     - name: Set check status
-      if: steps.lint.outputs.has_failures == 'true'
+      if: steps.lint.outputs.has_failures == 'true' || (steps.title.outputs.status == 'fail' && inputs.pr-title-check == 'fail')
       shell: bash
+      env:
+        TITLE_STATUS: ${{ steps.title.outputs.status }}
+        TITLE_MODE: ${{ inputs.pr-title-check }}
       run: |
-        echo "::error::Standards compliance check failed with ${{ steps.lint.outputs.fail }} failure(s)"
+        if [ "${{ steps.lint.outputs.has_failures }}" = "true" ]; then
+          echo "::error::Standards compliance check failed with ${{ steps.lint.outputs.fail }} failure(s)"
+        fi
+        if [ "$TITLE_STATUS" = "fail" ] && [ "$TITLE_MODE" = "fail" ]; then
+          echo "::error::PR title must be a Conventional Commit (squash-merge uses it as the commit subject). Set pr-title-check: warn to downgrade."
+        fi
         exit 1

@@ -1032,6 +1032,138 @@ out_h=$(bash "$CHECKS/common/headless-ci.sh" "$REPO_ROOT" 2>/dev/null || true)
 out_c=$(bash "$CHECKS/common/ci-workflow-hygiene.sh" "$REPO_ROOT" 2>/dev/null || true)
 if echo "$out_h" | grep -q '^PASS' && echo "$out_c" | grep -q '^PASS'; then pass; else fail "dogfood failed: $out_h / $out_c"; fi
 
+# --- conventional-commits module options (#185) -----------------------------
+
+# Helper: one (possibly non-conventional) empty commit in a temp project.
+cc_commit() {
+    ( cd "$1" && git -c user.email="t@t.local" -c user.name="T" \
+        commit -q --allow-empty -m "$2" )
+}
+
+CC_MOD="$CHECKS/common/conventional-commits.sh"
+
+echo -n "Test 71: conventional-commits default window is wider than 10 commits... "
+win=$(make_project "cc-window")
+cc_commit "$win" "Prose title that is not conventional (#1)"
+i=0; while [ "$i" -lt 11 ]; do cc_commit "$win" "feat(core): change $i"; i=$((i + 1)); done
+out=$(bash "$CC_MOD" "$win" 2>/dev/null || true)
+# 13 commits total: init + 1 bad + 11 good. A 10-commit window would miss the bad one.
+if echo "$out" | grep -qE '^(WARN|FAIL) conventional-commits 1 of' && echo "$out" | grep -q '13'; then pass; else
+    fail "expected the bad commit at depth 12 to be counted, got: $out"; fi
+
+echo -n "Test 72: commits.window in .standards.yml narrows the window... "
+printf 'version: 1\ncommits:\n  window: 5\n' > "$win/.standards.yml"
+out=$(bash "$CC_MOD" "$win" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS with window 5, got: $out"; fi
+rm -f "$win/.standards.yml"
+
+echo -n "Test 73: --window flag overrides the default... "
+out=$(bash "$CC_MOD" --window 5 "$win" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS with --window 5, got: $out"; fi
+
+echo -n "Test 74: --since <ref> checks only commits after the ref... "
+( cd "$win" && git tag cc-base HEAD~3 )
+out=$(bash "$CC_MOD" --since cc-base "$win" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS' && echo "$out" | grep -q 'cc-base'; then pass; else fail "expected PASS mentioning cc-base, got: $out"; fi
+
+echo -n "Test 75: --since <ref> flags a bad commit inside the range... "
+cc_commit "$win" "fixed stuff"
+out=$(bash "$CC_MOD" --since cc-base "$win" 2>/dev/null || true)
+if echo "$out" | grep -qE '^(WARN|FAIL) conventional-commits 1 of 4'; then pass; else fail "expected 1 of 4 flagged, got: $out"; fi
+
+echo -n "Test 76: --since with an unknown ref WARNs (exit 2) instead of crashing... "
+out=$(bash "$CC_MOD" --since no-such-ref "$win" 2>/dev/null); rc=$?
+if [ "$rc" -eq 2 ] && echo "$out" | grep -q '^WARN'; then pass; else fail "expected WARN/exit 2, got exit $rc: $out"; fi
+
+echo -n "Test 77: commits.since in .standards.yml is honoured... "
+printf 'version: 1\ncommits:\n  since: cc-base\n' > "$win/.standards.yml"
+out=$(bash "$CC_MOD" "$win" 2>/dev/null || true)
+if echo "$out" | grep -qE '^(WARN|FAIL)' && echo "$out" | grep -q 'cc-base'; then pass; else fail "expected finding since cc-base, got: $out"; fi
+rm -f "$win/.standards.yml"
+
+echo -n "Test 78: commits.scopes allow-list PASSes commits using listed scopes... "
+sc=$(make_project "cc-scopes")
+cc_commit "$sc" "feat(api): add endpoint"
+cc_commit "$sc" "fix: unscoped commits stay allowed"
+printf 'version: 1\ncommits:\n  scopes:\n    - api\n    - domain\n' > "$sc/.standards.yml"
+out=$(bash "$CC_MOD" "$sc" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 79: commits.scopes allow-list flags a scope outside the list... "
+cc_commit "$sc" "feat(edit/macos): scope drift"
+out=$(bash "$CC_MOD" "$sc" 2>/dev/null || true)
+if echo "$out" | grep -qE '^(WARN|FAIL)' && echo "$out" | grep -qi 'scope'; then pass; else fail "expected scope finding, got: $out"; fi
+
+echo -n "Test 80: inline commits.scopes list form is parsed... "
+printf 'version: 1\ncommits:\n  scopes: [api, domain, edit/macos]\n' > "$sc/.standards.yml"
+out=$(bash "$CC_MOD" "$sc" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS with inline list, got: $out"; fi
+
+echo -n "Test 81: merge commits are not counted against the window... "
+mg=$(make_project "cc-merge")
+( cd "$mg" && git checkout -q -b topic )
+cc_commit "$mg" "feat(x): topic work"
+( cd "$mg" && git checkout -q - )
+cc_commit "$mg" "chore: mainline work"
+( cd "$mg" && git -c user.email="t@t.local" -c user.name="T" merge -q --no-ff --no-edit topic >/dev/null 2>&1 )
+out=$(bash "$CC_MOD" "$mg" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS ignoring merge commit, got: $out"; fi
+
+# --- check-commit-message.sh (hook + PR-title validator) --------------------
+
+CHK="$REPO_ROOT/scripts/check-commit-message.sh"
+
+echo -n "Test 82: check-commit-message.sh accepts a Conventional Commit subject... "
+if bash "$CHK" "feat(api): add endpoint" >/dev/null 2>&1; then pass; else fail "valid subject rejected"; fi
+
+echo -n "Test 83: check-commit-message.sh rejects a prose subject with an explanation... "
+out=$(bash "$CHK" "Phase 1: repository scaffold and core (Tasks 7-9)" 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -qi 'conventional'; then pass; else fail "expected rejection, got exit $rc: $out"; fi
+
+echo -n "Test 84: check-commit-message.sh --file reads a commit message file (hook mode)... "
+printf 'fix(ui): align header\n\nLonger body here.\n' > "$TMP_BASE/msg"
+if bash "$CHK" --file "$TMP_BASE/msg" >/dev/null 2>&1; then pass; else fail "valid message file rejected"; fi
+
+echo -n "Test 85: check-commit-message.sh skips fixup!/merge messages... "
+printf 'fixup! feat: wip\n' > "$TMP_BASE/msg-fixup"
+printf "Merge branch 'topic'\n" > "$TMP_BASE/msg-merge"
+if bash "$CHK" --file "$TMP_BASE/msg-fixup" >/dev/null 2>&1 \
+   && bash "$CHK" --file "$TMP_BASE/msg-merge" >/dev/null 2>&1; then pass; else fail "fixup!/merge messages should pass"; fi
+
+echo -n "Test 86: check-commit-message.sh enforces commits.scopes from the project root... "
+if ! bash "$CHK" --project-root "$sc" "feat(web): scope not in allow-list" >/dev/null 2>&1 \
+   && bash "$CHK" --project-root "$sc" "feat(api): allowed scope" >/dev/null 2>&1; then pass; else
+    fail "scope allow-list not enforced"; fi
+
+# --- doctor.sh hook-manager detection ---------------------------------------
+
+echo -n "Test 87: doctor.sh recognises lefthook.yml as the hook manager... "
+lh=$(make_project "doctor-lefthook")
+printf 'commit-msg:\n  commands:\n    conventional-commits:\n      run: .standards/scripts/check-commit-message.sh --file {1}\n' > "$lh/lefthook.yml"
+out=$(cd "$lh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Git Hooks' | grep -qi 'lefthook' && ! echo "$out" | grep -q 'post-merge hook not installed'; then pass; else
+    fail "lefthook not recognised: $(echo "$out" | grep 'Git Hooks')"; fi
+
+echo -n "Test 88: doctor.sh recognises .husky/ as the hook manager... "
+hk=$(make_project "doctor-husky")
+mkdir -p "$hk/.husky"
+printf '#!/bin/sh\n.standards/scripts/check-commit-message.sh --file "$1"\n' > "$hk/.husky/commit-msg"
+out=$(cd "$hk" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Git Hooks' | grep -qi 'husky' && ! echo "$out" | grep -q 'post-merge hook not installed'; then pass; else
+    fail "husky not recognised: $(echo "$out" | grep 'Git Hooks')"; fi
+
+echo -n "Test 89: doctor.sh still reports a missing native post-merge hook... "
+nh=$(make_project "doctor-native")
+out=$(cd "$nh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep -q 'post-merge hook not installed'; then pass; else fail "native hook check regressed: $(echo "$out" | grep 'Git Hooks')"; fi
+
+echo -n "Test 90: doctor.sh warns when the hook manager has no commit-msg hook... "
+lh2=$(make_project "doctor-lefthook-nomsg")
+printf 'pre-commit:\n  commands:\n    lint:\n      run: make lint\n' > "$lh2/lefthook.yml"
+out=$(cd "$lh2" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Git Hooks' | grep -q 'WARN' && echo "$out" | grep 'Git Hooks' | grep -qi 'commit-msg'; then pass; else
+    fail "expected commit-msg WARN: $(echo "$out" | grep 'Git Hooks')"; fi
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"
