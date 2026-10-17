@@ -30,16 +30,21 @@ git clone https://github.com/c65llc/coding-standards.git .standards
 ## Step 2: Run Setup
 
 ```bash
-.standards/scripts/setup.sh
+.standards/scripts/setup.sh                # configure the agents already in your project
+.standards/scripts/setup.sh --agents all   # or configure every supported agent
+.standards/scripts/setup.sh --help         # list every flag
 ```
 
-This automatically configures all supported AI agents:
+Supported agents and the files setup assembles for them:
 
-- `.cursorrules` for Cursor AI
+- `CLAUDE.md` (and `.claude/settings.json`) for Claude Code
+- `.cursorrules` and `.cursor/commands/` for Cursor AI
 - `.github/copilot-instructions.md` for GitHub Copilot
-- `.aiderrc` for Aider / Claude Code
-- `.codexrc` for OpenAI Codex
 - `.gemini/GEMINI.md` and `.gemini/settings.json` for Gemini CLI
+- `AGENTS.md` for OpenAI Codex
+- `.aider-instructions.md` and `.aiderrc` for Aider
+
+Pass an explicit `--agents` list (for example `--agents codex`) to install only that agent's artifacts: git hooks, git aliases, Cursor commands, `.claude/settings.json` and `.gemini/` are skipped unless the owning agent is listed. Unknown flags exit 2 without writing anything.
 
 ## Step 3: Restart Your Editor
 

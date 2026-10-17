@@ -382,6 +382,168 @@ else
     fail "expected sync to continue offline (rc=$rc): $out"
 fi
 
+# --- CLI contract: --help / unknown options (issue #181) ---------------------
+
+echo -n "Test 32: setup.sh --help exits 0 and prints usage... "
+proj=$(make_project "help-exit")
+help_rc=0
+help_out=$(cd "$proj" && "$SETUP" --help 2>&1) || help_rc=$?
+if [ "$help_rc" -eq 0 ] && echo "$help_out" | grep -q "^Usage:" && echo "$help_out" | grep -q -- "--agents"; then
+    pass
+else
+    fail "rc=$help_rc, output: $help_out"
+fi
+
+echo -n "Test 33: setup.sh --help writes nothing to the project... "
+leftover=$(cd "$proj" && git status --porcelain --untracked-files=all 2>/dev/null)
+if [ -z "$leftover" ] && [ ! -f "$proj/.git/hooks/post-merge" ]; then
+    pass
+else
+    fail "--help modified the project: $leftover"
+fi
+
+echo -n "Test 34: setup.sh -h is an alias for --help... "
+if (cd "$proj" && "$SETUP" -h >/dev/null 2>&1); then pass; else fail "-h did not exit 0"; fi
+
+echo -n "Test 35: unknown option exits 2 with 'Unknown option' + usage... "
+proj=$(make_project "unknown-flag")
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+unk_rc=0
+unk_out=$(cd "$proj" && "$SETUP" --bogus 2>&1) || unk_rc=$?
+if [ "$unk_rc" -eq 2 ] && echo "$unk_out" | grep -q "Unknown option: --bogus" && echo "$unk_out" | grep -q "^Usage:"; then
+    pass
+else
+    fail "rc=$unk_rc, output: $unk_out"
+fi
+
+echo -n "Test 36: unknown option writes nothing to the project... "
+leftover=$(cd "$proj" && git status --porcelain --untracked-files=all 2>/dev/null | grep -v '^?? .standards/' || true)
+if [ -z "$leftover" ] && [ ! -f "$proj/.git/hooks/post-merge" ] && [ ! -f "$proj/.standards.yml" ]; then
+    pass
+else
+    fail "unknown option modified the project: $leftover"
+fi
+
+echo -n "Test 37: option missing its value exits 2... "
+miss_rc=0
+(cd "$proj" && "$SETUP" --agents >/dev/null 2>&1) || miss_rc=$?
+if [ "$miss_rc" -eq 2 ]; then pass; else fail "expected exit 2, got $miss_rc"; fi
+
+echo -n "Test 37a: option followed by another flag (--languages --help) exits 2 and writes nothing... "
+optval_rc=0
+optval_out=$(cd "$proj" && "$SETUP" --languages --help 2>&1) || optval_rc=$?
+leftover=$(cd "$proj" && git status --porcelain --untracked-files=all 2>/dev/null | grep -v '^?? .standards/' || true)
+if [ "$optval_rc" -eq 2 ] && echo "$optval_out" | grep -q "requires a value" \
+    && [ -z "$leftover" ] && [ ! -f "$proj/.standards.yml" ] && [ ! -d "$proj/.claude" ]; then
+    pass
+else
+    fail "rc=$optval_rc, leftover='$leftover', output: $optval_out"
+fi
+
+echo -n "Test 37b: empty equals form (--agents=) exits 2 and writes nothing... "
+eq_rc=0
+eq_out=$(cd "$proj" && "$SETUP" --agents= 2>&1) || eq_rc=$?
+leftover=$(cd "$proj" && git status --porcelain --untracked-files=all 2>/dev/null | grep -v '^?? .standards/' || true)
+if [ "$eq_rc" -eq 2 ] && echo "$eq_out" | grep -q "requires a value" \
+    && [ -z "$leftover" ] && [ ! -f "$proj/.standards.yml" ] && [ ! -f "$proj/.git/hooks/post-merge" ]; then
+    pass
+else
+    fail "rc=$eq_rc, leftover='$leftover', output: $eq_out"
+fi
+
+echo -n "Test 37c: empty or whitespace-only agent fields (--agents=, / codex, / ,cursor / '   ' / 'codex, ,cursor') exit 2 and write nothing... "
+empty_ok=true
+empty_detail=""
+for bad in "," "codex," ",cursor" "codex,,cursor" "   " "codex, ,cursor"; do
+    bad_rc=0
+    bad_out=$(cd "$proj" && "$SETUP" --agents="$bad" --languages=typescript 2>&1) || bad_rc=$?
+    if [ "$bad_rc" -ne 2 ] || ! echo "$bad_out" | grep -q "empty agent name"; then
+        empty_ok=false; empty_detail="$empty_detail [--agents=$bad rc=$bad_rc]"
+    fi
+done
+leftover=$(cd "$proj" && git status --porcelain --untracked-files=all 2>/dev/null | grep -v '^?? .standards/' || true)
+if [ "$empty_ok" = true ] && [ -z "$leftover" ] && [ ! -f "$proj/.standards.yml" ] && [ ! -f "$proj/.trufflehog-ignore" ]; then
+    pass
+else
+    fail "leftover='$leftover'$empty_detail"
+fi
+
+# --- Agent-scoped install: explicit --agents installs only that agent's artifacts
+
+echo -n "Test 37d: surrounding whitespace in agent fields is tolerated (--agents='codex , cursor')... "
+ws_rc=0
+ws_out=$(cd "$proj" && "$SETUP" --agents='codex , cursor' --languages=typescript --dry-run 2>&1) || ws_rc=$?
+if [ "$ws_rc" -eq 0 ] && echo "$ws_out" | grep -q "AGENTS.md" && echo "$ws_out" | grep -q "cursorrules"; then
+    pass
+else
+    fail "rc=$ws_rc, output: $ws_out"
+fi
+
+echo -n "Test 37e: setup.sh --help works from inside .standards/ (guard runs after parsing)... "
+proj=$(make_project "help-inside-submodule")
+make_inner_standards_repo "$proj"
+hi_rc=0
+hi_out=$(cd "$proj/.standards" && "$SETUP" --help 2>&1) || hi_rc=$?
+if [ "$hi_rc" -eq 0 ] && echo "$hi_out" | grep -q "^Usage:"; then pass; else fail "rc=$hi_rc, output: $hi_out"; fi
+
+echo -n "Test 38: --agents codex writes only AGENTS.md artifacts (no hooks, aliases, Cursor, .claude, .gemini)... "
+proj=$(make_project "codex-only")
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+ln -s "$REPO_ROOT/.gemini"   "$proj/.standards/.gemini" 2>/dev/null || true
+ln -s "$REPO_ROOT/.cursor"   "$proj/.standards/.cursor" 2>/dev/null || true
+# Isolate global git config so we can prove no aliases were written.
+fake_home="$TMPDIR_BASE/codex-only-home"; mkdir -p "$fake_home"
+(cd "$proj" && HOME="$fake_home" GIT_CONFIG_GLOBAL="$fake_home/.gitconfig" \
+    "$SETUP" --agents codex --languages typescript >/dev/null 2>&1) || true
+codex_errs=""
+[ -f "$proj/AGENTS.md" ]                         || codex_errs="$codex_errs AGENTS.md-missing"
+[ -f "$proj/.standards.yml" ]                    || codex_errs="$codex_errs .standards.yml-missing"
+[ ! -e "$proj/.git/hooks/post-merge" ]           || codex_errs="$codex_errs post-merge-hook"
+[ ! -e "$proj/.cursor" ]                         || codex_errs="$codex_errs .cursor/"
+[ ! -e "$proj/.cursorrules" ]                    || codex_errs="$codex_errs .cursorrules"
+[ ! -e "$proj/.claude" ]                         || codex_errs="$codex_errs .claude/"
+[ ! -e "$proj/CLAUDE.md" ]                       || codex_errs="$codex_errs CLAUDE.md"
+[ ! -e "$proj/.gemini" ]                         || codex_errs="$codex_errs .gemini/"
+[ ! -e "$proj/.aiderrc" ]                        || codex_errs="$codex_errs .aiderrc"
+[ ! -e "$proj/.aider-instructions.md" ]          || codex_errs="$codex_errs .aider-instructions.md"
+[ ! -e "$proj/.github/copilot-instructions.md" ] || codex_errs="$codex_errs copilot-instructions.md"
+if [ -f "$fake_home/.gitconfig" ] && grep -q "^\[alias\]" "$fake_home/.gitconfig" 2>/dev/null; then
+    codex_errs="$codex_errs git-aliases-written"
+fi
+if [ -z "$codex_errs" ]; then pass; else fail "unexpected artifacts:$codex_errs"; fi
+
+echo -n "Test 39: --agents codex,cursor installs Cursor commands but not .claude or .gemini... "
+proj=$(make_project "codex-cursor")
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+ln -s "$REPO_ROOT/.gemini"   "$proj/.standards/.gemini" 2>/dev/null || true
+ln -s "$REPO_ROOT/.cursor"   "$proj/.standards/.cursor" 2>/dev/null || true
+fake_home="$TMPDIR_BASE/codex-cursor-home"; mkdir -p "$fake_home"
+(cd "$proj" && HOME="$fake_home" GIT_CONFIG_GLOBAL="$fake_home/.gitconfig" \
+    "$SETUP" --agents codex,cursor --languages typescript >/dev/null 2>&1) || true
+if [ -f "$proj/AGENTS.md" ] && [ -f "$proj/.cursorrules" ] && [ -d "$proj/.cursor/commands" ] \
+   && [ ! -e "$proj/.claude" ] && [ ! -e "$proj/.gemini" ]; then
+    pass
+else
+    fail "expected AGENTS.md + .cursorrules + .cursor/commands only"
+fi
+
+echo -n "Test 40: --agents detect still installs git hooks (legacy behaviour preserved)... "
+proj=$(make_project "detect-hooks")
+touch "$proj/AGENTS.md"
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+fake_home="$TMPDIR_BASE/detect-hooks-home"; mkdir -p "$fake_home"
+(cd "$proj" && HOME="$fake_home" GIT_CONFIG_GLOBAL="$fake_home/.gitconfig" \
+    "$SETUP" --agents detect --languages typescript >/dev/null 2>&1) || true
+if [ -f "$proj/.git/hooks/post-merge" ]; then pass; else fail "post-merge hook not installed in detect mode"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

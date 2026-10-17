@@ -14,7 +14,8 @@ All automation scripts live in the `scripts/` directory. They are written in Bas
 **Usage:**
 
 ```bash
-./scripts/setup.sh
+./scripts/setup.sh [--agents <list>|all|detect] [--languages <list>] [--role <role>] [--workflow] [--dry-run]
+./scripts/setup.sh --help
 ```
 
 Or via Make:
@@ -26,18 +27,40 @@ make setup
 **What it does:**
 
 1. Detects whether it is running inside the standards repo itself or inside a project that uses it as a submodule.
-2. Copies `.cursorrules` to the project root (backs up any existing file).
-3. Copies Cursor custom commands from `.cursor/commands/` to the project.
-4. Installs all AI agent configurations:
+2. Determines which agents to configure: the ones already present in the project (`--agents detect`, the default) or the explicit list you pass.
+3. Assembles each agent's config from the shared content blocks, never clobbering a customized file (see [Safe setup](../getting-started/how-it-works.md)):
+   - `CLAUDE.md` (Claude Code), plus `.claude/settings.json` and the `/merge-standards` skill
+   - `.cursorrules` and `.cursor/commands/` (Cursor)
    - `.github/copilot-instructions.md` (GitHub Copilot)
-   - `.aiderrc` (Aider / Claude Code)
-   - `.codexrc` (OpenAI Codex)
    - `.gemini/GEMINI.md` and `.gemini/settings.json` (Gemini CLI)
-5. Installs a `post-merge` git hook that checks for standards updates.
-6. Runs `setup-git-aliases.sh` to configure global git aliases.
-7. Adds `.cursorrules.backup` and `.standards_tmp/` to `.gitignore`.
+   - `AGENTS.md` (OpenAI Codex)
+   - `.aider-instructions.md` and `.aiderrc` (Aider)
+4. Writes `.standards.yml` (declared languages, agents, role) and `.standards-checksums`.
+5. In detect mode only: installs a `post-merge` git hook that checks for standards updates and runs `setup-git-aliases.sh` to configure global git aliases.
+6. Adds `.cursorrules.backup`, `.standards_tmp/` and `.standards-pending/` to `.gitignore`.
 
-**Flags:** None. The script auto-detects everything from the environment.
+**Flags:**
+
+| Flag | Effect |
+| --- | --- |
+| `--agents <list>` | Comma-separated agents (`claude-code`, `cursor`, `copilot`, `gemini`, `codex`, `aider`), `all`, or `detect` (default). An explicit list installs **only** that agent's artifacts: no git hooks, git aliases, Cursor commands, `.claude/settings.json` or `.gemini/` unless the owning agent is listed. Unknown agent names exit 2. |
+| `--languages <list>` | Comma-separated languages; skips `detect-languages.sh`. |
+| `--role <role>` | Role content block to include (default `service`). |
+| `--workflow` | Also install the opt-in `standards-review.yml` and `trufflehog.yml` workflow templates. |
+| `--dry-run` | Print every write that would happen without modifying anything. |
+| `-h`, `--help` | Print usage and exit 0 without touching the project. |
+
+Unknown options print `Unknown option: <flag>` plus the usage text and exit 2 before anything is written. A value-taking option that is missing its value, given an empty `--flag=` form, or followed by another option (`--languages --help`) also exits 2.
+
+```bash
+# Codex-only project: AGENTS.md plus the standards-owned files
+# (.standards.yml, .standards-checksums, .gitignore entries, .trufflehog-ignore,
+# detected language tool configs); no hooks, aliases, or other agents' files
+.standards/scripts/setup.sh --agents codex
+
+# Claude Code + Cursor with explicit languages
+.standards/scripts/setup.sh --agents claude-code,cursor --languages typescript
+```
 
 ---
 

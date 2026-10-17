@@ -28,10 +28,20 @@ git submodule update --init --recursive
 
 The setup script will:
 
-- Copy `.cursorrules` to your project root
-- Install configuration files for all supported AI agents
+- Detect which AI agents your project already uses and assemble their configs (`CLAUDE.md`, `.cursorrules`, `AGENTS.md`, ...)
+- Write `.standards.yml` and `.standards-checksums`
 - Set up a post-merge git hook that checks for standards updates
 - Configure git aliases for common workflows
+
+To install for a specific agent only, pass `--agents`. An explicit list installs **only** that agent's artifacts: no git hooks, git aliases, Cursor commands, `.claude/settings.json` or `.gemini/` unless the owning agent is listed. Standards-owned files are still written in every mode: `.standards.yml`, `.standards-checksums`, the `.gitignore` entries, `.trufflehog-ignore`, and any tool configs for detected languages (for example `.eslintrc`, `.ruff.toml`).
+
+```bash
+.standards/scripts/setup.sh --agents codex                 # AGENTS.md + standards-owned files
+.standards/scripts/setup.sh --agents claude-code,cursor    # two agents
+.standards/scripts/setup.sh --help                         # all flags
+```
+
+Unknown flags are rejected with exit code 2 before anything is written. See the [scripts reference](../reference/scripts.md) for every flag.
 
 #### Commit the changes
 
