@@ -572,6 +572,75 @@ bash "$REPO_ROOT/scripts/assemble-config.sh" --project-root "$proj" codex \
     "$out" lang-typescript.md role-service.md >/dev/null 2>&1 || true
 if [ -f "$out" ] && grep -q 'tsc -b' "$out"; then pass; else fail "'tsc -b' missing from typescript assembly"; fi
 
+# --- Monorepo members (#179): setup, sync and diff iterate members -------------
+
+# Fixture: root declares members server/ (Python manifest, no member config yet)
+# and web/ (TypeScript, with its own .standards.yml). The root itself has no
+# manifests, so every language must come from the members.
+make_monorepo() {
+    local name="$1"
+    local m
+    m=$(make_project "$name")
+    fake_standards "$m"
+    mkdir -p "$m/server/src" "$m/web/src"
+    printf 'version: 1\nlanguages: []\nagents:\n  - codex\nrole: service\nmembers:\n  - server\n  - web\n' > "$m/.standards.yml"
+    printf '[project]\nname = "server"\n' > "$m/server/pyproject.toml"
+    printf 'version: 1\nlanguages:\n  - typescript\n' > "$m/web/.standards.yml"
+    printf '{"name":"web"}\n' > "$m/web/package.json"
+    printf '{"compilerOptions":{"strict":true}}\n' > "$m/web/tsconfig.json"
+    echo "$m"
+}
+
+echo -n "Test 43: setup.sh keeps members:, unions member languages into the root config and assembles their blocks... "
+proj=$(make_monorepo "setup-members")
+(cd "$proj" && "$SETUP" --agents codex >/dev/null 2>&1) || true
+errs=""
+grep -q '^members:' "$proj/.standards.yml"                       || errs="$errs members-key-dropped"
+grep -q '^  - server$' "$proj/.standards.yml"                     || errs="$errs server-not-listed"
+grep -q '^  - web$' "$proj/.standards.yml"                        || errs="$errs web-not-listed"
+grep -q '^  - python$' "$proj/.standards.yml"                     || errs="$errs python-not-in-root-languages"
+grep -q '^  - typescript$' "$proj/.standards.yml"                 || errs="$errs typescript-not-in-root-languages"
+[ -f "$proj/AGENTS.md" ] && grep -q 'tsc -b' "$proj/AGENTS.md"    || errs="$errs typescript-block-missing"
+[ -f "$proj/AGENTS.md" ] && grep -qi 'ruff' "$proj/AGENTS.md"     || errs="$errs python-block-missing"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 44: setup.sh bootstraps a .standards.yml for a declared member that has none, and leaves an existing one alone... "
+errs=""
+[ -f "$proj/server/.standards.yml" ]                              || errs="$errs server-config-missing"
+grep -q '^  - python$' "$proj/server/.standards.yml" 2>/dev/null  || errs="$errs server-python-missing"
+grep -q '^members:' "$proj/server/.standards.yml" 2>/dev/null     && errs="$errs server-config-has-members"
+[ "$(cat "$proj/web/.standards.yml")" = "$(printf 'version: 1\nlanguages:\n  - typescript')" ] || errs="$errs web-config-rewritten"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 45: setup.sh --dry-run names the member config it would write and writes nothing... "
+proj=$(make_monorepo "setup-members-dry")
+dry_out=$(cd "$proj" && "$SETUP" --agents codex --dry-run 2>&1) || true
+if echo "$dry_out" | grep -q 'server/.standards.yml' && [ ! -e "$proj/server/.standards.yml" ] && [ ! -e "$proj/AGENTS.md" ]; then pass; else
+    fail "dry-run wrote files or did not mention the member config"; fi
+
+echo -n "Test 46: sync-standards.sh unions member languages into the root agent config and lists the members... "
+proj=$(make_monorepo "sync-members")
+printf 'version: 1\nlanguages:\n  - python\n' > "$proj/server/.standards.yml"
+sync_out=$(cd "$proj" && "$SYNC" 2>&1) || true
+errs=""
+echo "$sync_out" | grep -q 'server'                               || errs="$errs server-not-listed"
+echo "$sync_out" | grep -q 'web'                                  || errs="$errs web-not-listed"
+[ -f "$proj/AGENTS.md" ] && grep -q 'tsc -b' "$proj/AGENTS.md"    || errs="$errs typescript-block-missing"
+[ -f "$proj/AGENTS.md" ] && grep -qi 'ruff' "$proj/AGENTS.md"     || errs="$errs python-block-missing"
+if [ -z "$errs" ]; then pass; else fail "$errs: $sync_out"; fi
+
+echo -n "Test 47: diff-standards.sh --exit-code agrees with sync on a monorepo (no drift right after a sync)... "
+diff_rc=0
+(cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code >/dev/null 2>&1) || diff_rc=$?
+if [ "$diff_rc" -eq 0 ]; then pass; else fail "diff-standards reported drift (exit $diff_rc) immediately after sync"; fi
+
+echo -n "Test 48: sync-standards.sh warns about a declared member that does not exist and still completes... "
+printf 'version: 1\nlanguages: []\nagents:\n  - codex\nrole: service\nmembers:\n  - server\n  - ghost\n' > "$proj/.standards.yml"
+sync_rc=0
+sync_out=$(cd "$proj" && "$SYNC" 2>&1) || sync_rc=$?
+if [ "$sync_rc" -eq 0 ] && echo "$sync_out" | grep -qi 'ghost' && echo "$sync_out" | grep -q 'Sync complete'; then pass; else
+    fail "rc=$sync_rc: $sync_out"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

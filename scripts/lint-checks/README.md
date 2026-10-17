@@ -165,6 +165,32 @@ Matches are grepped in batches, skip binaries, and report project-relative
 not satisfy `tests/`, even on a case-insensitive filesystem, so a project that
 passes on macOS also passes on Linux CI.
 
+## Monorepo members
+
+The runner iterates the project root plus every **member** — a sub-root with
+its own `.standards.yml`, declared under `members:` in the root config or
+auto-discovered as `*/.standards.yml` / `*/*/.standards.yml` (hidden
+directories, `node_modules`, `vendor`, `dist`, `build`, `target` and
+`coverage` are never entered; `members: []` disables discovery). Resolution
+lives in [`scripts/lib/members.sh`](../lib/members.sh).
+
+| Scope | Checks | Where they run |
+| --- | --- | --- |
+| Repo-wide | `conventional-commits`, `ci-workflow-hygiene`, `headless-ci`, `no-secrets`, `doc-lint` | Once, at the root (history, CI definitions and every tracked file are repository properties) |
+| Project | `coverage-config`, `quarantine-policy`, `test-directory-structure` | In every member, against that member's `.standards.yml`; also at the root unless the root declares no languages and has members (a pure aggregator) |
+| Language | `python/*`, `typescript/*`, `rust/*`, … | In every member, for the languages its own `.standards.yml` declares (the root's `languages:` governs the root) |
+
+Each member's `lint.exclude` applies to its own scans. Under `--since` /
+`--changed` the changed-file list is re-based onto each member (`server/src/x.py`
+becomes `src/x.py` for `server/`), so a member's file-scanning checks still see
+their files. Results are aggregated into one report: every JSON and SARIF
+result carries a `member` field (`.` for the root; the SARIF artifact location
+is the member directory), the JSON object lists `members`, and text output
+groups results under a heading per member. A declared member whose directory
+is missing, or that has no `.standards.yml`, is a `WARN` finding under the
+synthetic `members` check. Paths must stay inside the root: absolute entries
+and `..` are rejected with a note on stderr.
+
 ### Runner flags for PR runs
 
 | Flag | Effect |

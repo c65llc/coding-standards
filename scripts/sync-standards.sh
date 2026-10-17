@@ -87,6 +87,10 @@ source "$SCRIPT_DIR/lib/assembly.sh"
 # shellcheck source=lib/languages.sh disable=SC1091
 source "$SCRIPT_DIR/lib/languages.sh"
 
+# Monorepo members (shared: scripts/lib/members.sh)
+# shellcheck source=lib/members.sh disable=SC1091
+source "$SCRIPT_DIR/lib/members.sh"
+
 # Function to sync AI agent configurations
 sync_ai_agents() {
     local STANDARDS_DIR="$1"
@@ -451,9 +455,34 @@ else
     echo "⚠️  No .standards.yml or .standards-config found. Running auto-detection (default role: service)."
 fi
 
-# If no languages from config, try auto-detection
+# Monorepo members (#179): declared in the root .standards.yml or
+# auto-discovered. The root agent configs are assembled from the union of the
+# root's languages and every member's, so an agent that only reads the root
+# file (Cursor, Copilot, Aider) still sees each member's language rules.
+MEMBERS=$(resolve_members "$PROJECT_ROOT" | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+
+# If no languages from config, try auto-detection (members are skipped: each
+# contributes its own languages below).
 if [ -z "$DETECTED_LANGS" ] && [ -x "$SCRIPT_DIR/detect-languages.sh" ]; then
-    DETECTED_LANGS=$("$SCRIPT_DIR/detect-languages.sh" "$PROJECT_ROOT")
+    detect_args=()
+    for m in $MEMBERS; do detect_args+=(--skip "$m"); done
+    DETECTED_LANGS=$("$SCRIPT_DIR/detect-languages.sh" ${detect_args[@]+"${detect_args[@]}"} "$PROJECT_ROOT")
+fi
+
+if [ -n "$MEMBERS" ]; then
+    echo "📦 Members:"
+    for m in $MEMBERS; do
+        if problem=$(member_problem "$PROJECT_ROOT" "$m"); then
+            echo "   - $m ($(member_languages "$PROJECT_ROOT" "$m" "$SCRIPT_DIR/detect-languages.sh"))"
+        else
+            echo "   ⚠️  $m: $problem"
+            if [ -d "$PROJECT_ROOT/$m" ]; then
+                echo "        languages detected: $(member_languages "$PROJECT_ROOT" "$m" "$SCRIPT_DIR/detect-languages.sh")"
+            fi
+        fi
+    done
+    DETECTED_LANGS=$(aggregate_member_languages "$PROJECT_ROOT" "$DETECTED_LANGS" "$MEMBERS" "$SCRIPT_DIR/detect-languages.sh")
+    echo "🧩 Languages across root and members: ${DETECTED_LANGS:-(none)}"
 fi
 
 # Default agents list if not in config

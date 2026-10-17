@@ -79,6 +79,21 @@ out=$(python3 "$FORMATTER" '{"results":[{"status":"WARN","check":"naming","messa
 expected="| :warning: WARN | naming | line1 line2 |"
 assert_eq "newlines in message flatten to spaces" "$expected" "$out"
 
+# Test 11: a member other than the root prefixes the check name (monorepo runs, #179)
+out=$(python3 "$FORMATTER" '{"results":[{"status":"FAIL","check":"python/banned-functions","member":"server","message":"eval found"}]}')
+expected="| :x: FAIL | server: python/banned-functions | eval found |"
+assert_eq "member prefixes the check name" "$expected" "$out"
+
+# Test 12: the root member (".") and a missing member field render the bare check name
+out=$(python3 "$FORMATTER" '{"results":[{"status":"PASS","check":"no-secrets","member":".","message":"ok"},{"status":"PASS","check":"naming","message":"ok"}]}')
+expected=$(printf '| :white_check_mark: PASS | no-secrets | ok |\n| :white_check_mark: PASS | naming | ok |')
+assert_eq "root member and absent member render the bare check" "$expected" "$out"
+
+# Test 13: a member value containing a pipe cannot break the table
+out=$(python3 "$FORMATTER" '{"results":[{"status":"WARN","check":"c","member":"a|b","message":"m"}]}')
+expected="| :warning: WARN | a\\|b: c | m |"
+assert_eq "pipe in member is escaped" "$expected" "$out"
+
 echo ""
 echo "format-results.py tests: $PASS passed, $FAIL failed"
 

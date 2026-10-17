@@ -35,7 +35,7 @@ make setup
    - `.gemini/GEMINI.md` and `.gemini/settings.json` (Gemini CLI)
    - `AGENTS.md` (OpenAI Codex)
    - `.aider-instructions.md` and `.aiderrc` (Aider)
-4. Writes `.standards.yml` (declared languages, agents, role) and `.standards-checksums`.
+4. Writes `.standards.yml` (declared languages, agents, role; a declared `members:` list is preserved) and `.standards-checksums`. In a monorepo the languages are the union of the root's and every member's (see [Monorepos: Members](../guides/customization.md#monorepos-members)), and a declared member without a `.standards.yml` gets one bootstrapped with the languages detected in it.
 5. In detect mode only: installs a `post-merge` git hook that checks for standards updates and runs `setup-git-aliases.sh` to configure global git aliases.
 6. Adds `.cursorrules.backup`, `.standards_tmp/` and `.standards-pending/` to `.gitignore`.
 
@@ -92,7 +92,7 @@ make sync-standards
 
 1. Refuses to run when the project root resolves to `.standards/` (i.e. you ran it from inside the submodule, as the old `make -C .standards sync-standards` wrapper did). Run it from the project root instead.
 2. If a `.standards` submodule exists, fetches from the remote and pulls if there are new commits. An unreachable remote is a warning, not a failure — the sync continues from the local checkout.
-3. Reads `agents:`, `languages:` and `role:` from `.standards.yml` (falls back to the legacy `.standards-config`, then to all agents + language auto-detection).
+3. Reads `agents:`, `languages:`, `role:` and `members:` from `.standards.yml` (falls back to the legacy `.standards-config`, then to all agents + language auto-detection). Members (declared, or auto-discovered `*/.standards.yml`) are listed with their languages, and their languages are added to the root's for the assembly step; a declared member that does not exist is a warning, not a failure.
 4. Re-assembles one config per declared agent (`CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `.aider-instructions.md`). Customized files are staged to `.standards-pending/` instead of being overwritten.
 5. Installs agent-specific extras **only for declared agents**: Cursor custom commands (`cursor`), `.gemini/settings.json` (`gemini`, JSON-validated first), `.claude/settings.json` and the `/merge-standards` skill (`claude-code`).
 6. Syncs language-specific tool configs for detected languages.
@@ -126,7 +126,7 @@ make diff-standards
 **What it does:**
 
 1. Refuses to run from inside `.standards/` (same guard as `sync-standards.sh`).
-2. Assembles each declared agent config to a temp file and prints a unified diff against the installed file (`+ Would create` for missing ones).
+2. Assembles each declared agent config to a temp file and prints a unified diff against the installed file (`+ Would create` for missing ones). Members contribute their languages exactly as in `sync-standards.sh`, so the gate below agrees with a sync.
 3. Prints a summary and, when changes are pending, the exact command to apply them (`./.standards/scripts/sync-standards.sh`).
 
 Use it as a CI gate:
@@ -135,6 +135,54 @@ Use it as a CI gate:
 - name: Agent configs match the standards
   run: ./.standards/scripts/diff-standards.sh --exit-code
 ```
+
+---
+
+## detect-languages.sh
+
+**Purpose:** Detect a project's languages from manifest files. Feeds `setup.sh`, `sync-standards.sh`, `doctor.sh` and `build-claude-settings.sh`.
+
+**Usage:**
+
+```bash
+./scripts/detect-languages.sh [--root-only] [--skip <dir>]... [/path/to/project]
+```
+
+Prints one language key per line (`python`, `rust`, `ruby`, `rails`, `javascript`, `typescript`, `jvm`, `java`, `kotlin`, `swift`, `dart`, `zig`, `go`, `elixir`, `cpp`), each at most once, root first. Besides the project root it inspects the conventional monorepo sub-roots `apps/*`, `packages/*`, `crates/*`, `core`, `server`, `web` and `shells/*` for `Cargo.toml`, `tsconfig*.json`, `package.json`, `Package.swift`, `pyproject.toml`, `go.mod`, `mix.exs`, `CMakeLists.txt` and the other manifests, so a Rust core + SwiftUI shell + TypeScript workers repository detects all three instead of `javascript` alone.
+
+| Flag | Effect |
+| --- | --- |
+| `--root-only` | Inspect only the project root. |
+| `--skip <dir>` | Do not inspect this root-relative sub-root (repeatable). The member-aware scripts pass every declared member so its languages come from its own `.standards.yml`. |
+
+`cpp` (from `CMakeLists.txt`) has no standards document yet: agent assembly and `lint-standards.sh` ignore the key, and `doctor.sh` reports it as unsupported when declared.
+
+---
+
+## lint-standards.sh
+
+**Purpose:** Standards compliance linter. Module reference, exclusion rules and PR-mode flags: [scripts/lint-checks/README.md](https://github.com/c65llc/coding-standards/blob/main/scripts/lint-checks/README.md).
+
+**Usage:**
+
+```bash
+./scripts/lint-standards.sh [--format text|json|sarif] [--since <ref> | --changed] [--timeout <secs>] [--fail-on-timeout] [project-root]
+```
+
+In a monorepo the runner iterates the root plus every member (`members:` in `.standards.yml`, or auto-discovered `*/.standards.yml`): repo-wide checks once at the root, project and language checks per member against that member's own config, one aggregated report. Every JSON and SARIF result carries a `member` field (`.` for the root; the SARIF artifact location is the member directory), the JSON object lists `members`, and text output groups results per member. See [Monorepos: Members](../guides/customization.md#monorepos-members).
+
+---
+
+## doctor.sh
+
+**Purpose:** Standards health check — configuration, members, agent configs, checksums, languages, submodule, git hooks, `.aiderrc` drift, Postgres MCP, `.gitignore` entries. Exit 1 on any `FAIL`.
+
+```bash
+./scripts/doctor.sh
+make doctor
+```
+
+The `Languages` check compares what `detect-languages.sh` finds with what `.standards.yml` declares, for the root (member directories skipped) and for each member (`Languages (server)`). It warns about a supported language that is detected but not declared, and about a declared key that has no standards document or lint checks (`cpp`): agent assembly and the linter silently ignore such a key. The `Members` check fails on a declared member whose directory is missing and warns on one without a `.standards.yml`.
 
 ---
 

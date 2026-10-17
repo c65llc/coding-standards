@@ -284,7 +284,7 @@ yaml_nested_list() {
 }
 
 # Read .standards.yml or fall back to .standards-config
-# Sets global variables: STD_LANGUAGES, STD_AGENTS, STD_ROLE, STD_VERSION, STD_COVERAGE_MIN, STD_COVERAGE_DOMAIN, STD_ARCHITECTURE, STD_SECURITY, STD_LINT_EXCLUDE
+# Sets global variables: STD_LANGUAGES, STD_AGENTS, STD_ROLE, STD_VERSION, STD_COVERAGE_MIN, STD_COVERAGE_DOMAIN, STD_ARCHITECTURE, STD_SECURITY, STD_LINT_EXCLUDE, STD_MEMBERS
 read_standards_config() {
     local project_root="$1"
     local yml="$project_root/.standards.yml"
@@ -294,6 +294,9 @@ read_standards_config() {
         STD_VERSION=$(yaml_get "version" "$yml")
         STD_LANGUAGES=$(yaml_list "languages" "$yml")
         STD_AGENTS=$(yaml_list "agents" "$yml")
+        # members: root-relative sub-roots with their own .standards.yml (#179).
+        # Raw values; scripts/lib/members.sh normalizes and validates them.
+        STD_MEMBERS=$(yaml_list "members" "$yml" | sed 's/[[:space:]]*$//')
         STD_ROLE=$(yaml_get "role" "$yml")
         STD_COVERAGE_MIN=$(yaml_nested_get "coverage" "minimum" "$yml")
         STD_COVERAGE_DOMAIN=$(yaml_nested_get "coverage" "domain" "$yml")
@@ -332,6 +335,7 @@ read_standards_config() {
         STD_ARCHITECTURE="clean"
         STD_SECURITY="strict"
         STD_LINT_EXCLUDE=""
+        STD_MEMBERS=""
         return 0
     else
         return 1

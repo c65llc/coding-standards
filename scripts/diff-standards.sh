@@ -97,6 +97,10 @@ fi
 # shellcheck source=lib/languages.sh disable=SC1091
 source "$SCRIPT_DIR/lib/languages.sh"
 
+# Monorepo members (shared: scripts/lib/members.sh)
+# shellcheck source=lib/members.sh disable=SC1091
+source "$SCRIPT_DIR/lib/members.sh"
+
 # ---------------------------------------------------------------------------
 # Locate standards directories
 # ---------------------------------------------------------------------------
@@ -160,6 +164,14 @@ AGENTS_LIST="${STD_AGENTS:-}"
 # Default agents if not in config
 if [ -z "$AGENTS_LIST" ]; then
     AGENTS_LIST="claude-code cursor copilot gemini codex aider"
+fi
+
+# Members contribute their languages to the root assembly, exactly as
+# sync-standards.sh does — otherwise this diff would report drift forever.
+MEMBERS=$(resolve_members "$PROJECT_ROOT" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+if [ -n "$MEMBERS" ]; then
+    DETECTED_LANGS=$(aggregate_member_languages "$PROJECT_ROOT" "$DETECTED_LANGS" "$MEMBERS" "$SCRIPT_DIR/detect-languages.sh")
+    printf "  %s\n\n" "Members: ${MEMBERS// /, } (languages: ${DETECTED_LANGS:-none})"
 fi
 
 # Build block arguments
