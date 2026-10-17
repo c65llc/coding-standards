@@ -412,31 +412,34 @@ check_catalog() {
     local catalog="$STANDARDS_DIR/$STANDARDS_CATALOG_FILE"
     local p rel stale="" uncatalogued=""
 
-    if [ ! -f "$catalog" ]; then
-        report_warn "catalog" "standards/$STANDARDS_CATALOG_FILE not found (descriptions fall back to H1 titles)"
-        return
-    fi
-
-    while IFS= read -r p; do
-        [ -n "$p" ] || continue
-        [ -f "$STANDARDS_DIR/$p" ] || stale="$stale $p"
-    done <<EOF
+    # A missing catalog is only a warning for descriptions (H1 titles are
+    # used), but the language-trigger check below still runs against it and
+    # fails for every language standard, so deleting the file cannot turn
+    # the detection maps into "<Language> source files" unnoticed.
+    if [ -f "$catalog" ]; then
+        while IFS= read -r p; do
+            [ -n "$p" ] || continue
+            [ -f "$STANDARDS_DIR/$p" ] || stale="$stale $p"
+        done <<EOF
 $(standards_catalog_paths "$STANDARDS_DIR")
 EOF
-    if [ -z "$stale" ]; then
-        report_pass "catalog" "every catalog row points at an existing standards file"
-    else
-        report_fail "catalog" "standards/$STANDARDS_CATALOG_FILE lists file(s) that do not exist:$stale"
-    fi
+        if [ -z "$stale" ]; then
+            report_pass "catalog" "every catalog row points at an existing standards file"
+        else
+            report_fail "catalog" "standards/$STANDARDS_CATALOG_FILE lists file(s) that do not exist:$stale"
+        fi
 
-    # Lookups take the first matching row, so a duplicate path would have its
-    # later description/triggers silently ignored.
-    local dups
-    dups=$(standards_catalog_paths "$STANDARDS_DIR" | LC_ALL=C sort | uniq -d | tr '\n' ' ')
-    if [ -z "$dups" ]; then
-        report_pass "catalog" "every catalog path is unique"
+        # Lookups take the first matching row, so a duplicate path would have
+        # its later description/triggers silently ignored.
+        local dups
+        dups=$(standards_catalog_paths "$STANDARDS_DIR" | LC_ALL=C sort | uniq -d | tr '\n' ' ')
+        if [ -z "$dups" ]; then
+            report_pass "catalog" "every catalog path is unique"
+        else
+            report_fail "catalog" "standards/$STANDARDS_CATALOG_FILE has duplicate row(s) for: ${dups% }"
+        fi
     else
-        report_fail "catalog" "standards/$STANDARDS_CATALOG_FILE has duplicate row(s) for: ${dups% }"
+        report_warn "catalog" "standards/$STANDARDS_CATALOG_FILE not found (descriptions fall back to H1 titles)"
     fi
 
     while IFS= read -r rel; do
@@ -465,6 +468,8 @@ $(list_standards_files "$STANDARDS_DIR" languages)
 EOF
     if [ -z "$untriggered" ]; then
         report_pass "catalog" "every language standard has catalog triggers"
+    elif [ ! -f "$catalog" ]; then
+        report_fail "catalog" "standards/$STANDARDS_CATALOG_FILE is missing, so no language standard has triggers (detection maps would say '<Language> source files'):$untriggered"
     else
         report_fail "catalog" "language standard(s) without a triggers column in standards/$STANDARDS_CATALOG_FILE (detection maps would say '<Language> source files'):$untriggered"
     fi

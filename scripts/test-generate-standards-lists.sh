@@ -477,7 +477,20 @@ else
 $out"
 fi
 
-echo -n "Test 36: temporaries live under .standards_tmp and are cleaned up... "
+echo -n "Test 36: --check FAILs (not just WARNs) when the whole catalog is deleted... "
+nocat=$(make_fixture "check-no-catalog")
+rm -f "$nocat/standards/catalog.tsv"
+"$GEN" --root "$nocat" >/dev/null 2>&1
+out=$("$GEN" --root "$nocat" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^WARN catalog .*not found' \
+   && echo "$out" | grep -q '^FAIL catalog .*catalog.tsv is missing.*languages/lang-01_python_standards.md'; then
+    pass
+else
+    fail "missing catalog did not fail the check (rc=$rc):
+$out"
+fi
+
+echo -n "Test 37: temporaries live under .standards_tmp and are cleaned up... "
 tmpfx=$(make_fixture "tmpdir")
 "$GEN" --root "$tmpfx" >/dev/null 2>&1
 if [ -d "$tmpfx/.standards_tmp" ] && [ -z "$(ls -A "$tmpfx/.standards_tmp")" ] \
@@ -489,19 +502,19 @@ fi
 
 # --- Dogfood: the real repository ----------------------------------------------
 
-echo -n "Test 37: the repo's own agent configs pass --check (no drift)... "
+echo -n "Test 38: the repo's own agent configs pass --check (no drift)... "
 out=$("$GEN" --root "$REPO_ROOT" --check 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass; else fail "repo is out of sync — run make generate-standards-lists:
 $out"; fi
 
-echo -n "Test 38: every real agent config carries a generated standards-list region... "
+echo -n "Test 39: every real agent config carries a generated standards-list region... "
 missing=""
 for f in .cursorrules .github/copilot-instructions.md .gemini/GEMINI.md AGENTS.md CLAUDE.md standards/README.md; do
     grep -qF -- "$BEGIN_LIST" "$REPO_ROOT/$f" || missing="$missing $f"
 done
 if [ -z "$missing" ]; then pass; else fail "no standards-list region in:$missing"; fi
 
-echo -n "Test 39: every real language standard has catalog triggers (no name fallback in detection maps)... "
+echo -n "Test 40: every real language standard has catalog triggers (no name fallback in detection maps)... "
 if grep -q 'source files →' "$REPO_ROOT/.cursorrules"; then
     fail "a language is missing its triggers column in standards/catalog.tsv"
 else
