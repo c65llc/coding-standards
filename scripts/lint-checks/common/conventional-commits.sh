@@ -109,10 +109,10 @@ if [ -n "$SINCE" ]; then
         echo "WARN $CHECK_NAME Ref '$SINCE' not found — cannot check commits since it (fetch it, or fix commits.since)"
         exit 2
     fi
-    subjects=$(git -C "$PROJECT_ROOT" log --no-merges --format=%s "${SINCE}..HEAD" 2>/dev/null)
+    subjects=$(git -C "$PROJECT_ROOT" log --no-merges --format='%H %s' "${SINCE}..HEAD" 2>/dev/null)
     range_desc="commits since $SINCE"
 else
-    subjects=$(git -C "$PROJECT_ROOT" log --no-merges --format=%s -n "$WINDOW" 2>/dev/null)
+    subjects=$(git -C "$PROJECT_ROOT" log --no-merges --format='%H %s' -n "$WINDOW" 2>/dev/null)
     range_desc="commits (window $WINDOW)"
 fi
 
@@ -122,9 +122,18 @@ bad_scope=0
 example=""
 bad_scopes=""
 
-while IFS= read -r subject; do
-    [ -z "$subject" ] && continue
+# Each line is "<hash> <subject>" so a commit with an empty subject
+# (--allow-empty-message) still occupies a line and is counted as a violation.
+while IFS= read -r line; do
+    [ -z "$line" ] && continue
     total=$((total + 1))
+    subject="${line#* }"
+    [ "$subject" = "$line" ] && subject=""
+    if [ -z "$subject" ]; then
+        bad_format=$((bad_format + 1))
+        [ -z "$example" ] && example="(empty subject)"
+        continue
+    fi
     if cc_is_exempt "$subject"; then
         continue
     fi

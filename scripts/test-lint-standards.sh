@@ -1259,6 +1259,32 @@ if echo "$out" | grep 'Git Hooks' | grep -q 'does not run the standards sync' \
    && echo "$out2" | grep 'Git Hooks' | grep -q 'post-merge hook contains standards sync'; then pass; else
     fail "lefthook post-merge content check wrong: [$(echo "$out" | grep post-merge)] [$(echo "$out2" | grep post-merge)]"; fi
 
+echo -n "Test 103: commits with an empty subject (--allow-empty-message) count as violations... "
+em=$(make_project "cc-empty-subject")
+( cd "$em" && git -c user.email="t@t.local" -c user.name="T" commit -q --allow-empty --allow-empty-message -m "" )
+out=$(bash "$CC_MOD" "$em" 2>/dev/null || true)
+if echo "$out" | grep -qE '^(WARN|FAIL) conventional-commits 1 of 2' && echo "$out" | grep -q 'empty subject'; then pass; else
+    fail "empty subject not counted: $out"; fi
+
+echo -n "Test 104: check-commit-message.sh honours core.commentChar when stripping comment lines... "
+cc=$(make_project "cc-commentchar")
+( cd "$cc" && git config core.commentChar ';' )
+printf '; Please enter the commit message\nfeat(api): after a custom comment line\n' > "$TMP_BASE/msg-cc"
+printf '# not a comment with commentChar=;\n' > "$TMP_BASE/msg-cc2"
+if bash "$CHK" --project-root "$cc" --file "$TMP_BASE/msg-cc" >/dev/null 2>&1 \
+   && ! bash "$CHK" --project-root "$cc" --file "$TMP_BASE/msg-cc2" >/dev/null 2>&1; then pass; else
+    fail "core.commentChar not honoured"; fi
+
+echo -n "Test 105: check-commit-message.sh keeps '#' lines when commit.cleanup is verbatim/whitespace... "
+vb=$(make_project "cc-verbatim")
+( cd "$vb" && git config commit.cleanup verbatim )
+printf '# this line is kept verbatim and is the subject\nfeat: decoy\n' > "$TMP_BASE/msg-vb"
+# With default cleanup (strip) the same file is fine: the '#' line is dropped
+# and "feat: decoy" becomes the subject.
+if ! bash "$CHK" --project-root "$vb" --file "$TMP_BASE/msg-vb" >/dev/null 2>&1 \
+   && bash "$CHK" --project-root "$em" --file "$TMP_BASE/msg-vb" >/dev/null 2>&1; then pass; else
+    fail "commit.cleanup=verbatim not honoured"; fi
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"

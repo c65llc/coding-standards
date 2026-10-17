@@ -89,6 +89,9 @@ runs:
         fi
         if [ -f "$LINTER" ]; then
           chmod +x "$LINTER"
+          if [ "${GITHUB_EVENT_NAME:-}" = "pull_request_target" ]; then
+            echo "::warning::pull_request_target checks out the base branch by default, so these content checks are inspecting the base, not the PR head. Keep this job metadata-only (PR title) and lint PR content from a pull_request job; see templates/standards-review.yml.example."
+          fi
           # On a PR, default the conventional-commits range to the PR base so the
           # PR is judged on its own commits (.standards.yml commits.* still wins).
           if [ -n "$PR_BASE_REF" ] && git rev-parse --verify --quiet "origin/$PR_BASE_REF^{commit}" >/dev/null 2>&1; then

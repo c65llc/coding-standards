@@ -107,6 +107,7 @@ commands but never installs a hook manager for you:
 
 ```bash
 # husky (v9+)
+npx husky init   # once, if .husky/ does not exist yet
 cp .standards/templates/husky-commit-msg.example .husky/commit-msg
 chmod +x .husky/commit-msg
 

@@ -674,13 +674,31 @@ fi
 
 # Conventional Commits commit-msg hook templates — never auto-installed: the
 # hook manager is a project decision, so setup only prints how to adopt one.
+LEFTHOOK_CFG=""
+for _lh in lefthook.yml lefthook.yaml .lefthook.yml .lefthook.yaml; do
+    if [ -f "$PROJECT_ROOT/$_lh" ]; then
+        LEFTHOOK_CFG="$_lh"
+        break
+    fi
+done
 if [ -f "$STANDARDS_DIR/templates/husky-commit-msg.example" ] \
-   && [ ! -f "$PROJECT_ROOT/.husky/commit-msg" ] \
-   && [ ! -f "$PROJECT_ROOT/lefthook.yml" ] && [ ! -f "$PROJECT_ROOT/.lefthook.yml" ]; then
-    echo "ℹ️  Conventional Commits commit-msg hook templates available (not auto-installed):"
-    echo "   husky:    cp $STANDARDS_DIR/templates/husky-commit-msg.example .husky/commit-msg && chmod +x .husky/commit-msg"
-    echo "   lefthook: cp $STANDARDS_DIR/templates/lefthook.yml.example lefthook.yml && lefthook install"
-    echo "   Note: squash-merge uses the PR title; the standards-review action checks it in CI."
+   && [ ! -f "$PROJECT_ROOT/.husky/commit-msg" ]; then
+    if [ -n "$LEFTHOOK_CFG" ]; then
+        # Already on lefthook: do not suggest a second config file.
+        if ! grep -qE '^commit-msg:' "$PROJECT_ROOT/$LEFTHOOK_CFG" 2>/dev/null; then
+            echo "ℹ️  $LEFTHOOK_CFG has no commit-msg hook. Merge the commit-msg block from"
+            echo "   $STANDARDS_DIR/templates/lefthook.yml.example into $LEFTHOOK_CFG, then: lefthook install"
+        fi
+    else
+        echo "ℹ️  Conventional Commits commit-msg hook templates available (not auto-installed):"
+        if [ -d "$PROJECT_ROOT/.husky" ]; then
+            echo "   husky:    cp $STANDARDS_DIR/templates/husky-commit-msg.example .husky/commit-msg && chmod +x .husky/commit-msg"
+        else
+            echo "   husky:    npx husky init && cp $STANDARDS_DIR/templates/husky-commit-msg.example .husky/commit-msg && chmod +x .husky/commit-msg"
+        fi
+        echo "   lefthook: cp $STANDARDS_DIR/templates/lefthook.yml.example lefthook.yml && lefthook install"
+        echo "   Note: squash-merge uses the PR title; the standards-review action checks it in CI."
+    fi
 fi
 
 # Install standards review workflow template

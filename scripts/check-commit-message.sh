@@ -95,8 +95,23 @@ if [ -n "$MSG_FILE" ]; then
         echo "error: commit message file not found: $MSG_FILE" >&2
         exit 2
     fi
-    # First non-empty, non-comment line is the subject (git strips '#' lines later).
-    subject=$(grep -v '^#' "$MSG_FILE" | grep -m1 . || true)
+    # The subject is the first non-empty line git will keep. Git drops comment
+    # lines (core.commentChar, default '#') only under the strip/scissors
+    # cleanup modes; with commit.cleanup=verbatim or whitespace they stay in
+    # the message, so the first non-empty line is the subject as written.
+    comment_char=$(git -C "$PROJECT_ROOT" config --get core.commentChar 2>/dev/null)
+    case "$comment_char" in
+        ''|auto) comment_char='#' ;;
+    esac
+    cleanup=$(git -C "$PROJECT_ROOT" config --get commit.cleanup 2>/dev/null)
+    case "$cleanup" in
+        verbatim|whitespace)
+            subject=$(grep -m1 . "$MSG_FILE" || true)
+            ;;
+        *)
+            subject=$(awk -v c="$comment_char" 'substr($0, 1, 1) != c' "$MSG_FILE" | grep -m1 . || true)
+            ;;
+    esac
 elif [ -n "$MESSAGE" ]; then
     subject=$(printf '%s\n' "$MESSAGE" | grep -m1 . || true)
 else
