@@ -1268,22 +1268,42 @@ if echo "$out" | grep -qE '^(WARN|FAIL) conventional-commits 1 of 2' && echo "$o
 
 echo -n "Test 104: check-commit-message.sh honours core.commentChar when stripping comment lines... "
 cc=$(make_project "cc-commentchar")
-( cd "$cc" && git config core.commentChar ';' )
+( cd "$cc" && git config core.commentChar ';' && git config commit.cleanup strip )
 printf '; Please enter the commit message\nfeat(api): after a custom comment line\n' > "$TMP_BASE/msg-cc"
 printf '# not a comment with commentChar=;\n' > "$TMP_BASE/msg-cc2"
 if bash "$CHK" --project-root "$cc" --file "$TMP_BASE/msg-cc" >/dev/null 2>&1 \
    && ! bash "$CHK" --project-root "$cc" --file "$TMP_BASE/msg-cc2" >/dev/null 2>&1; then pass; else
     fail "core.commentChar not honoured"; fi
 
-echo -n "Test 105: check-commit-message.sh keeps '#' lines when commit.cleanup is verbatim/whitespace... "
+echo -n "Test 105: check-commit-message.sh strips '#' lines only under commit.cleanup=strip... "
 vb=$(make_project "cc-verbatim")
 ( cd "$vb" && git config commit.cleanup verbatim )
-printf '# this line is kept verbatim and is the subject\nfeat: decoy\n' > "$TMP_BASE/msg-vb"
-# With default cleanup (strip) the same file is fine: the '#' line is dropped
-# and "feat: decoy" becomes the subject.
+st=$(make_project "cc-strip")
+( cd "$st" && git config commit.cleanup strip )
+printf '# this line is kept unless cleanup is strip\nfeat: decoy\n' > "$TMP_BASE/msg-vb"
+# verbatim keeps the '#' line (reject); unset cleanup is ambiguous (-m keeps
+# it) so it is also kept (reject); explicit strip drops it (accept).
 if ! bash "$CHK" --project-root "$vb" --file "$TMP_BASE/msg-vb" >/dev/null 2>&1 \
-   && bash "$CHK" --project-root "$em" --file "$TMP_BASE/msg-vb" >/dev/null 2>&1; then pass; else
-    fail "commit.cleanup=verbatim not honoured"; fi
+   && ! bash "$CHK" --project-root "$em" --file "$TMP_BASE/msg-vb" >/dev/null 2>&1 \
+   && bash "$CHK" --project-root "$st" --file "$TMP_BASE/msg-vb" >/dev/null 2>&1; then pass; else
+    fail "commit.cleanup handling wrong"; fi
+
+echo -n "Test 106: check-commit-message.sh resolves core.commentChar=auto from the message file... "
+au=$(make_project "cc-auto")
+( cd "$au" && git config core.commentChar auto && git config commit.cleanup strip )
+# User lines start with '#', so git chose ';' for its comments: the '#' line is
+# part of the message and must be judged (reject), not stripped.
+printf '# user heading, not a comment\nfeat: decoy\n; Please enter the commit message\n;\n' > "$TMP_BASE/msg-auto1"
+# No user line starts with '#', so git used '#': strip those and accept.
+printf 'feat(auto): ok\n# Please enter the commit message\n#\n' > "$TMP_BASE/msg-auto2"
+if ! bash "$CHK" --project-root "$au" --file "$TMP_BASE/msg-auto1" >/dev/null 2>&1 \
+   && bash "$CHK" --project-root "$au" --file "$TMP_BASE/msg-auto2" >/dev/null 2>&1; then pass; else
+    fail "commentChar=auto not resolved"; fi
+
+echo -n "Test 107: conventional-commits rejects empty --since / --window operands (exit 2)... "
+bash "$CC_MOD" --since "" "$win" >/dev/null 2>&1; rc1=$?
+bash "$CC_MOD" --window "" "$win" >/dev/null 2>&1; rc2=$?
+if [ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ]; then pass; else fail "expected exit 2 for empty operands, got $rc1/$rc2"; fi
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

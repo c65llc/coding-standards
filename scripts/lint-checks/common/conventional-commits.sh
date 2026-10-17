@@ -36,23 +36,27 @@ WINDOW=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --since)
-            SINCE="${2:-}"
-            shift
-            [ $# -gt 0 ] && shift
+        --since|--since=*)
+            case "$1" in
+                --since=*) SINCE="${1#--since=}"; shift ;;
+                *) SINCE="${2:-}"; shift; [ $# -gt 0 ] && shift ;;
+            esac
+            # An empty operand (e.g. --since "$UNSET_VAR") must not silently
+            # fall back to the window and report PASS on the wrong range.
+            if [ -z "$SINCE" ]; then
+                echo "WARN $CHECK_NAME --since requires a ref (got an empty value)"
+                exit 2
+            fi
             ;;
-        --since=*)
-            SINCE="${1#--since=}"
-            shift
-            ;;
-        --window)
-            WINDOW="${2:-}"
-            shift
-            [ $# -gt 0 ] && shift
-            ;;
-        --window=*)
-            WINDOW="${1#--window=}"
-            shift
+        --window|--window=*)
+            case "$1" in
+                --window=*) WINDOW="${1#--window=}"; shift ;;
+                *) WINDOW="${2:-}"; shift; [ $# -gt 0 ] && shift ;;
+            esac
+            if [ -z "$WINDOW" ]; then
+                echo "WARN $CHECK_NAME --window requires a positive integer (got an empty value)"
+                exit 2
+            fi
             ;;
         -*)
             echo "WARN $CHECK_NAME Unknown option '$1' (expected --since <ref> or --window <n>)"

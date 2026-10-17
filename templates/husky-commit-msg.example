@@ -20,8 +20,10 @@ if [ -x "$STANDARDS_DIR/scripts/check-commit-message.sh" ]; then
     exec "$STANDARDS_DIR/scripts/check-commit-message.sh" --file "$1"
 fi
 
-# Fallback (standards submodule not checked out): format-only check.
-subject=$(grep -v '^#' "$1" | grep -m1 .)
+# Fallback (standards submodule not checked out): format-only check on the
+# first non-empty line. (check-commit-message.sh additionally honours
+# core.commentChar / commit.cleanup when deciding which lines git will drop.)
+subject=$(grep -m1 . "$1")
 case "$subject" in
     "fixup! "*|"squash! "*|"amend! "*|"Merge "*|"Revert \""*) exit 0 ;;
 esac

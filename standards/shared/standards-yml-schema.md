@@ -132,6 +132,29 @@ Test governance settings (proc-05).
 
 ---
 
+### `commits`
+
+Type: object
+
+Conventional Commits enforcement (proc-02 § 2). Read by the `conventional-commits` lint module, by `scripts/check-commit-message.sh` (commit-msg hooks and the standards-review PR-title check), and shared through `scripts/lib/conventional-commits.sh` so the three cannot drift.
+
+| Sub-field | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `window` | integer (≥ 1) | `50` | Inspect the last N non-merge commits. Ignored whenever a range applies (see precedence). |
+| `since` | string (git ref) | none | Inspect `<ref>..HEAD` instead of a window. An unknown ref is a `WARN`, not a crash. |
+| `scopes` | list of strings | none | Allow-list for scoped commits (`feat(api): …` must use a listed scope); unscoped commits always pass. Inline `[a, b]` and block lists are both accepted. |
+
+Range precedence: `--since` / `--window` flags > `commits.since` > `STANDARDS_COMMITS_SINCE` (the standards-review action sets it to `origin/<pr-base>`) > `commits.window` > default `50`. A range from any source beats a window, so a pinned `window` never widens a PR check to unrelated mainline history.
+
+```yaml
+commits:
+  window: 50
+  # since: origin/main
+  scopes: [api, domain, ui]
+```
+
+---
+
 ### `architecture`
 
 Type: string

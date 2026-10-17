@@ -448,7 +448,7 @@ check_git_hooks() {
             check_pass "Git Hooks" ".husky/post-merge contains standards sync"
         else
             check_warn "Git Hooks" ".husky/ has no post-merge standards sync (husky bypasses .git/hooks/post-merge)" \
-                "Add a .husky/post-merge hook that runs: make check-standards"
+                "Add a .husky/post-merge hook with the standards update check from .standards/templates/lefthook.yml.example (post-merge block)"
         fi
         return
     fi

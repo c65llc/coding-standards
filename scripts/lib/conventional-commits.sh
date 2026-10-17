@@ -36,6 +36,32 @@ cc_is_exempt() {
     return 1
 }
 
+# cc_effective_comment_char <project_root> <msg_file> → the character git uses
+# for comment lines in this message. core.commentChar when set; for "auto",
+# git picks the first of its candidates ("#;@!$%^&|:") that begins no line of
+# the user's message, so in the final file every earlier candidate begins at
+# least one (user) line and the chosen one begins git's own comment lines —
+# reconstructed here as the last candidate, in order, that begins a line.
+cc_effective_comment_char() {
+    local c cands='#;@!$%^&|:' chosen='#' i=0
+    c=$(git -C "$1" config --get core.commentChar 2>/dev/null)
+    case "$c" in
+        '') printf '#'; return ;;
+        auto) ;;
+        *) printf '%s' "$c"; return ;;
+    esac
+    while [ "$i" -lt "${#cands}" ]; do
+        c="${cands:$i:1}"
+        if awk -v c="$c" 'substr($0, 1, 1) == c { found = 1; exit } END { exit !found }' "$2"; then
+            chosen="$c"
+        else
+            break
+        fi
+        i=$((i + 1))
+    done
+    printf '%s' "$chosen"
+}
+
 # cc_config_get <project_root> <key> → scalar value of commits.<key> in
 # .standards.yml (inline comments and single/double quotes stripped); prints
 # nothing when unset.

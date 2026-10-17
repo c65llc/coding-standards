@@ -95,21 +95,29 @@ if [ -n "$MSG_FILE" ]; then
         echo "error: commit message file not found: $MSG_FILE" >&2
         exit 2
     fi
-    # The subject is the first non-empty line git will keep. Git drops comment
-    # lines (core.commentChar, default '#') only under the strip/scissors
-    # cleanup modes; with commit.cleanup=verbatim or whitespace they stay in
-    # the message, so the first non-empty line is the subject as written.
-    comment_char=$(git -C "$PROJECT_ROOT" config --get core.commentChar 2>/dev/null)
-    case "$comment_char" in
-        ''|auto) comment_char='#' ;;
-    esac
+    # The subject is the first non-empty line git will keep. Which lines git
+    # drops depends on commit.cleanup:
+    #   strip     → comment lines (core.commentChar; "auto" resolved from the
+    #               file) are removed
+    #   scissors  → everything from the scissors line down is removed; comment
+    #               lines above it are kept
+    #   verbatim | whitespace → comment lines are kept
+    #   unset ("default") → strip when an editor was used, whitespace for -m/-F
+    #               messages. A hook cannot tell which path wrote the file, so
+    #               the conservative reading (keep) applies: a leading
+    #               comment-looking line is judged as the subject rather than
+    #               skipped in favour of a later, possibly decoy, line.
     cleanup=$(git -C "$PROJECT_ROOT" config --get commit.cleanup 2>/dev/null)
     case "$cleanup" in
-        verbatim|whitespace)
-            subject=$(grep -m1 . "$MSG_FILE" || true)
+        strip)
+            comment_char=$(cc_effective_comment_char "$PROJECT_ROOT" "$MSG_FILE")
+            subject=$(awk -v c="$comment_char" 'substr($0, 1, 1) != c' "$MSG_FILE" | grep -m1 . || true)
+            ;;
+        scissors)
+            subject=$(sed '/ ------------------------ >8 ------------------------$/,$d' "$MSG_FILE" | grep -m1 . || true)
             ;;
         *)
-            subject=$(awk -v c="$comment_char" 'substr($0, 1, 1) != c' "$MSG_FILE" | grep -m1 . || true)
+            subject=$(grep -m1 . "$MSG_FILE" || true)
             ;;
     esac
 elif [ -n "$MESSAGE" ]; then
