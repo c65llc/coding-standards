@@ -1,0 +1,93 @@
+# test-routing.yml — changed-path → minimum-check routing table (proc-05 § 5)
+#
+# Copy to the project root as test-routing.yml. One table, two readers: CI's
+# change detection and the agent's "what must I run before I push" step both
+# resolve changed paths against this file. Agent configs reference it; they do
+# not restate it.
+#
+# This is the check-selection table (which checks a change needs). The CI
+# lane filter that arch-08 § 3 describes (.github/ci/routing.yml, from
+# templates/ci-routing.yml.example) is the workflow-side file; a repo that
+# uses both keeps their path globs in step.
+#
+# Rules:
+#   - `default` always runs.
+#   - A changed path matched by no route resolves to `fallback` (the full suite).
+#     Routes add to `default`; they never remove from it.
+#   - A PR touching several routes runs the union of their checks.
+#   - Changes to this file, CI workflows, test infrastructure, or lockfiles
+#     resolve to `fallback`.
+#   - Every check name is a real CI lane AND a `make check-<name>` target, so the
+#     selected set can be run locally and reported in the PR evidence table.
+
+version: 1
+
+# Checks that run on every PR regardless of paths.
+default:
+  - lint
+  - unit
+
+# Checks that run when a changed path matches no route (fail closed = everything).
+fallback:
+  - lint
+  - unit
+  - integration
+  - migration-replay
+  - e2e-web
+  - e2e-ios
+
+# Paths whose change always resolves to `fallback`.
+always_full:
+  - test-routing.yml
+  - .github/workflows/**
+  - .standards.yml
+  - test-quarantine.json
+  - "**/package-lock.json"
+  - "**/pnpm-lock.yaml"
+  - "**/poetry.lock"
+  - "**/Cargo.lock"
+  - "**/go.sum"
+
+routes:
+  - name: domain
+    paths:
+      - packages/domain/**
+    checks:
+      - unit
+      - contract
+
+  - name: api
+    paths:
+      - packages/api/**
+      - migrations/**
+    checks:
+      - unit
+      - integration
+      - migration-replay
+
+  - name: web
+    paths:
+      - apps/web/**
+    checks:
+      - unit
+      - e2e-web
+
+  - name: ios
+    paths:
+      - apps/ios/**
+    checks:
+      - unit
+      - e2e-ios
+
+  - name: docs
+    paths:
+      - docs/**
+      - "**/*.md"
+    checks:
+      - docs-lint
+
+# Lane budgets (informational; the runner enforces per-test timeouts, proc-05 § 4).
+budgets:
+  fast_minutes: 10        # lint + unit + contract
+  slow_minutes: 30        # each slow lane
+  slow_threshold_ms: 2000 # mirrors .standards.yml tests.slow_threshold_ms

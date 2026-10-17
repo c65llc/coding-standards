@@ -1,0 +1,55 @@
+<!--
+Pull request template (proc-05 § 8). Copy to .github/pull_request_template.md.
+Fill every section. "Not run" with a reason is fine; "pass" for a check that did
+not execute is a standards violation.
+-->
+
+## Summary
+
+<!-- What changed and why. Link the issue: Closes #NNN -->
+
+## Tested commit SHA
+
+<!-- The exact commit the evidence below was produced on. Update it if you push again. -->
+
+`<sha>`
+
+## Routing
+
+<!-- Which routes in test-routing.yml did the changed paths select? -->
+
+- Changed paths:
+- Selected checks:
+
+## Slow / platform check evidence
+
+**Fast CI passing does not satisfy this section.** Fill one row per selected slow or platform-specific check from `test-routing.yml`. Never report an unrun check as passing: write `not run — <reason>` and link the tracking issue.
+
+| Surface | Command | Result | Evidence |
+|---------|---------|--------|----------|
+| <!-- e.g. iOS e2e --> | `make check-e2e-ios` | pass (n/n) / fail / not run — reason | run link, log excerpt, or screenshot |
+| <!-- e.g. migration replay --> | `make check-migration-replay` | | |
+
+## Test changes
+
+- [ ] New or changed tests are in the right tier (fast/slow) and have a per-test timeout
+- [ ] No test was retried, skipped, or disabled outside the quarantine registry (`test-quarantine.json`)
+- [ ] Coverage floors in `.standards.yml` (`coverage.minimum` / `coverage.scopes`) still hold; no scope was lowered
+
+## Quarantine (if touched)
+
+<!-- Delete if the registry was not changed. -->
+
+- Entry added/removed:
+- Issue:
+- For removals: link to the 20x stability run
+
+## Manual verification
+
+<!-- Steps CI cannot reach (device, keychain, production-only). Each one has a tracking issue or a runbook under docs/runbooks/. -->
+
+## Checklist
+
+- [ ] Conventional Commit title
+- [ ] Tests written first (TDD) and run on the tested commit above
+- [ ] No production host or real identity is reachable from any e2e lane this PR touches

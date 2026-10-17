@@ -1,0 +1,22 @@
+{
+  "$comment": "Flaky-test quarantine registry (proc-05 § 2). Copy to test-quarantine.json (or the path declared in .standards.yml tests.quarantine_file). Validated by scripts/lint-checks/common/quarantine-policy.sh: every entry needs all six fields, `test` is the exact runner id (no wildcards), `expires` is at most 30 days after `added`, expired entries fail CI, and the registry may never carry a coverage override. Quarantined tests still run via `make test-quarantined`.",
+  "version": 1,
+  "entries": [
+    {
+      "test": "tests/api/test_users.py::test_list_users_paginates",
+      "issue": "#482",
+      "owner": "@alice",
+      "reason": "Shares a DB fixture with test_bulk_import; fails under xdist when both schedule on one worker.",
+      "added": "2026-10-01",
+      "expires": "2026-10-29"
+    },
+    {
+      "test": "apps/web/e2e/checkout.spec.ts > checkout > applies a promo code",
+      "issue": "#491",
+      "owner": "@payments-team",
+      "reason": "Promo service stub returns before the cart re-renders on slow runners; needs an explicit wait on the total.",
+      "added": "2026-10-10",
+      "expires": "2026-11-07"
+    }
+  ]
+}
