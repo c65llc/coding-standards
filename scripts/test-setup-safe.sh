@@ -431,6 +431,28 @@ miss_rc=0
 (cd "$proj" && "$SETUP" --agents >/dev/null 2>&1) || miss_rc=$?
 if [ "$miss_rc" -eq 2 ]; then pass; else fail "expected exit 2, got $miss_rc"; fi
 
+echo -n "Test 30a: option followed by another flag (--languages --help) exits 2 and writes nothing... "
+optval_rc=0
+optval_out=$(cd "$proj" && "$SETUP" --languages --help 2>&1) || optval_rc=$?
+leftover=$(cd "$proj" && git status --porcelain --untracked-files=all 2>/dev/null | grep -v '^?? .standards/' || true)
+if [ "$optval_rc" -eq 2 ] && echo "$optval_out" | grep -q "requires a value" \
+    && [ -z "$leftover" ] && [ ! -f "$proj/.standards.yml" ] && [ ! -d "$proj/.claude" ]; then
+    pass
+else
+    fail "rc=$optval_rc, leftover='$leftover', output: $optval_out"
+fi
+
+echo -n "Test 30b: empty equals form (--agents=) exits 2 and writes nothing... "
+eq_rc=0
+eq_out=$(cd "$proj" && "$SETUP" --agents= 2>&1) || eq_rc=$?
+leftover=$(cd "$proj" && git status --porcelain --untracked-files=all 2>/dev/null | grep -v '^?? .standards/' || true)
+if [ "$eq_rc" -eq 2 ] && echo "$eq_out" | grep -q "requires a value" \
+    && [ -z "$leftover" ] && [ ! -f "$proj/.standards.yml" ] && [ ! -f "$proj/.git/hooks/post-merge" ]; then
+    pass
+else
+    fail "rc=$eq_rc, leftover='$leftover', output: $eq_out"
+fi
+
 # --- Agent-scoped install: explicit --agents installs only that agent's artifacts
 
 echo -n "Test 31: --agents codex writes only AGENTS.md artifacts (no hooks, aliases, Cursor, .claude, .gemini)... "

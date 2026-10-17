@@ -50,10 +50,12 @@ make setup
 | `--dry-run` | Print every write that would happen without modifying anything. |
 | `-h`, `--help` | Print usage and exit 0 without touching the project. |
 
-Unknown options print `Unknown option: <flag>` plus the usage text and exit 2 before anything is written.
+Unknown options print `Unknown option: <flag>` plus the usage text and exit 2 before anything is written. A value-taking option that is missing its value, given an empty `--flag=` form, or followed by another option (`--languages --help`) also exits 2.
 
 ```bash
-# Codex-only project: AGENTS.md + .standards.yml, nothing else
+# Codex-only project: AGENTS.md plus the standards-owned files
+# (.standards.yml, .standards-checksums, .gitignore entries, .trufflehog-ignore,
+# detected language tool configs); no hooks, aliases, or other agents' files
 .standards/scripts/setup.sh --agents codex
 
 # Claude Code + Cursor with explicit languages

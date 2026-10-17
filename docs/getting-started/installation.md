@@ -33,10 +33,10 @@ The setup script will:
 - Set up a post-merge git hook that checks for standards updates
 - Configure git aliases for common workflows
 
-To install for a specific agent only, pass `--agents`. An explicit list installs **only** that agent's artifacts: no git hooks, git aliases, Cursor commands, `.claude/settings.json` or `.gemini/` unless the owning agent is listed.
+To install for a specific agent only, pass `--agents`. An explicit list installs **only** that agent's artifacts: no git hooks, git aliases, Cursor commands, `.claude/settings.json` or `.gemini/` unless the owning agent is listed. Standards-owned files are still written in every mode: `.standards.yml`, `.standards-checksums`, the `.gitignore` entries, `.trufflehog-ignore`, and any tool configs for detected languages (for example `.eslintrc`, `.ruff.toml`).
 
 ```bash
-.standards/scripts/setup.sh --agents codex                 # AGENTS.md + .standards.yml only
+.standards/scripts/setup.sh --agents codex                 # AGENTS.md + standards-owned files
 .standards/scripts/setup.sh --agents claude-code,cursor    # two agents
 .standards/scripts/setup.sh --help                         # all flags
 ```

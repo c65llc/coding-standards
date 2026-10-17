@@ -33,6 +33,10 @@ Options:
                        .claude/settings.json or .gemini/ unless that agent is
                        in the list. 'detect' configures the agents already
                        present in the project plus git hooks and aliases.
+                       Standards-owned files (.standards.yml,
+                       .standards-checksums, .gitignore entries,
+                       .trufflehog-ignore, detected language tool configs)
+                       are installed in every mode.
   --languages <list>   Comma-separated languages (skips auto-detection), e.g.
                        typescript,python
   --role <role>        Project role block to include (default: service)
@@ -43,7 +47,7 @@ Options:
 
 Examples:
   $0                                 # detect agents, full install
-  $0 --agents codex                  # AGENTS.md + .standards.yml only
+  $0 --agents codex                  # AGENTS.md + standards-owned files only
   $0 --agents claude-code,cursor --languages typescript
   $0 --dry-run
 EOF
@@ -57,11 +61,17 @@ usage_error() {
     exit 2
 }
 
-# Require that option "$1" received a value in "$2".
+# Require that option "$1" received a value in "$2". A missing, empty, or
+# option-like value (anything starting with '-') is a usage error, so
+# `--languages --help` does not swallow `--help` as a language and proceed
+# with a full install.
 require_option_value() {
     if [ $# -lt 2 ] || [ -z "$2" ]; then
         usage_error "Option $1 requires a value"
     fi
+    case "$2" in
+        -*) usage_error "Option $1 requires a value (got '$2')" ;;
+    esac
 }
 
 # Parse arguments
@@ -79,6 +89,7 @@ while [ $# -gt 0 ]; do
             shift 2
             ;;
         --role=*)
+            require_option_value "--role" "${1#--role=}"
             ROLE="${1#--role=}"
             shift
             ;;
@@ -88,6 +99,7 @@ while [ $# -gt 0 ]; do
             shift 2
             ;;
         --agents=*)
+            require_option_value "--agents" "${1#--agents=}"
             AGENTS_OVERRIDE="${1#--agents=}"
             shift
             ;;
@@ -97,6 +109,7 @@ while [ $# -gt 0 ]; do
             shift 2
             ;;
         --languages=*)
+            require_option_value "--languages" "${1#--languages=}"
             LANGUAGES_OVERRIDE="${1#--languages=}"
             shift
             ;;
