@@ -4,14 +4,18 @@
 # crates/*, core, server, web, shells/*. Outputs one language key per line to
 # stdout, each at most once, root first.
 #
-# Usage: ./detect-languages.sh [--root-only] [--skip <dir>]... [/path/to/project]
+# Usage: ./detect-languages.sh [--root-only|--subroots-only] [--skip <dir>]... [/path/to/project]
 #   or:  PROJECT_ROOT=/path/to/project ./detect-languages.sh
 #
 # Options:
-#   --root-only   Inspect only the project root (no sub-root walk).
-#   --skip <dir>  Do not inspect this root-relative sub-root (repeatable). The
-#                 member-aware scripts pass each declared member here so a
-#                 member's languages are judged by its own .standards.yml.
+#   --root-only      Inspect only the project root (no sub-root walk).
+#   --subroots-only  Inspect only the conventional sub-roots (not the root's
+#                    own manifests), so a language both the root and a
+#                    sub-root carry is still attributed to the sub-root.
+#   --skip <dir>     Do not inspect this root-relative sub-root (repeatable).
+#                    The member-aware scripts pass each declared member here
+#                    so a member's languages are judged by its own
+#                    .standards.yml.
 #
 # Manifests recognised: pyproject.toml, setup.py, requirements.txt, Pipfile,
 # uv.lock (python); Cargo.toml (rust); Gemfile, .ruby-version (ruby, + rails);
@@ -25,6 +29,7 @@
 set -e
 
 ROOT_ONLY=false
+SUBROOTS_ONLY=false
 SKIP_DIRS=""
 PROJECT_ROOT_ARG=""
 
@@ -32,6 +37,10 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --root-only)
             ROOT_ONLY=true
+            shift
+            ;;
+        --subroots-only)
+            SUBROOTS_ONLY=true
             shift
             ;;
         --skip)
@@ -187,8 +196,13 @@ skipped() {
     return 1
 }
 
+if [ "$ROOT_ONLY" = true ] && [ "$SUBROOTS_ONLY" = true ]; then
+    echo "detect-languages: --root-only and --subroots-only are mutually exclusive" >&2
+    exit 2
+fi
+
 {
-    detect_in_dir "$PROJECT_ROOT"
+    [ "$SUBROOTS_ONLY" = true ] || detect_in_dir "$PROJECT_ROOT"
     if [ "$ROOT_ONLY" = false ]; then
         for pattern in $WALK_PATTERNS; do
             for dir in "$PROJECT_ROOT"/$pattern; do

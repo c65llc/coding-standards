@@ -313,23 +313,28 @@ member_problem() {
 }
 
 # ---------------------------------------------------------------------------
-# member_languages <root> <member> [detect-script]
+# member_languages <root> <member> [detect-script] [all-members]
 #
 # Space-separated languages of one member: the `languages:` list of its own
 # .standards.yml when it has one — an explicit `languages: []` (or no key) is
 # respected as "none", exactly as lint-standards.sh treats it, so a language
 # the member deliberately did not declare is never assembled or installed on
 # its behalf — else, for a member with no config at all, what <detect-script>
-# finds in it (when given). Prints nothing for a missing directory.
+# finds in it (when given). Detection skips the members nested below this one
+# (from <all-members>, space-separated), so a config-less `packages` is not
+# bootstrapped with the TypeScript of `packages/web` and then asked for a
+# tsconfig.json it does not have. Prints nothing for a missing directory.
 # ---------------------------------------------------------------------------
 member_languages() {
-    local root="$1" member="$2" detect="${3:-}" dir langs=""
+    local root="$1" member="$2" detect="${3:-}" all="${4:-}" dir langs="" args=() d
     dir=$(member_root "$root" "$member")
     [ -d "$dir" ] || return 0
     if [ -f "$dir/.standards.yml" ]; then
         langs=$(yaml_list "languages" "$dir/.standards.yml" | sed 's/[[:space:]]*$//')
     elif [ -n "$detect" ] && [ -x "$detect" ]; then
-        langs=$("$detect" "$dir" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+        # shellcheck disable=SC2086
+        for d in $(member_descendants "$member" $all); do args+=(--skip "$d"); done
+        langs=$("$detect" ${args[@]+"${args[@]}"} "$dir" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')
     fi
     printf '%s\n' "$langs"
 }
@@ -361,21 +366,17 @@ dedupe_words() {
 # way, so the three agree and diff never reports drift right after a sync.
 # The root's own manifests are left out on purpose: what the root declares is
 # the root's business (a tooling package.json next to a Python service must
-# not force a JavaScript block the user deliberately omitted).
+# not force a JavaScript block the user deliberately omitted) — but a language
+# a sub-root carries is attributed to the sub-root even when the root carries
+# it too (detect --subroots-only inspects the sub-roots alone, rather than
+# subtracting language names from a deduplicated full walk).
 # ---------------------------------------------------------------------------
 subroot_languages() {
-    local root="$1" members="$2" detect="${3:-}" args=() m walk rootonly out="" l
+    local root="$1" members="$2" detect="${3:-}" args=() m
     [ -n "$detect" ] && [ -x "$detect" ] || return 0
     for m in $members; do args+=(--skip "$m"); done
-    walk=$("$detect" ${args[@]+"${args[@]}"} "$root" 2>/dev/null | tr '\n' ' ')
-    rootonly=$("$detect" --root-only "$root" 2>/dev/null | tr '\n' ' ')
-    for l in $walk; do
-        case " $rootonly " in
-            *" $l "*) ;;
-            *) out="${out:+$out }$l" ;;
-        esac
-    done
-    printf '%s\n' "$out"
+    "$detect" --subroots-only ${args[@]+"${args[@]}"} "$root" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//'
+    return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -390,7 +391,7 @@ aggregate_member_languages() {
     local root="$1" base="$2" members="$3" detect="${4:-}" m all
     all="$base"
     for m in $members; do
-        all="$all $(member_languages "$root" "$m" "$detect")"
+        all="$all $(member_languages "$root" "$m" "$detect" "$members")"
     done
     dedupe_words "$all"
 }

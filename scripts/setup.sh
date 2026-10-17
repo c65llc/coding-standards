@@ -625,7 +625,7 @@ setup_ai_agents() {
                 echo "   ⚠️  $m: declared in members: but no such directory"
                 continue
             fi
-            member_langs=$(member_languages "$PROJECT_ROOT" "$m" "$DETECT_SCRIPT")
+            member_langs=$(member_languages "$PROJECT_ROOT" "$m" "$DETECT_SCRIPT" "$MEMBERS")
             if [ -f "$member_dir/.standards.yml" ]; then
                 echo "   - $m: .standards.yml present (languages: ${member_langs:-none})"
                 continue

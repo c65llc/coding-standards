@@ -481,11 +481,11 @@ if [ -n "$MEMBERS" ]; then
     echo "📦 Members:"
     for m in $MEMBERS; do
         if problem=$(member_problem "$PROJECT_ROOT" "$m"); then
-            echo "   - $m ($(member_languages "$PROJECT_ROOT" "$m" "$SCRIPT_DIR/detect-languages.sh"))"
+            echo "   - $m ($(member_languages "$PROJECT_ROOT" "$m" "$SCRIPT_DIR/detect-languages.sh" "$MEMBERS"))"
         else
             echo "   ⚠️  $m: $problem"
             if [ -d "$PROJECT_ROOT/$m" ]; then
-                echo "        languages detected: $(member_languages "$PROJECT_ROOT" "$m" "$SCRIPT_DIR/detect-languages.sh")"
+                echo "        languages detected: $(member_languages "$PROJECT_ROOT" "$m" "$SCRIPT_DIR/detect-languages.sh" "$MEMBERS")"
             fi
         fi
     done

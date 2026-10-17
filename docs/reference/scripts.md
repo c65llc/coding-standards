@@ -145,7 +145,7 @@ Use it as a CI gate:
 **Usage:**
 
 ```bash
-./scripts/detect-languages.sh [--root-only] [--skip <dir>]... [/path/to/project]
+./scripts/detect-languages.sh [--root-only|--subroots-only] [--skip <dir>]... [/path/to/project]
 ```
 
 Prints one language key per line (`python`, `rust`, `ruby`, `rails`, `javascript`, `typescript`, `jvm`, `java`, `kotlin`, `swift`, `dart`, `zig`, `go`, `elixir`, `cpp`), each at most once, root first. Besides the project root it inspects the conventional monorepo sub-roots `apps/*`, `packages/*`, `crates/*`, `core`, `server`, `web` and `shells/*` for `Cargo.toml`, `tsconfig*.json`, `package.json`, `Package.swift`, `pyproject.toml`, `go.mod`, `mix.exs`, `CMakeLists.txt` and the other manifests, so a Rust core + SwiftUI shell + TypeScript workers repository detects all three instead of `javascript` alone.
@@ -153,6 +153,7 @@ Prints one language key per line (`python`, `rust`, `ruby`, `rails`, `javascript
 | Flag | Effect |
 | --- | --- |
 | `--root-only` | Inspect only the project root. |
+| `--subroots-only` | Inspect only the conventional sub-roots, not the root's own manifests, so a language both the root and a sub-root carry is still attributed to the sub-root (used by setup, sync and diff to assemble sub-root languages into the agent configs). |
 | `--skip <dir>` | Do not inspect this root-relative sub-root (repeatable). The member-aware scripts pass every declared member so its languages come from its own `.standards.yml`. |
 
 `cpp` (from `CMakeLists.txt`) has no standards document yet: agent assembly and `lint-standards.sh` ignore the key, and `doctor.sh` reports it as unsupported when declared.

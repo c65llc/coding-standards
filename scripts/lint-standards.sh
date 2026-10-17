@@ -402,7 +402,9 @@ run_member() {
         [ -d "$member_dir" ] || return 0
         if [ -f "$member_dir/.standards.yml" ] && declare -f read_standards_config >/dev/null 2>&1; then
             read_standards_config "$member_dir" 2>/dev/null || true
-            member_langs="${STD_LANGUAGES:-}"
+            # yaml_list yields a lone space for `languages: []`; normalise so an
+            # explicit empty list reads as empty (as the root's does above).
+            member_langs=$(printf '%s\n' "${STD_LANGUAGES:-}" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
         fi
         # Re-base the --since scope onto this member.
         if [ -n "${LINT_FILE_LIST:-}" ] && [ -r "$LINT_FILE_LIST" ]; then
@@ -413,6 +415,15 @@ run_member() {
         fi
     fi
 
+    # A member that declares no languages and has members nested below it is
+    # only an aggregator (the root with members, or `packages` holding
+    # `packages/web`): its project-level checks (test directory, coverage
+    # config …) would only report the nested members' layout as missing.
+    local is_aggregator=false
+    if [ -z "$member_langs" ] && [ -n "$member_exclude" ]; then
+        is_aggregator=true
+    fi
+
     if [ -d "$CHECKS_DIR/common" ]; then
         for check in "$CHECKS_DIR/common/"*.sh; do
             base=$(basename "$check" .sh)
@@ -420,8 +431,8 @@ run_member() {
                 # Repo-wide: once, at the root, over the whole tree.
                 [ "$member" = "." ] || continue
                 unset LINT_MEMBER_EXCLUDE
-            elif [ "$member" = "." ] && [ "$ROOT_IS_AGGREGATOR" = true ]; then
-                # Project-level check on a root that is only an aggregator.
+            elif [ "$is_aggregator" = true ]; then
+                # Project-level check on a member that is only an aggregator.
                 continue
             else
                 export LINT_MEMBER_EXCLUDE="$member_exclude"
@@ -470,6 +481,30 @@ for member in "${MEMBERS[@]}"; do
 done
 
 TOTAL=$((PASS + WARN + FAIL))
+
+# sarif_uri_path <member>: the member directory as a relative URI reference.
+# Unreserved characters and "/" pass through; everything else (including "#",
+# "?", "%", spaces and non-ASCII bytes) is percent-encoded, so a member such
+# as "#svc" is a path, not a fragment. The raw value stays in
+# properties.member.
+sarif_uri_path() {
+    local path="$1" out="" i c
+    for ((i = 0; i < ${#path}; i++)); do
+        c="${path:i:1}"
+        case "$c" in
+            [A-Za-z0-9._~/-]) out="$out$c" ;;
+            *)
+                local b
+                while IFS= read -r b; do
+                    [ -n "$b" ] && out="$out%$b"
+                done <<EOF
+$(printf '%s' "$c" | od -An -tx1 | tr 'a-f' 'A-F' | tr -s ' ' '\n')
+EOF
+                ;;
+        esac
+    done
+    printf '%s' "$out"
+}
 
 # members_json: the members array as a one-line JSON list.
 members_json() {
@@ -745,7 +780,7 @@ output_sarif() {
         printf '            {\n'
         printf '              "physicalLocation": {\n'
         printf '                "artifactLocation": {\n'
-        printf '                  "uri": "%s",\n' "$member"
+        printf '                  "uri": "%s",\n' "$(sarif_uri_path "$member")"
         printf '                  "uriBaseId": "%%SRCROOT%%"\n'
         printf '                }\n'
         printf '              }\n'

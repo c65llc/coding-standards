@@ -734,6 +734,41 @@ diff_rc=0
 [ "$diff_rc" -eq 0 ]                                              || errs="$errs diff-reports-drift($diff_rc)"
 if [ -z "$errs" ]; then pass; else fail "$errs"; fi
 
+echo -n "Test 55: bootstrapping a config-less parent member does not detect through a nested member's manifests... "
+proj=$(make_project "setup-nested-bootstrap")
+fake_standards "$proj"
+mkdir -p "$proj/packages/web"
+printf 'version: 1\nlanguages: []\nagents:\n  - codex\nrole: service\nmembers:\n  - packages\n  - packages/web\n' > "$proj/.standards.yml"
+printf 'version: 1\nlanguages:\n  - typescript\n' > "$proj/packages/web/.standards.yml"
+printf '{"name":"web"}\n' > "$proj/packages/web/package.json"
+printf '{"compilerOptions":{"strict":true}}\n' > "$proj/packages/web/tsconfig.json"
+(cd "$proj" && "$SETUP" --agents codex >/dev/null 2>&1) || true
+errs=""
+[ -f "$proj/packages/.standards.yml" ]                            || errs="$errs parent-config-not-bootstrapped"
+grep -q '^languages: \[\]$' "$proj/packages/.standards.yml" 2>/dev/null || errs="$errs parent-languages-not-empty"
+grep -q 'typescript' "$proj/packages/.standards.yml" 2>/dev/null   && errs="$errs child-language-leaked-into-parent"
+[ -f "$proj/AGENTS.md" ] && grep -q 'tsc -b' "$proj/AGENTS.md"    || errs="$errs typescript-block-missing"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(cat "$proj/packages/.standards.yml" 2>/dev/null | tr '\n' '|')"; fi
+
+echo -n "Test 56: a language both the root (tooling manifest) and a sub-root carry is still assembled from the sub-root when the root omits it... "
+proj=$(make_project "sync-subroot-overlap")
+fake_standards "$proj"
+mkdir -p "$proj/apps/web"
+printf 'version: 1\nlanguages:\n  - python\nagents:\n  - codex\nrole: service\n' > "$proj/.standards.yml"
+printf '[project]\nname = "root"\n' > "$proj/pyproject.toml"
+printf '{"name":"root-tooling"}\n' > "$proj/package.json"          # root carries javascript but declares only python
+printf '{"name":"web"}\n' > "$proj/apps/web/package.json"          # the sub-root carries javascript too
+sync_out=$(cd "$proj" && "$SYNC" 2>&1) || true
+errs=""
+[ -f "$proj/AGENTS.md" ]                                          || errs="$errs agents-missing"
+grep -q 'eslint-config-prettier' "$proj/AGENTS.md" 2>/dev/null    || errs="$errs javascript-block-missing"
+grep -qi 'ruff' "$proj/AGENTS.md" 2>/dev/null                     || errs="$errs python-block-missing"
+grep -q '^  - javascript$' "$proj/.standards.yml"                 && errs="$errs javascript-forced-into-root-languages"
+diff_rc=0
+(cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code >/dev/null 2>&1) || diff_rc=$?
+[ "$diff_rc" -eq 0 ]                                              || errs="$errs diff-reports-drift($diff_rc)"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$sync_out" | grep -i 'languages' | head -2)"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

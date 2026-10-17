@@ -2592,6 +2592,33 @@ out=$(cd "$nest2" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
 if echo "$out" | grep -q 'Languages (packages)' && ! echo "$out" | grep 'Languages (packages)' | grep -q 'typescript'; then pass; else
     fail "parent nagged about child language: $(echo "$out" | grep 'Languages (packages')"; fi
 
+echo -n "Test 178: a nested member that only aggregates (no languages, members below it) skips project-level checks like the root... "
+agg=$(make_project "members-nested-aggregator")
+mkdir -p "$agg/packages/web/src" "$agg/packages/web/tests"
+printf 'version: 1\nlanguages: []\nmembers:\n  - packages\n  - packages/web\n' > "$agg/.standards.yml"
+printf 'version: 1\nlanguages: []\n' > "$agg/packages/.standards.yml"
+printf 'version: 1\nlanguages:\n  - python\n' > "$agg/packages/web/.standards.yml"
+printf '[project]\nname = "web"\n' > "$agg/packages/web/pyproject.toml"
+echo 'print("ok")' > "$agg/packages/web/src/app.py"
+echo 'def test_ok(): pass' > "$agg/packages/web/tests/test_app.py"
+git_commit_all "$agg" "feat: nested aggregator"
+out=$("$LINT" --format json "$agg" 2>/dev/null || true)
+printf '%s\n' "$out" > "$TMP_BASE/nested-agg.json"
+parent_tests=$(json_member_status 'packages' test-directory < "$TMP_BASE/nested-agg.json")
+root_tests=$(json_member_status '\.' test-directory < "$TMP_BASE/nested-agg.json")
+child_tests=$(json_member_status 'packages/web' test-directory < "$TMP_BASE/nested-agg.json")
+if [ -z "$parent_tests" ] && [ -z "$root_tests" ] && [ -n "$child_tests" ]; then pass; else
+    fail "parent='$parent_tests' root='$root_tests' child='$child_tests'"; fi
+
+echo -n "Test 179: --format sarif percent-encodes a member path that is not a plain URI path, keeping the raw value in properties... "
+svc=$(make_monorepo "members-sarif-uri" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - "#svc"\n  - web\n')")
+mv "$svc/server" "$svc/#svc"
+git_commit_all "$svc" "feat: rename"
+"$LINT" --format sarif "$svc" > "$TMP_BASE/svc.sarif" 2>/dev/null || true
+if json_valid "$TMP_BASE/svc.sarif" && grep -q '"uri": "%23svc"' "$TMP_BASE/svc.sarif" \
+   && tr -d '\n' < "$TMP_BASE/svc.sarif" | grep -q '"properties": *{ *"member": *"#svc"' && grep -q '"uri": "web"' "$TMP_BASE/svc.sarif"; then pass; else
+    fail "uris: $(grep -o '"uri": "[^"]*"' "$TMP_BASE/svc.sarif" | sort -u | tr '\n' ' ')"; fi
+
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
