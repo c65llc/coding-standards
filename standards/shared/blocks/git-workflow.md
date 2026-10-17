@@ -5,6 +5,8 @@ One task = one branch = one PR. Work is not done until a PR exists. Prefer small
 Feature branches from `main`. No direct pushes to `main`. Require one approval; all CI checks must pass.
 PR merge loop: run the full local gate (`make ci`) first → open PR → wait for the automated reviewer → address every finding → all checks green (a partial pass is a fail) → squash-merge + delete branch. Never merge on a partial pass or before the automated review runs.
 Run `gh pr create` from the feature worktree (or pass `--head`); the cwd's branch is what it opens.
+CI workflows on `pull_request` declare `concurrency` + `cancel-in-progress`, `timeout-minutes` on every job, and path scoping (`paths:`, or paths-filter + an always-run gate job). The changed-path → lane mapping lives in `.github/ci/routing.yml`; read it to decide which `make ci-<lane>` to run before pushing. Heavy matrices go to merge queue/nightly, not the PR lane.
+Every CI step must pass on a locked, headless runner: no login keychain, no `store-credentials`, no `osascript`/`open -a`; pass secrets straight to the command or use a job-scoped keychain.
 Stacked PRs: retarget dependents to `main` before merging+deleting a base branch, or the dependents get closed.
 Delete branches immediately after merge. Keep fewer than 10 active branches.
 Never commit: secrets, build artifacts, `node_modules/`, `.env`, IDE files, OS files.

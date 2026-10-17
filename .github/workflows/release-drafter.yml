@@ -5,6 +5,9 @@ name: Release Drafter
 # themselves. Publishing the draft creates the tag — that tag's `release:
 # published` event is what publish.yml and definition-of-done.yml already key
 # off of. This replaces the manual `chore(release)` note-writing.
+#
+# ci-hygiene: paths-exempt — labels every PR from its title and redrafts the
+# release notes; neither depends on which paths changed.
 
 on:
   push:
@@ -27,6 +30,7 @@ jobs:
       contents: write      # create/update the draft release
       pull-requests: write # apply autolabels
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     concurrency:
       group: release-drafter-${{ github.ref }}
       cancel-in-progress: false

@@ -12,7 +12,7 @@ mean the linter enforces it — the table below is the source of truth.
 
 | Category | Machine-enforced by `lint-standards.sh`? | Checks |
 | --- | --- | --- |
-| Common (all repos) | ✅ | conventional-commits, coverage-config, no-secrets, test-directory-structure |
+| Common (all repos) | ✅ | ci-workflow-hygiene, conventional-commits, coverage-config, headless-ci, no-secrets, test-directory-structure |
 | Python (lang-01) | ✅ | banned-functions, ruff-config, type-annotations |
 | Swift (lang-04) | ✅ | swift-format-config, package-resolved, warnings-as-errors |
 | TypeScript (lang-06) | ✅ | banned-functions, eslint-config, strict-tsconfig |
@@ -37,6 +37,17 @@ no automated check modules for them yet. Consumers should not assume
 | `swift/swift-format-config` | PASS when `.swift-format` exists (or `.swift-format.json` is passed via `--configuration` in CI); WARN when only `.swift-format.json`, `.swiftlint.yml`, or `.swiftformat` exists; FAIL when no formatter config |
 | `swift/package-resolved` | PASS when `Package.resolved` is committed (or the package has no dependencies); FAIL when an executable target or a CI definition exists and the lockfile is missing, or when it is untracked or gitignored; WARN for a dependency-only library with no CI build (lang-04 §1 lets it omit the lockfile) or when there is no `Package.swift` |
 | `swift/warnings-as-errors` | PASS when CI, `Package.swift`, `project.yml`, an `.xcconfig`, or a build script enables `-warnings-as-errors` / `SWIFT_TREAT_WARNINGS_AS_ERRORS` / `treatAllWarnings(as: .error)`; FAIL otherwise |
+
+### Common checks
+
+| Check | Standard | What it looks at | Severity on finding |
+| --- | --- | --- | --- |
+| `conventional-commits` | proc-02 | Recent commit subjects match `type(scope): subject` | WARN/FAIL |
+| `coverage-config` | core-standards | A coverage gate exists in CI, test config, or `.standards.yml` | FAIL |
+| `no-secrets` | sec-01 | AWS keys, private-key blocks, hardcoded passwords/tokens in source | FAIL |
+| `test-directory-structure` | core-standards | A recognizable test directory exists | WARN/FAIL |
+| `ci-workflow-hygiene` | arch-08 §3 | Every `pull_request` workflow declares `concurrency` + `cancel-in-progress` (workflow-level or on every job), `timeout-minutes` on each job that runs steps, and path scoping (`paths:` on the PR trigger, a paths-filter + gate job, or `# ci-hygiene: paths-exempt <reason>`) | WARN |
+| `headless-ci` | arch-08 §6 | Workflows and composite actions free of `store-credentials`, `unlock-keychain … login`, `osascript`, `open -a` (steps that need an unlocked desktop) | WARN |
 
 ## Roadmap
 

@@ -1,0 +1,39 @@
+# CI routing table — changed paths → CI lanes (arch-08 §3).
+#
+# This file is the single source of truth for "which checks does this change
+# need?". It is consumed by BOTH:
+#
+#   * .github/workflows/ci.yml — the `changes` job feeds it to
+#     dorny/paths-filter (`filters: .github/ci/routing.yml`) and each lane runs
+#     only when its filter matched. `ci-gate` always runs so required checks
+#     resolve even when every lane is skipped.
+#   * agents and humans — before pushing, run the make target(s) for every
+#     lane your diff touches (see the `# make:` note on each lane). Agent
+#     configs point here instead of carrying a hand-maintained copy that drifts.
+#
+# Format: dorny/paths-filter syntax — `<lane>: [globs]`. Keep each lane's
+# rationale next to it. Touching this file or anything under `shared` runs
+# every lane.
+
+shared: # make: make test lint-standards — anything here changes how every lane runs
+  - "Makefile"
+  - ".github/ci/routing.yml"
+  - ".github/workflows/ci.yml"
+
+shell: # make: make test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards (+ shellcheck)
+  - "scripts/**"
+  - "bin/**"
+  - "install.sh"
+  - ".shellcheckrc"
+  - "templates/**" # setup/sync tests copy templates into fixture projects
+  - ".github/actions/**" # format-results.py is tested by make test-scripts
+  - "website/scripts/**" # shellcheck covers website/scripts/*.sh
+
+markdown: # make: markdownlint 'standards/**/*.md' 'docs/**/*.md' '*.md'
+  - "**/*.md"
+  - ".markdownlint.jsonc"
+
+website: # make: cd website && npm ci && npm run build
+  - "website/**"
+  - "docs/**" # synced into the site by website/scripts/sync-content.sh
+  - "standards/**"
