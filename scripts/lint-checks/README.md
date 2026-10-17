@@ -50,6 +50,39 @@ no automated check modules for them yet. Consumers should not assume
 | `ci-workflow-hygiene` | arch-08 §3 | Every `pull_request` workflow declares `concurrency` + `cancel-in-progress` (workflow-level or on every job), `timeout-minutes` on each job that runs steps, and path scoping (`paths:` on the PR trigger, a paths-filter + gate job, or `# ci-hygiene: paths-exempt <reason>`) | WARN |
 | `headless-ci` | arch-08 §6 | Workflows and composite actions free of `store-credentials`, `unlock-keychain … login`, `osascript`, `open -a` (steps that need an unlocked desktop) | WARN |
 
+## Module options
+
+### conventional-commits
+
+Checks recent history for `<type>(<scope>): <subject>` subjects. Merge
+commits, `fixup!`/`squash!`/`amend!` prefixes and `git revert` subjects are
+exempt. Violations up to max(3, 10% of the range) are a `WARN`; more than that is
+a `FAIL` (the floor of 3 keeps a short PR range from failing on one straggler).
+
+| Setting | Where | Effect |
+| --- | --- | --- |
+| `--window <n>` / `commits.window` | flag / `.standards.yml` | Inspect the last *n* non-merge commits (default **50**) |
+| `--since <ref>` / `commits.since` | flag / `.standards.yml` | Inspect `<ref>..HEAD` instead of a window (wins over `window`); an unknown ref is a `WARN` |
+| `STANDARDS_COMMITS_SINCE` | env | Range used when `commits.since` is unset; beats `commits.window` so the standards-review action (which sets it to `origin/<pr-base>`) always judges a PR on its own commits |
+| `commits.scopes` | `.standards.yml` | Allow-list; scoped commits must use a listed scope (unscoped commits pass). Inline `[a, b]` and block lists both work |
+
+```yaml
+# .standards.yml
+commits:
+  window: 50
+  # since: origin/main
+  scopes: [api, domain, ui]
+```
+
+Precedence: flags > `commits.since` > `STANDARDS_COMMITS_SINCE` > `commits.window` > default
+(a range from any source beats a window).
+
+The same type list, regex and allow-list parser live in
+`scripts/lib/conventional-commits.sh` and back `scripts/check-commit-message.sh`
+(commit-msg hooks via `templates/husky-commit-msg.example` /
+`templates/lefthook.yml.example`, and the PR-title step of the
+standards-review action).
+
 ## Roadmap
 
 Per-language check modules are added incrementally. Rust and Swift landed in

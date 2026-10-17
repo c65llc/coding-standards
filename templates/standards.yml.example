@@ -64,3 +64,16 @@ tests:
   # quarantine_file: .github/ci/test-quarantine.json
   # Fast-tier per-test ceiling in milliseconds; also the slow-test top-N report cutoff.
   slow_threshold_ms: 2000
+
+# Conventional Commits enforcement (lint-checks/common/conventional-commits.sh,
+# check-commit-message.sh hooks, and the standards-review PR-title check).
+# Defaults: the last 50 non-merge commits locally; the PR's own commits in the
+# standards-review action. Precedence: since > PR range (CI) > window.
+# commits:
+#   window: 50             # Inspect the last N non-merge commits (default 50);
+#                          # a pinned window is ignored when a range applies
+#   since: origin/main     # Inspect <ref>..HEAD instead (wins over window)
+#   scopes:                # Optional allow-list: scoped commits must use one of these
+#     - api
+#     - domain
+#     - ui

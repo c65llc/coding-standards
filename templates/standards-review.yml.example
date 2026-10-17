@@ -3,8 +3,13 @@
 # Copied here by setup.sh — update path if .standards/ is at a different location.
 #
 # Note: For PRs from forks, GITHUB_TOKEN is read-only and the comment step
-# will be skipped. Consider using pull_request_target for fork support
-# (with appropriate security precautions).
+# will be skipped. If you add a pull_request_target job for fork support,
+# keep it metadata-only: that event checks out the BASE branch by default, so
+# content checks there would inspect trusted base code rather than the PR,
+# and checking out the PR head in that privileged context runs untrusted
+# code. Run the PR-title check (pr-title-check) in the pull_request_target
+# job and keep this pull_request job for content linting.
+# https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target
 #
 # ci-hygiene: paths-exempt — compliance review (commit history, secrets, CI
 # hygiene) applies to every PR regardless of which paths changed.

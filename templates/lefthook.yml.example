@@ -1,0 +1,35 @@
+# lefthook.yml — git hooks via lefthook (coding-standards template)
+#
+# Install (not installed automatically by setup.sh):
+#   cp .standards/templates/lefthook.yml.example lefthook.yml   # or merge the blocks into yours
+#   lefthook install
+#
+# Squash-merge note: GitHub uses the PR *title* as the squash commit subject,
+# so the commit-msg hook alone does not protect mainline history. Pair it with
+# the PR-title check in the standards-review action
+# (.standards/.github/actions/standards-review, input `pr-title-check`).
+#
+# Adjust `.standards/` if the standards submodule lives elsewhere.
+
+commit-msg:
+  commands:
+    conventional-commits:
+      # {1} is the commit message file git hands to commit-msg hooks.
+      # Also enforces `commits.scopes` from .standards.yml when configured.
+      run: .standards/scripts/check-commit-message.sh --file {1}
+
+# Once lefthook is installed it owns core.hooksPath, so the native
+# .git/hooks/post-merge reminder that setup.sh writes no longer runs.
+# This block restores it with the same logic (no Make target required).
+post-merge:
+  commands:
+    standards-sync-reminder:
+      run: |
+        [ -d .standards ] || exit 0
+        git -C .standards fetch -q origin 2>/dev/null || exit 0
+        local_rev=$(git -C .standards rev-parse HEAD)
+        remote_rev=$(git -C .standards rev-parse origin/main 2>/dev/null || git -C .standards rev-parse origin/master 2>/dev/null)
+        if [ -n "$remote_rev" ] && [ "$local_rev" != "$remote_rev" ]; then
+          echo "📋 Standards repository has updates. Run: cd .standards && git pull && cd .. && ./.standards/scripts/sync-standards.sh"
+        fi
+        exit 0

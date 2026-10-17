@@ -532,6 +532,14 @@ setup_ai_agents() {
         echo "  slow_threshold_ms: 2000"
         echo "architecture: clean"
         echo "security: strict"
+        echo "# Conventional Commits enforcement — uncomment to tune. Defaults: the last"
+        echo "# 50 non-merge commits locally; the PR's own commits in the standards-review"
+        echo "# action. Precedence: since > PR range (CI) > window, so a window only"
+        echo "# applies when no range is available and never widens a PR check."
+        echo "# commits:"
+        echo "#   window: 50             # inspect the last N non-merge commits"
+        echo "#   since: origin/main     # or inspect <ref>..HEAD"
+        echo "#   scopes: [api, domain]  # allow-list for scoped commits"
     } | dry_run_write "$PROJECT_ROOT/.standards.yml"
     if [ "$DRY_RUN" = false ]; then
         echo "✅ .standards.yml created"
@@ -662,6 +670,35 @@ HOOK
 
     chmod +x "$GIT_HOOKS_DIR/post-merge"
     echo "✅ Git hooks installed"
+fi
+
+# Conventional Commits commit-msg hook templates — never auto-installed: the
+# hook manager is a project decision, so setup only prints how to adopt one.
+LEFTHOOK_CFG=""
+for _lh in lefthook.yml lefthook.yaml .lefthook.yml .lefthook.yaml; do
+    if [ -f "$PROJECT_ROOT/$_lh" ]; then
+        LEFTHOOK_CFG="$_lh"
+        break
+    fi
+done
+if [ -f "$STANDARDS_DIR/templates/husky-commit-msg.example" ] \
+   && [ ! -f "$PROJECT_ROOT/.husky/commit-msg" ]; then
+    if [ -n "$LEFTHOOK_CFG" ]; then
+        # Already on lefthook: do not suggest a second config file.
+        if ! grep -qE '^commit-msg:' "$PROJECT_ROOT/$LEFTHOOK_CFG" 2>/dev/null; then
+            echo "ℹ️  $LEFTHOOK_CFG has no commit-msg hook. Merge the commit-msg block from"
+            echo "   $STANDARDS_DIR/templates/lefthook.yml.example into $LEFTHOOK_CFG, then: lefthook install"
+        fi
+    else
+        echo "ℹ️  Conventional Commits commit-msg hook templates available (not auto-installed):"
+        if [ -d "$PROJECT_ROOT/.husky" ]; then
+            echo "   husky:    cp $STANDARDS_DIR/templates/husky-commit-msg.example .husky/commit-msg && chmod +x .husky/commit-msg"
+        else
+            echo "   husky:    npx husky init && cp $STANDARDS_DIR/templates/husky-commit-msg.example .husky/commit-msg && chmod +x .husky/commit-msg"
+        fi
+        echo "   lefthook: cp $STANDARDS_DIR/templates/lefthook.yml.example lefthook.yml && lefthook install"
+        echo "   Note: squash-merge uses the PR title; the standards-review action checks it in CI."
+    fi
 fi
 
 # Install standards review workflow template

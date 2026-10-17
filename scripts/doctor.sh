@@ -343,22 +343,142 @@ check_submodule() {
 
 # ---------------------------------------------------------------------------
 # Check 6: Git hooks installed
+#
+# Recognises three hook managers. lefthook and husky take over core.hooksPath,
+# so the native .git/hooks/post-merge that setup.sh writes never runs there;
+# the standards-sync reminder and the Conventional Commits commit-msg hook are
+# checked inside the manager's own config instead.
 # ---------------------------------------------------------------------------
 
+# hook_manager_installed <name> → 0 when git is actually wired to *this*
+# manager: the effective hooks directory (core.hooksPath when set, else the
+# repo's hooks dir) is either named after the manager (husky v9+ points
+# core.hooksPath at .husky/_) or contains hook scripts written by it (lefthook
+# install writes scripts that mention lefthook). A config file alone
+# (lefthook.yml, .husky/) installs nothing, and a core.hooksPath owned by a
+# different manager does not count.
+# effective_hooks_dir → prints the directory git actually reads hooks from:
+# core.hooksPath when set, else the repo's hooks dir (which differs from
+# .git/hooks in linked worktrees). Always absolute.
+effective_hooks_dir() {
+    local hooks_dir
+    hooks_dir=$(git -C "$PROJECT_ROOT" config --get core.hooksPath 2>/dev/null)
+    if [ -z "$hooks_dir" ]; then
+        hooks_dir=$(git -C "$PROJECT_ROOT" rev-parse --git-path hooks 2>/dev/null || echo ".git/hooks")
+    fi
+    case "$hooks_dir" in
+        /*) ;;
+        *) hooks_dir="$PROJECT_ROOT/$hooks_dir" ;;
+    esac
+    printf '%s\n' "$hooks_dir"
+}
+
+hook_manager_installed() {
+    local name="$1" hooks_dir
+    hooks_dir=$(effective_hooks_dir)
+    # Whatever the config names, git only runs hooks that exist there.
+    { [ -d "$hooks_dir" ] && [ -n "$(ls -A "$hooks_dir" 2>/dev/null)" ]; } || return 1
+    if git -C "$PROJECT_ROOT" config --get core.hooksPath 2>/dev/null | grep -qi "$name"; then
+        return 0
+    fi
+    grep -qil "$name" "$hooks_dir"/* 2>/dev/null
+}
+
+# lefthook_block <config> <hook> → prints the body of the top-level `<hook>:`
+# block in a lefthook config (up to the next top-level key).
+lefthook_block() {
+    awk -v key="$2" '
+        $0 ~ ("^" key ":") { inb = 1; next }
+        inb && /^[^[:space:]#]/ { exit }
+        inb { print }
+    ' "$1" 2>/dev/null
+}
+
 check_git_hooks() {
-    local hook_file="$PROJECT_ROOT/.git/hooks/post-merge"
+    local lefthook_cfg="" f
+
+    for f in lefthook.yml lefthook.yaml .lefthook.yml .lefthook.yaml; do
+        if [ -f "$PROJECT_ROOT/$f" ]; then
+            lefthook_cfg="$f"
+            break
+        fi
+    done
+
+    if [ -n "$lefthook_cfg" ]; then
+        if hook_manager_installed lefthook; then
+            check_pass "Git Hooks" "lefthook manages git hooks ($lefthook_cfg, hooks installed)"
+        else
+            check_warn "Git Hooks" "$lefthook_cfg present but lefthook hooks are not installed (nothing in $lefthook_cfg runs yet)" \
+                "Run: lefthook install"
+        fi
+        if grep -qE '^commit-msg:' "$PROJECT_ROOT/$lefthook_cfg" 2>/dev/null; then
+            check_pass "Git Hooks" "$lefthook_cfg has a commit-msg hook"
+        else
+            check_warn "Git Hooks" "$lefthook_cfg has no commit-msg hook (Conventional Commits not enforced locally)" \
+                "Add the commit-msg block from .standards/templates/lefthook.yml.example to $lefthook_cfg, then: lefthook install"
+        fi
+        # Key alone is not enough: the post-merge block must actually run the
+        # standards sync (same test the husky and native paths apply).
+        if lefthook_block "$PROJECT_ROOT/$lefthook_cfg" post-merge | grep -qiE "standards|sync-standards|\.standards"; then
+            check_pass "Git Hooks" "$lefthook_cfg post-merge hook contains standards sync"
+        elif grep -qE '^post-merge:' "$PROJECT_ROOT/$lefthook_cfg" 2>/dev/null; then
+            check_warn "Git Hooks" "$lefthook_cfg has a post-merge hook but it does not run the standards sync" \
+                "Add the standards-sync-reminder command from .standards/templates/lefthook.yml.example to the post-merge block"
+        else
+            check_warn "Git Hooks" "$lefthook_cfg has no post-merge hook (lefthook bypasses .git/hooks/post-merge)" \
+                "Add the post-merge block from .standards/templates/lefthook.yml.example to $lefthook_cfg"
+        fi
+        return
+    fi
+
+    if [ -d "$PROJECT_ROOT/.husky" ]; then
+        if hook_manager_installed husky; then
+            check_pass "Git Hooks" "husky manages git hooks (.husky/, hooks installed)"
+        else
+            check_warn "Git Hooks" ".husky/ present but husky hooks are not installed (core.hooksPath unset; nothing in .husky/ runs yet)" \
+                "Run: npx husky  (or npm install, which runs the prepare script)"
+        fi
+        if [ -f "$PROJECT_ROOT/.husky/commit-msg" ]; then
+            check_pass "Git Hooks" ".husky/commit-msg hook present"
+        else
+            check_warn "Git Hooks" ".husky/ has no commit-msg hook (Conventional Commits not enforced locally)" \
+                "Run: cp .standards/templates/husky-commit-msg.example .husky/commit-msg && chmod +x .husky/commit-msg"
+        fi
+        if [ -f "$PROJECT_ROOT/.husky/post-merge" ] \
+           && grep -qiE "standards|sync-standards|\.standards" "$PROJECT_ROOT/.husky/post-merge" 2>/dev/null; then
+            check_pass "Git Hooks" ".husky/post-merge contains standards sync"
+        else
+            check_warn "Git Hooks" ".husky/ has no post-merge standards sync (husky bypasses .git/hooks/post-merge)" \
+                "Add a .husky/post-merge hook with the standards update check from .standards/templates/lefthook.yml.example (post-merge block)"
+        fi
+        return
+    fi
+
+    # Native git hooks (what setup.sh installs). Read from the directory git
+    # actually uses: core.hooksPath, or the worktree's own hooks dir.
+    local hooks_dir hook_file
+    hooks_dir=$(effective_hooks_dir)
+    hook_file="$hooks_dir/post-merge"
 
     if [ ! -f "$hook_file" ]; then
         check_fail "Git Hooks" "post-merge hook not installed" \
             "Run: make setup  (to install git hooks for automatic standards sync)"
-        return
-    fi
-
-    if grep -qiE "standards|sync-standards|\.standards" "$hook_file" 2>/dev/null; then
+    elif grep -qiE "standards|sync-standards|\.standards" "$hook_file" 2>/dev/null; then
         check_pass "Git Hooks" "post-merge hook contains standards sync"
     else
         check_warn "Git Hooks" "post-merge hook exists but lacks standards sync reference" \
             "Run: make setup  (to update git hooks with standards sync)"
+    fi
+
+    # git ignores hooks without the executable bit, so -f alone is not "installed".
+    if [ -x "$hooks_dir/commit-msg" ]; then
+        check_pass "Git Hooks" "commit-msg hook installed"
+    elif [ -f "$hooks_dir/commit-msg" ]; then
+        check_warn "Git Hooks" "commit-msg hook exists but is not executable (git will not run it)" \
+            "Run: chmod +x $hooks_dir/commit-msg"
+    else
+        check_warn "Git Hooks" "no commit-msg hook validates Conventional Commits locally" \
+            "Install a commit-msg hook: see .standards/templates/husky-commit-msg.example or .standards/templates/lefthook.yml.example"
     fi
 }
 
