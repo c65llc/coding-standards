@@ -10,6 +10,8 @@ inputs:
       Conventional Commits check on the PR title. Squash-merge uses the PR title as
       the mainline commit subject, so branch commits alone do not protect history.
       One of: fail (default — blocks the check), warn (annotates only), off.
+      Any other value is reported and treated as fail, so a typo cannot
+      silently disable the check.
     required: false
     default: 'fail'
 runs:
@@ -17,13 +19,24 @@ runs:
   steps:
     - name: Check PR title (Conventional Commits)
       id: title
-      if: github.event_name == 'pull_request' && inputs.pr-title-check != 'off'
+      # pull_request_target (the fork-friendly trigger in the workflow template)
+      # carries the same github.event.pull_request payload, so the title is
+      # available there too.
+      if: (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && inputs.pr-title-check != 'off'
       shell: bash
       env:
         PR_TITLE: ${{ github.event.pull_request.title }}
         TITLE_MODE: ${{ inputs.pr-title-check }}
         STANDARDS_PATH: ${{ inputs.standards-path }}
       run: |
+        case "$TITLE_MODE" in
+          fail|warn) ;;
+          *)
+            echo "::warning::pr-title-check='$TITLE_MODE' is not one of fail|warn|off; treating it as fail"
+            TITLE_MODE=fail
+            ;;
+        esac
+
         CHECKER="$STANDARDS_PATH/scripts/check-commit-message.sh"
         if [ ! -f "$CHECKER" ]; then
           CHECKER="scripts/check-commit-message.sh"
@@ -114,7 +127,7 @@ runs:
         fi
 
     - name: Post PR comment
-      if: github.event_name == 'pull_request'
+      if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
       continue-on-error: true
       shell: bash
       env:
@@ -179,7 +192,9 @@ runs:
         rm -f "$COMMENT_FILE"
 
     - name: Set check status
-      if: steps.lint.outputs.has_failures == 'true' || (steps.title.outputs.status == 'fail' && inputs.pr-title-check == 'fail')
+      # Every mode except an explicit `warn` blocks on a failed title (`off`
+      # never produces status=fail), so a misspelled mode cannot disable it.
+      if: steps.lint.outputs.has_failures == 'true' || (steps.title.outputs.status == 'fail' && inputs.pr-title-check != 'warn')
       shell: bash
       env:
         TITLE_STATUS: ${{ steps.title.outputs.status }}
@@ -188,7 +203,7 @@ runs:
         if [ "${{ steps.lint.outputs.has_failures }}" = "true" ]; then
           echo "::error::Standards compliance check failed with ${{ steps.lint.outputs.fail }} failure(s)"
         fi
-        if [ "$TITLE_STATUS" = "fail" ] && [ "$TITLE_MODE" = "fail" ]; then
+        if [ "$TITLE_STATUS" = "fail" ] && [ "$TITLE_MODE" != "warn" ]; then
           echo "::error::PR title must be a Conventional Commit (squash-merge uses it as the commit subject). Set pr-title-check: warn to downgrade."
         fi
         exit 1

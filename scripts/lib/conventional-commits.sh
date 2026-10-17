@@ -87,6 +87,8 @@ cc_config_scopes() {
             printf "%s ", item
             next
         }
+        # Blank and comment lines inside the block list do not end it.
+        inlist && /^[[:space:]]*(#|$)/ { next }
         inlist { exit }
     ' "$yml" | tr -s ' ' | sed 's/^ //; s/ $//'
 }

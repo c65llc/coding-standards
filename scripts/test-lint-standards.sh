@@ -1214,6 +1214,28 @@ out=$(cd "$lh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
 if echo "$out" | grep 'Git Hooks' | grep -q 'hooks installed' && ! echo "$out" | grep 'Git Hooks' | grep -q 'not installed'; then pass; else
     fail "expected installed PASS: $(echo "$out" | grep 'Git Hooks')"; fi
 
+echo -n "Test 50: block-form commits.scopes survives blank and comment lines... "
+printf 'version: 1\ncommits:\n  scopes:\n    # core areas\n    - api\n\n    # shared kernel\n    - domain\n' > "$sc/.standards.yml"
+if bash "$CHK" --project-root "$sc" "feat(domain): after a comment line" >/dev/null 2>&1 \
+   && ! bash "$CHK" --project-root "$sc" "feat(web): still enforced" >/dev/null 2>&1; then pass; else
+    fail "block list truncated or emptied by comment/blank lines"; fi
+
+echo -n "Test 51: doctor.sh does not credit lefthook for a core.hooksPath owned by another manager... "
+mkdir -p "$lh2/.husky/_"
+( cd "$lh2" && git config core.hooksPath .husky/_ )
+out=$(cd "$lh2" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Git Hooks' | grep -q 'lefthook hooks are not installed'; then pass; else
+    fail "expected lefthook 'not installed' with husky hooksPath: $(echo "$out" | grep 'Git Hooks')"; fi
+
+echo -n "Test 52: doctor.sh requires a native commit-msg hook to be executable... "
+printf '#!/bin/sh\nexit 0\n' > "$nh/.git/hooks/commit-msg"
+chmod -x "$nh/.git/hooks/commit-msg"
+out1=$(cd "$nh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+chmod +x "$nh/.git/hooks/commit-msg"
+out2=$(cd "$nh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out1" | grep 'Git Hooks' | grep -q 'not executable' && echo "$out2" | grep 'Git Hooks' | grep -q 'commit-msg hook installed'; then pass; else
+    fail "executable-bit check wrong: [$(echo "$out1" | grep commit-msg)] [$(echo "$out2" | grep commit-msg)]"; fi
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"

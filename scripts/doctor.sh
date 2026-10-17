@@ -350,16 +350,23 @@ check_submodule() {
 # checked inside the manager's own config instead.
 # ---------------------------------------------------------------------------
 
-# hook_manager_installed <name> → 0 when git is actually wired to the manager:
-# either core.hooksPath is set (husky v9+, lefthook with a custom path) or the
-# repo's hooks directory contains hook scripts written by the manager.
-# A config file alone (lefthook.yml, .husky/) does not install anything.
+# hook_manager_installed <name> → 0 when git is actually wired to *this*
+# manager: the effective hooks directory (core.hooksPath when set, else the
+# repo's hooks dir) is either named after the manager (husky v9+ points
+# core.hooksPath at .husky/_) or contains hook scripts written by it (lefthook
+# install writes scripts that mention lefthook). A config file alone
+# (lefthook.yml, .husky/) installs nothing, and a core.hooksPath owned by a
+# different manager does not count.
 hook_manager_installed() {
     local name="$1" hooks_dir
-    if [ -n "$(git -C "$PROJECT_ROOT" config --get core.hooksPath 2>/dev/null)" ]; then
-        return 0
+    hooks_dir=$(git -C "$PROJECT_ROOT" config --get core.hooksPath 2>/dev/null)
+    if [ -n "$hooks_dir" ]; then
+        case "$hooks_dir" in
+            *"$name"*) return 0 ;;
+        esac
+    else
+        hooks_dir=$(git -C "$PROJECT_ROOT" rev-parse --git-path hooks 2>/dev/null || echo ".git/hooks")
     fi
-    hooks_dir=$(git -C "$PROJECT_ROOT" rev-parse --git-path hooks 2>/dev/null || echo ".git/hooks")
     case "$hooks_dir" in
         /*) ;;
         *) hooks_dir="$PROJECT_ROOT/$hooks_dir" ;;
@@ -436,8 +443,12 @@ check_git_hooks() {
             "Run: make setup  (to update git hooks with standards sync)"
     fi
 
-    if [ -f "$PROJECT_ROOT/.git/hooks/commit-msg" ]; then
+    # git ignores hooks without the executable bit, so -f alone is not "installed".
+    if [ -x "$PROJECT_ROOT/.git/hooks/commit-msg" ]; then
         check_pass "Git Hooks" "commit-msg hook installed"
+    elif [ -f "$PROJECT_ROOT/.git/hooks/commit-msg" ]; then
+        check_warn "Git Hooks" "commit-msg hook exists but is not executable (git will not run it)" \
+            "Run: chmod +x .git/hooks/commit-msg"
     else
         check_warn "Git Hooks" "no commit-msg hook validates Conventional Commits locally" \
             "Install a commit-msg hook: see .standards/templates/husky-commit-msg.example or .standards/templates/lefthook.yml.example"
