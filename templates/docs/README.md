@@ -37,5 +37,7 @@ template content is identical.
 - **Every doc appears in the docs index** with a `live` or `historical`
   status (proc-01 §9).
 - The `doc-lint` check in `scripts/lint-checks/common/` verifies ADR required
-  fields and that relative links resolve. Run `make lint-standards` before
-  opening the PR.
+  fields and that relative links resolve. Run it before opening the PR:
+  `./.standards/scripts/lint-standards.sh .` in a project that installed the
+  standards (`install.sh` adds only the `sync-standards` and `diff-standards`
+  Make targets), or `make lint-standards` inside the standards repo itself.

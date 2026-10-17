@@ -768,20 +768,88 @@ if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q '0006-bad-date.md' && 
    && echo "$out" | grep -q 'Date'; then pass; else
     fail "expected FAIL naming only 0006-bad-date.md for Date, got: $out"; fi
 
-echo -n "Test 47: doc-lint FAILs closed on a project with no Markdown at all (proc-05 §7.2)... "
+echo -n "Test 47: doc-lint tracks nested list indentation so an 8-space continuation under a nested item is content... "
+link_nest=$(make_project "link-nested-list")
+mkdir -p "$link_nest/docs"
+cat > "$link_nest/docs/index.md" <<'EOF'
+# Index
+
+- outer
+    - inner
+
+        [continuation of inner](missing.md) is content.
+
+            [twelve spaces under inner is code](ignored.md)
+
+- sibling
+
+    [continuation of sibling](missing-two.md)
+
+        [eight spaces under a top-level item is code](ignored-too.md)
+EOF
+out=$(bash "$DOC_LINT" "$link_nest" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'missing.md' && echo "$out" | grep -q 'missing-two.md' \
+   && echo "$out" | grep -q '2 broken'; then pass; else
+    fail "expected FAIL with exactly missing.md and missing-two.md, got: $out"; fi
+
+echo -n "Test 48: doc-lint ignores multi-line code spans and HTML comments (single and multi-line)... "
+link_span=$(make_project "link-span-comment")
+mkdir -p "$link_span/docs"
+echo "# Real" > "$link_span/docs/real.md"
+cat > "$link_span/docs/index.md" <<'EOF'
+# Index
+
+A span that opens here `and
+[continues](missing.md) on the next line
+and closes` here; then a [real link](real.md).
+
+<!-- [commented out](missing-two.md) -->
+
+<!--
+A multi-line comment with [a link](missing-three.md)
+and [another](missing-four.md)
+--> but [this one after it](real.md) counts.
+
+An unmatched backtick ` does not swallow the next paragraph:
+
+[after a blank line](real.md)
+EOF
+out=$(bash "$DOC_LINT" "$link_span" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 49: doc-lint ignores a commented-out ADR section when validating structure... "
+adr_cmt=$(make_project "adr-comment")
+mkdir -p "$adr_cmt/docs/adr"
+cat > "$adr_cmt/docs/adr/0008-commented.md" <<'EOF'
+# ADR 0008: Commented
+
+- **Status:** Accepted
+- **Date:** 2026-10-17
+
+## Context
+
+## Decision
+
+<!-- ## Consequences -->
+EOF
+out=$(bash "$DOC_LINT" "$adr_cmt" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'Consequences'; then pass; else
+    fail "expected FAIL naming Consequences, got: $out"; fi
+
+echo -n "Test 50: doc-lint FAILs closed on a project with no Markdown at all (proc-05 §7.2)... "
 out=$(bash "$DOC_LINT" "$proj" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'No Markdown files matched'; then pass; else
     fail "expected FAIL naming the empty scan, got: $out"; fi
 
 # --- Sibling scripts smoke --------------------------------------------------
 
-echo -n "Test 48: diff-standards.sh runs on a project without .standards.yml... "
+echo -n "Test 51: diff-standards.sh runs on a project without .standards.yml... "
 if bash "$REPO_ROOT/scripts/diff-standards.sh" "$proj" >/dev/null 2>&1; then pass; else
     # diff-standards may exit non-zero; accept as long as it doesn't crash hard (>1)
     rc=$?; if [ "$rc" -le 1 ]; then pass; else fail "diff-standards crashed (exit $rc)"; fi
 fi
 
-echo -n "Test 49: doctor.sh runs without a hard crash... "
+echo -n "Test 52: doctor.sh runs without a hard crash... "
 ( cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -le 1 ]; then pass; else fail "doctor.sh crashed (exit $rc)"; fi
 

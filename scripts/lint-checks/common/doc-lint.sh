@@ -17,14 +17,17 @@
 # standards checkout (.standards/) and the .standards-pending/ staging dir are
 # always skipped.
 #
-# Code is never content: block-quote prefixes are removed first; fenced blocks
-# (opener indented less than the current indented-code threshold, closed only
-# by a fence of the same character and at least the same length) and indented
-# code blocks (four spaces past the enclosing list item's content column, or a
-# tab, after a blank line, until a less-indented non-blank line) are removed
-# before both the ADR checks and the link scan, so an example ADR or an example
-# link inside a code block can neither satisfy nor fail a rule. Inline code
-# spans (any backtick run length) are removed from the remaining lines.
+# Code and comments are never content. Block-quote prefixes are removed first.
+# Fenced blocks (opener indented less than the current indented-code
+# threshold, closed only by a fence of the same character and at least the
+# same length), indented code blocks (four columns past the innermost open
+# list item's content column, or a tab, after a blank line, until a
+# less-indented non-blank line; nested list items each raise the threshold)
+# and HTML comments (single- or multi-line) are removed before both the ADR
+# checks and the link scan, so an example ADR or an example link inside them
+# can neither satisfy nor fail a rule. Inline code spans (any backtick run
+# length, including spans that continue onto following lines of the same
+# paragraph) are removed from the remaining lines.
 #
 # ADR rules — files under docs/adr/, docs/adrs/, docs/decisions/ or
 # docs/architecture/decisions/. README.md, index.md and the template file
@@ -84,11 +87,12 @@ list_markdown_files() {
 }
 
 # ---------------------------------------------------------------------------
-# Shared awk rules: strip block-quote prefixes, skip fenced and indented code
+# Shared awk rules: strip block-quote prefixes and HTML comments, skip fenced
+# and indented code
 # ---------------------------------------------------------------------------
-# Prepended to every awk program below. Lines inside code blocks are consumed
-# with `next`; everything else falls through to the program's own rules with
-# $0 rewritten to the line's content (block-quote markers removed).
+# Prepended to every awk program below. Lines inside code blocks or comments
+# are consumed with `next`; everything else falls through to the program's own
+# rules with $0 rewritten to the line's content.
 #
 # All awk programs run under LC_ALL=C: they walk lines one position at a time,
 # and in a UTF-8 locale macOS awk aborts ("multibyte conversion failure") when
@@ -106,12 +110,12 @@ AWK_SKIP_CODE='
         }
         return n
     }
-    BEGIN { prev_blank = 1; code_indent = 4; list_content = 0; in_list = 0 }
+    BEGIN { prev_blank = 1; code_indent = 4; depth = 0 }
     # Block quotes: drop every leading "> " so the content is classified like
     # top-level text (fences and links inside quotes are still fences/links).
     { while (match($0, /^ ? ? ?> ?/)) $0 = substr($0, RLENGTH + 1) }
-    # Fenced code: the opener may be indented up to three spaces past the
-    # enclosing list item content column (deeper is indented code). Remember
+    # Fenced code: the opener may be indented up to three columns past the
+    # innermost list item content column (deeper is indented code). Remember
     # the delimiter character and run length; only a fence of the same
     # character and at least that length, with nothing but whitespace after
     # it, closes the block.
@@ -121,18 +125,33 @@ AWK_SKIP_CODE='
             match($0, /^[ \t]*/); rest = substr($0, RLENGTH + 1)
             ch = substr(rest, 1, 1); n = 0
             while (substr(rest, n + 1, 1) == ch) n++
-            if (!in_fence) { in_fence = 1; fence_ch = ch; fence_len = n; prev_blank = 0; next }
+            if (!in_fence) { in_fence = 1; fence_ch = ch; fence_len = n; prev_blank = 0; span_open = 0; next }
             if (ch == fence_ch && n >= fence_len && substr(rest, n + 1) ~ /^[[:space:]]*$/) {
                 in_fence = 0; prev_blank = 1; next
             }
         }
     }
     in_fence { next }
-    # Indented code: at least code_indent columns (four past the enclosing
-    # list item content, or four at top level), opened only after a blank line
-    # (an indented line cannot interrupt a paragraph), running through blank
-    # lines until a less-indented non-blank line. List items move the
-    # threshold so a 4-space continuation paragraph inside a list is content.
+    # HTML comments: remove <!-- ... --> on a line; an unterminated opener
+    # drops the rest of the line and every following line up to "-->".
+    {
+        if (in_comment) {
+            k = index($0, "-->")
+            if (k == 0) next
+            $0 = substr($0, k + 3); in_comment = 0
+        }
+        while ((k = index($0, "<!--")) > 0) {
+            e = index(substr($0, k + 4), "-->")
+            if (e == 0) { $0 = substr($0, 1, k - 1); in_comment = 1; break }
+            $0 = substr($0, 1, k - 1) substr($0, k + 4 + e + 2)
+        }
+    }
+    # Indented code: at least code_indent columns (four past the innermost
+    # open list item content column, or four at top level), opened only after
+    # a blank line (an indented line cannot interrupt a paragraph), running
+    # through blank lines until a less-indented non-blank line. List items are
+    # tracked as a stack so nested items each raise the threshold and a
+    # 4-space continuation paragraph inside any item is content.
     {
         blank = ($0 ~ /^[[:space:]]*$/)
         ind = indent_of($0)
@@ -143,14 +162,15 @@ AWK_SKIP_CODE='
             in_indented = 1; next
         }
         if (!blank) {
-            if (match($0, /^ ? ? ?([-*+]|[0-9]+[.)])([ ]+|\t)/)) {
-                list_content = RLENGTH
-                if (list_content - ind > 6) list_content = ind + 2   # 5+ spaces after marker: content starts after one space
-                in_list = 1
-            } else if (in_list && ind < list_content) {
-                in_list = 0; list_content = 0
+            if (ind < code_indent && match($0, /^[ \t]*([-*+]|[0-9]+[.)])([ ]+|\t)/)) {
+                content = RLENGTH
+                if (content - ind > 6) content = ind + 2   # 5+ spaces after marker: content starts after one space
+                while (depth > 0 && mark[depth] >= ind) depth--   # close siblings and deeper items
+                depth++; mark[depth] = ind; cont[depth] = content
+            } else {
+                while (depth > 0 && ind < cont[depth]) depth--     # a less-indented line closes the item
             }
-            code_indent = (in_list ? list_content : 0) + 4
+            code_indent = (depth > 0 ? cont[depth] : 0) + 4
         }
         prev_blank = blank
     }
@@ -178,8 +198,8 @@ is_adr_path() {
     return 0
 }
 
-# Prints a Markdown file with block-quote prefixes, fenced and indented code
-# blocks removed.
+# Prints a Markdown file with block-quote prefixes, HTML comments, fenced and
+# indented code blocks removed.
 strip_code_blocks() {
     LC_ALL=C awk "$AWK_SKIP_CODE"' { print }' "$1"
 }
@@ -303,7 +323,7 @@ extract_relative_links() {
         }
         # Decode HTML character references: the XML named set plus numeric
         # decimal/hex forms. Unknown names stay literal.
-        function decode_entities(t,    out, i, L, rest, name, cp) {
+        function decode_entities(t,    out, i, L, rest, name) {
             out = ""; L = length(t); i = 1
             while (i <= L) {
                 if (substr(t, i, 1) == "&") {
@@ -347,10 +367,24 @@ extract_relative_links() {
             print target
         }
         # Drop inline code spans. A span opens with a run of N backticks and
-        # closes at the next run of exactly N; an unmatched run is literal
-        # text. "\`" outside a span is a literal backtick.
+        # closes at the next run of exactly N, which may be on a later line of
+        # the same paragraph (span_open carries the run length across lines
+        # and is reset at a blank line). "\`" outside a span is a literal
+        # backtick.
         function strip_code_spans(s,    out, i, L, c, n, j, m, found) {
             out = ""; L = length(s); i = 1
+            if (span_open > 0) {
+                j = 1; found = 0
+                while (j <= L) {
+                    if (substr(s, j, 1) == "`") {
+                        m = 0; while (substr(s, j + m, 1) == "`") m++
+                        if (m == span_open) { found = 1; break }
+                        j += m
+                    } else j++
+                }
+                if (!found) return ""
+                i = j + span_open; span_open = 0
+            }
             while (i <= L) {
                 c = substr(s, i, 1)
                 if (c == "\\" && i < L) { out = out substr(s, i, 2); i += 2; continue }
@@ -365,19 +399,19 @@ extract_relative_links() {
                     } else j++
                 }
                 if (found) i = j + n
-                else { out = out substr(s, i, n); i += n }
+                else { span_open = n; return out }      # continues on a later line
             }
             return out
         }
         # Index of the unescaped "[" that opens the link whose "]" is at b,
         # or 0 when there is none (a bare or escaped "](" is not a link).
-        function find_opener(s, b,    k, depth, c) {
-            depth = 0
+        function find_opener(s, b,    k, depth2, c) {
+            depth2 = 0
             for (k = b - 1; k >= 1; k--) {
                 c = substr(s, k, 1)
                 if ((c == "[" || c == "]") && escaped(s, k)) continue
-                if (c == "]") depth++
-                else if (c == "[") { if (depth == 0) return k; depth-- }
+                if (c == "]") depth2++
+                else if (c == "[") { if (depth2 == 0) return k; depth2-- }
             }
             return 0
         }
@@ -413,7 +447,7 @@ extract_relative_links() {
         # DEST_ANGLE; returns the number of characters consumed up to and
         # including the closing ")" of the link, or 0 if the link does not
         # close on this line.
-        function parse_dest(rest,    lead, n, j, k, c, depth) {
+        function parse_dest(rest,    lead, n, j, k, c, pdepth) {
             lead = 0
             while (substr(rest, lead + 1, 1) == " " || substr(rest, lead + 1, 1) == "\t") lead++
             if (lead) rest = substr(rest, lead + 1)
@@ -426,12 +460,12 @@ extract_relative_links() {
                 if (k == 0) return 0
                 return lead + j + k
             }
-            depth = 0; j = 1
+            pdepth = 0; j = 1
             while (j <= n) {
                 c = substr(rest, j, 1)
                 if (c == "\\") { j += 2; continue }
-                if (c == "(") depth++
-                else if (c == ")") { if (depth == 0) break; depth-- }
+                if (c == "(") pdepth++
+                else if (c == ")") { if (pdepth == 0) break; pdepth-- }
                 else if (c == " " || c == "\t") break
                 j++
             }
@@ -443,6 +477,7 @@ extract_relative_links() {
             return lead + j + k - 1
         }
         {
+            if ($0 ~ /^[[:space:]]*$/) { span_open = 0; next }   # paragraph break ends an open span
             line = strip_code_spans($0)
             # Reference-style definition: [label]: target  (not footnotes [^1]:)
             if (match(line, /^[[:space:]]*\[[^]^][^]]*\]:[[:space:]]*/)) {
@@ -495,6 +530,8 @@ self_test() {
 ## Consequences
 ```
 
+<!-- ## Decision -->
+
 ## Context
 EOF
     out="$(adr_missing_fields "$dir/bad-adr.md")"
@@ -527,6 +564,10 @@ Prose [one](missing-one.md) and `[code](ignored.md)` and [two](<missing two.md> 
 ```
 
     [indented](ignored.md)
+
+<!-- [commented](ignored.md) -->
+A span that `continues
+[across](ignored.md) lines` ends here.
 
 [three]: missing-three.md
 [^1]: footnote, not a link

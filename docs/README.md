@@ -56,3 +56,4 @@ retires it.
 | [superpowers/plans/2026-03-25-smart-sync-merge-plan.md](superpowers/plans/2026-03-25-smart-sync-merge-plan.md) | historical | Done |
 | [superpowers/plans/2026-03-25-token-efficiency-agent-best-practices-plan.md](superpowers/plans/2026-03-25-token-efficiency-agent-best-practices-plan.md) | historical | Done |
 | [superpowers/plans/2026-04-16-1.2-safe-setup.md](superpowers/plans/2026-04-16-1.2-safe-setup.md) | historical | Done |
+| [doc-lint-verification.md](doc-lint-verification.md) | historical | Verification record for PR #208 (doc-lint, document templates) |

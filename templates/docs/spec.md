@@ -66,8 +66,11 @@ asynchrony.]
 ## Testing
 
 [How success will be proven, by layer. Name the fixtures and the coverage
-target (95% per touched module unless an ADR says otherwise). List anything
-that can only be verified manually and who signs it off.]
+target: the floor configured for each touched module's scope in
+`.standards.yml` (`coverage.scopes`) — 95% by default, 100% for Domain/Core,
+lower only where the scope entry states a `reason` (proc-05 §6); an ADR does
+not change it. List anything that can only be verified manually and who
+signs it off.]
 
 - **Unit:** [modules, key cases]
 - **Integration:** [boundaries exercised]
