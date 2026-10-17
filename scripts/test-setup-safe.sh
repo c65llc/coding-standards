@@ -384,7 +384,7 @@ fi
 
 # --- CLI contract: --help / unknown options (issue #181) ---------------------
 
-echo -n "Test 25: setup.sh --help exits 0 and prints usage... "
+echo -n "Test 32: setup.sh --help exits 0 and prints usage... "
 proj=$(make_project "help-exit")
 help_rc=0
 help_out=$(cd "$proj" && "$SETUP" --help 2>&1) || help_rc=$?
@@ -394,7 +394,7 @@ else
     fail "rc=$help_rc, output: $help_out"
 fi
 
-echo -n "Test 26: setup.sh --help writes nothing to the project... "
+echo -n "Test 33: setup.sh --help writes nothing to the project... "
 leftover=$(cd "$proj" && git status --porcelain --untracked-files=all 2>/dev/null)
 if [ -z "$leftover" ] && [ ! -f "$proj/.git/hooks/post-merge" ]; then
     pass
@@ -402,10 +402,10 @@ else
     fail "--help modified the project: $leftover"
 fi
 
-echo -n "Test 27: setup.sh -h is an alias for --help... "
+echo -n "Test 34: setup.sh -h is an alias for --help... "
 if (cd "$proj" && "$SETUP" -h >/dev/null 2>&1); then pass; else fail "-h did not exit 0"; fi
 
-echo -n "Test 28: unknown option exits 2 with 'Unknown option' + usage... "
+echo -n "Test 35: unknown option exits 2 with 'Unknown option' + usage... "
 proj=$(make_project "unknown-flag")
 mkdir -p "$proj/.standards"
 ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
@@ -418,7 +418,7 @@ else
     fail "rc=$unk_rc, output: $unk_out"
 fi
 
-echo -n "Test 29: unknown option writes nothing to the project... "
+echo -n "Test 36: unknown option writes nothing to the project... "
 leftover=$(cd "$proj" && git status --porcelain --untracked-files=all 2>/dev/null | grep -v '^?? .standards/' || true)
 if [ -z "$leftover" ] && [ ! -f "$proj/.git/hooks/post-merge" ] && [ ! -f "$proj/.standards.yml" ]; then
     pass
@@ -426,12 +426,12 @@ else
     fail "unknown option modified the project: $leftover"
 fi
 
-echo -n "Test 30: option missing its value exits 2... "
+echo -n "Test 37: option missing its value exits 2... "
 miss_rc=0
 (cd "$proj" && "$SETUP" --agents >/dev/null 2>&1) || miss_rc=$?
 if [ "$miss_rc" -eq 2 ]; then pass; else fail "expected exit 2, got $miss_rc"; fi
 
-echo -n "Test 30a: option followed by another flag (--languages --help) exits 2 and writes nothing... "
+echo -n "Test 37a: option followed by another flag (--languages --help) exits 2 and writes nothing... "
 optval_rc=0
 optval_out=$(cd "$proj" && "$SETUP" --languages --help 2>&1) || optval_rc=$?
 leftover=$(cd "$proj" && git status --porcelain --untracked-files=all 2>/dev/null | grep -v '^?? .standards/' || true)
@@ -442,7 +442,7 @@ else
     fail "rc=$optval_rc, leftover='$leftover', output: $optval_out"
 fi
 
-echo -n "Test 30b: empty equals form (--agents=) exits 2 and writes nothing... "
+echo -n "Test 37b: empty equals form (--agents=) exits 2 and writes nothing... "
 eq_rc=0
 eq_out=$(cd "$proj" && "$SETUP" --agents= 2>&1) || eq_rc=$?
 leftover=$(cd "$proj" && git status --porcelain --untracked-files=all 2>/dev/null | grep -v '^?? .standards/' || true)
@@ -453,7 +453,7 @@ else
     fail "rc=$eq_rc, leftover='$leftover', output: $eq_out"
 fi
 
-echo -n "Test 30c: empty entries in the agent list (--agents=, / codex, / ,cursor) exit 2 and write nothing... "
+echo -n "Test 37c: empty entries in the agent list (--agents=, / codex, / ,cursor) exit 2 and write nothing... "
 empty_ok=true
 empty_detail=""
 for bad in "," "codex," ",cursor" "codex,,cursor"; do
@@ -472,7 +472,7 @@ fi
 
 # --- Agent-scoped install: explicit --agents installs only that agent's artifacts
 
-echo -n "Test 31: --agents codex writes only AGENTS.md artifacts (no hooks, aliases, Cursor, .claude, .gemini)... "
+echo -n "Test 38: --agents codex writes only AGENTS.md artifacts (no hooks, aliases, Cursor, .claude, .gemini)... "
 proj=$(make_project "codex-only")
 mkdir -p "$proj/.standards"
 ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
@@ -500,7 +500,7 @@ if [ -f "$fake_home/.gitconfig" ] && grep -q "^\[alias\]" "$fake_home/.gitconfig
 fi
 if [ -z "$codex_errs" ]; then pass; else fail "unexpected artifacts:$codex_errs"; fi
 
-echo -n "Test 32: --agents codex,cursor installs Cursor commands but not .claude or .gemini... "
+echo -n "Test 39: --agents codex,cursor installs Cursor commands but not .claude or .gemini... "
 proj=$(make_project "codex-cursor")
 mkdir -p "$proj/.standards"
 ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
@@ -517,7 +517,7 @@ else
     fail "expected AGENTS.md + .cursorrules + .cursor/commands only"
 fi
 
-echo -n "Test 33: --agents detect still installs git hooks (legacy behaviour preserved)... "
+echo -n "Test 40: --agents detect still installs git hooks (legacy behaviour preserved)... "
 proj=$(make_project "detect-hooks")
 touch "$proj/AGENTS.md"
 mkdir -p "$proj/.standards"
