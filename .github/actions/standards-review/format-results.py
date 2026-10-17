@@ -25,6 +25,23 @@ def cell(value):
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
+def member_cell(value):
+    """Render a member path as an inert literal.
+
+    The member list comes from the PR's own ``.standards.yml``, so it is
+    untrusted: ``@org/team`` would ping a team and ``[x](url)`` or
+    ``![x](url)`` would inject a link or image into the bot's comment. Mirror
+    the action's own sanitising (drop backticks, ``@``, brackets, parentheses
+    and angle brackets), cap the length, and show the result in a code span so
+    whatever remains is literal Markdown.
+    """
+    text = cell(value)
+    for ch in "`@[]()<>":
+        text = text.replace(ch, "")
+    text = text[:200].strip() or "member"
+    return f"`{text}`"
+
+
 icons = {"PASS": ":white_check_mark:", "WARN": ":warning:", "FAIL": ":x:"}
 for r in results:
     if not isinstance(r, dict):
@@ -33,7 +50,7 @@ for r in results:
     check = cell(r.get("check", ""))
     member = r.get("member", "")
     if member and member != ".":
-        check = f"{cell(member)}: {check}"
+        check = f"{member_cell(member)}: {check}"
     message = cell(r.get("message", ""))
     icon = icons.get(status, ":grey_question:")
     print(f"| {icon} {status} | {check} | {message} |")

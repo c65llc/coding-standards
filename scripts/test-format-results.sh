@@ -81,7 +81,7 @@ assert_eq "newlines in message flatten to spaces" "$expected" "$out"
 
 # Test 11: a member other than the root prefixes the check name (monorepo runs, #179)
 out=$(python3 "$FORMATTER" '{"results":[{"status":"FAIL","check":"python/banned-functions","member":"server","message":"eval found"}]}')
-expected="| :x: FAIL | server: python/banned-functions | eval found |"
+expected="| :x: FAIL | \`server\`: python/banned-functions | eval found |"
 assert_eq "member prefixes the check name" "$expected" "$out"
 
 # Test 12: the root member (".") and a missing member field render the bare check name
@@ -91,8 +91,19 @@ assert_eq "root member and absent member render the bare check" "$expected" "$ou
 
 # Test 13: a member value containing a pipe cannot break the table
 out=$(python3 "$FORMATTER" '{"results":[{"status":"WARN","check":"c","member":"a|b","message":"m"}]}')
-expected="| :warning: WARN | a\\|b: c | m |"
+expected="| :warning: WARN | \`a\\|b\`: c | m |"
 assert_eq "pipe in member is escaped" "$expected" "$out"
+
+# Test 14: a member value is repo-controlled: mentions, links, images and code
+# spans are neutralised and the remainder is shown as a literal code span
+out=$(python3 "$FORMATTER" '{"results":[{"status":"WARN","check":"c","member":"@org/team ![x](https://evil/i.png) <b>`q`","message":"m"}]}')
+expected="| :warning: WARN | \`org/team !xhttps://evil/i.png bq\`: c | m |"
+assert_eq "mentions, links and markup in member are neutralised" "$expected" "$out"
+
+# Test 15: a member made only of markup still renders a placeholder
+out=$(python3 "$FORMATTER" '{"results":[{"status":"PASS","check":"c","member":"@[]","message":"m"}]}')
+expected="| :white_check_mark: PASS | \`member\`: c | m |"
+assert_eq "markup-only member falls back to a placeholder" "$expected" "$out"
 
 echo ""
 echo "format-results.py tests: $PASS passed, $FAIL failed"

@@ -24,8 +24,13 @@
 #      coverage or .standards_tmp.
 #
 # Members are not recursive: a member's own `members:` key is ignored. Paths
-# must stay inside the root — absolute paths and ".." are rejected with a
-# note on stderr. The root itself is always a member and is spelled ".".
+# must stay inside the root — absolute paths and ".." are rejected lexically,
+# and a declared path whose directory exists is also resolved physically: a
+# symlink anywhere in the path, or a real location outside the root, is
+# rejected too (the root .standards.yml is PR-controlled, so a committed
+# symlink must not let the scripts read or write outside the checkout). Each
+# rejection is noted on stderr; `rejected_members` lists them for callers
+# that report findings. The root itself is always a member and is spelled ".".
 #
 # Usage:
 #   source "$SCRIPT_DIR/lib/members.sh"
@@ -78,28 +83,90 @@ members_declared() {
 }
 
 # ---------------------------------------------------------------------------
-# declared_members <root>
-# Prints the normalized `members:` entries of the root .standards.yml, one per
-# line, in declaration order. Invalid entries are dropped with a note on
-# stderr. Prints nothing when the key is absent or the list is empty.
+# member_escape_reason <root> <normalized-member>
+#
+# Physical containment check for a declared member whose lexical form passed
+# member_normalize. Prints a reason and returns 0 when the path must be
+# rejected: some component of it (including the leaf) is a symlink, or its
+# real location (pwd -P) is not <root> or below it. Returns 1 silently when
+# the member is fine — or when its directory does not exist, which is left
+# for member_problem to report as "not found".
 # ---------------------------------------------------------------------------
-declared_members() {
-    local root="$1" raw entry norm
+member_escape_reason() {
+    local root="$1" rel="$2" prefix="" seg rest root_real m_real
+    [ -d "$root/$rel" ] || return 1
+    rest="$rel"
+    while [ -n "$rest" ]; do
+        seg="${rest%%/*}"
+        if [ "$seg" = "$rest" ]; then rest=""; else rest="${rest#*/}"; fi
+        prefix="${prefix:+$prefix/}$seg"
+        if [ -L "$root/$prefix" ]; then
+            printf "declared member '%s' rejected: '%s' is a symlink (members must be real directories inside the project)\n" "$rel" "$prefix"
+            return 0
+        fi
+    done
+    root_real=$(cd "$root" 2>/dev/null && pwd -P) || return 1
+    m_real=$(cd "$root/$rel" 2>/dev/null && pwd -P) || return 1
+    case "$m_real" in
+        "$root_real"|"$root_real"/*) return 1 ;;
+    esac
+    printf "declared member '%s' rejected: resolves to '%s', outside the project root\n" "$rel" "$m_real"
+    return 0
+}
+
+# member__each_declared <root> <callback>
+# Runs <callback> <accepted-path> or <callback> "" <reason> for every raw
+# `members:` entry of the root .standards.yml, in declaration order.
+member__each_declared() {
+    local root="$1" cb="$2" raw entry norm reason
     [ -f "$root/.standards.yml" ] || return 0
     raw=$(yaml_list "members" "$root/.standards.yml" | tr ' ' '\n')
     # yaml_list splits inline lists on commas but joins everything with
     # spaces; a path with a space is not supported (nor is it in lint.exclude).
     while IFS= read -r entry; do
         [ -z "$entry" ] && continue
-        if norm=$(member_normalize "$entry"); then
-            printf '%s\n' "$norm"
+        if ! norm=$(member_normalize "$entry"); then
+            "$cb" "" "ignoring invalid entry '$entry' (must be a relative path inside the project)"
+        elif reason=$(member_escape_reason "$root" "$norm"); then
+            "$cb" "" "$reason"
         else
-            echo "members: ignoring invalid entry '$entry' (must be a relative path inside the project)" >&2
+            "$cb" "$norm"
         fi
     done <<EOF
 $raw
 EOF
     return 0
+}
+
+member__emit_accepted() {
+    if [ -n "$1" ]; then printf '%s\n' "$1"; else echo "members: $2" >&2; fi
+}
+
+member__emit_rejected() {
+    [ -z "$1" ] && printf '%s\n' "$2"
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# declared_members <root>
+# Prints the accepted `members:` entries of the root .standards.yml, one per
+# line, in declaration order. Invalid entries (lexical or physical, see
+# member_escape_reason) are dropped with a note on stderr. Prints nothing when
+# the key is absent or the list is empty.
+# ---------------------------------------------------------------------------
+declared_members() {
+    member__each_declared "$1" member__emit_accepted
+}
+
+# ---------------------------------------------------------------------------
+# rejected_members <root>
+# Prints one reason line per `members:` entry that declared_members dropped,
+# so callers can surface the rejection as a finding instead of a silent skip.
+# Prints nothing when `members:` is absent (discovery never rejects: it simply
+# does not enter symlinks).
+# ---------------------------------------------------------------------------
+rejected_members() {
+    member__each_declared "$1" member__emit_rejected
 }
 
 # member__skipped <root-relative path>: true when any segment is on the skip list.

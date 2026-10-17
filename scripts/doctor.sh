@@ -370,14 +370,28 @@ check_languages() {
 # ---------------------------------------------------------------------------
 
 check_members() {
+    local m problems=0 rejected
+
+    # A declared entry that escapes the root (lexically, or physically through
+    # a symlink) is dropped by resolve_members; say so rather than skip it.
+    if declare -f rejected_members >/dev/null 2>&1; then
+        while IFS= read -r rejected; do
+            [ -z "$rejected" ] && continue
+            check_fail "Members" "$rejected" \
+                "Fix: members: entries must be real directories inside the project; remove the entry or replace the symlink with the directory"
+            problems=$((problems + 1))
+        done <<EOF
+$(rejected_members "$PROJECT_ROOT" 2>/dev/null)
+EOF
+    fi
+
     if [ -z "$MEMBERS" ]; then
-        if [ "$MEMBERS_SOURCE" = "declared" ]; then
+        if [ "$MEMBERS_SOURCE" = "declared" ] && [ "$problems" -eq 0 ]; then
             check_pass "Members" "members: [] (single-root project, auto-discovery off)"
         fi
         return
     fi
 
-    local m problems=0
     for m in $MEMBERS; do
         if [ ! -d "$PROJECT_ROOT/$m" ]; then
             check_fail "Members" "declared member '$m' not found (no such directory)" \

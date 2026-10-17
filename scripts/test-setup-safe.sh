@@ -591,18 +591,29 @@ make_monorepo() {
     echo "$m"
 }
 
-echo -n "Test 43: setup.sh keeps members:, unions member languages into the root config and assembles their blocks... "
+echo -n "Test 43: setup.sh keeps members:, assembles the members' blocks into the root agent config, and keeps the root's own languages list... "
 proj=$(make_monorepo "setup-members")
 (cd "$proj" && "$SETUP" --agents codex >/dev/null 2>&1) || true
 errs=""
 grep -q '^members:' "$proj/.standards.yml"                       || errs="$errs members-key-dropped"
 grep -q '^  - server$' "$proj/.standards.yml"                     || errs="$errs server-not-listed"
 grep -q '^  - web$' "$proj/.standards.yml"                        || errs="$errs web-not-listed"
-grep -q '^  - python$' "$proj/.standards.yml"                     || errs="$errs python-not-in-root-languages"
-grep -q '^  - typescript$' "$proj/.standards.yml"                 || errs="$errs typescript-not-in-root-languages"
+# The union is for agent configs only: a non-empty root languages: list makes
+# lint-standards run language checks against the root, which has no manifests.
+grep -q '^languages: \[\]$' "$proj/.standards.yml"                || errs="$errs root-languages-not-empty"
+grep -q '^  - python$' "$proj/.standards.yml"                     && errs="$errs python-leaked-into-root-languages"
+grep -q '^  - typescript$' "$proj/.standards.yml"                 && errs="$errs typescript-leaked-into-root-languages"
+grep -q 'Member languages' "$proj/.standards.yml"                 || errs="$errs member-languages-note-missing"
 [ -f "$proj/AGENTS.md" ] && grep -q 'tsc -b' "$proj/AGENTS.md"    || errs="$errs typescript-block-missing"
 [ -f "$proj/AGENTS.md" ] && grep -qi 'ruff' "$proj/AGENTS.md"     || errs="$errs python-block-missing"
 if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 43b: after setup.sh, lint-standards.sh does not run a member's language checks against the aggregator root... "
+lint_json=$(bash "$REPO_ROOT/scripts/lint-standards.sh" --format json "$proj" 2>/dev/null || true)
+root_ts=$(printf '%s' "$lint_json" | tr -d '\n' | grep -o '"check": "typescript/strict-tsconfig",[[:space:]]*"member": "\."' || true)
+web_ts=$(printf '%s' "$lint_json" | tr -d '\n' | grep -o '"check": "typescript/strict-tsconfig",[[:space:]]*"member": "web"' || true)
+if [ -z "$root_ts" ] && [ -n "$web_ts" ]; then pass; else
+    fail "root_ts='$root_ts' web_ts='$web_ts'"; fi
 
 echo -n "Test 44: setup.sh bootstraps a .standards.yml for a declared member that has none, and leaves an existing one alone... "
 errs=""

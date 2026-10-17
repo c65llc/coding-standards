@@ -209,13 +209,22 @@ yaml_list() {
     local inline
     inline=$(grep "^${key}:" "$file" 2>/dev/null | sed "s/^${key}:[[:space:]]*//" | sed 's/[[:space:]]*$//')
     if [[ "$inline" == \[* ]]; then
-        # Inline format: [python, typescript]
-        echo "$inline" | tr -d '[]' | tr ',' '\n' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr '\n' ' '
+        # Inline format: [python, typescript]   # a trailing comment is dropped
+        echo "$inline" | sed 's/\].*$/]/' | tr -d '[]' | tr ',' '\n' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr '\n' ' '
     else
         # Block format:
         #   - python
-        #   - typescript
-        awk "/^${key}:/{found=1;next} found && /^[[:space:]]*-/{gsub(/^[[:space:]]*-[[:space:]]*/,\"\"); print; next} found && /^[^[:space:]-]/{exit}" "$file" 2>/dev/null | tr '\n' ' '
+        #   - typescript   # a trailing comment is dropped (unless the value is quoted,
+        #                  # where "#" may be part of it; the caller unquotes)
+        awk "/^${key}:/{found=1;next}
+             found && /^[[:space:]]*-/{
+                 gsub(/^[[:space:]]*-[[:space:]]*/,\"\");
+                 if (\$0 !~ /^[\\\"']/) { sub(/^#.*$/, \"\"); sub(/[[:space:]]+#.*$/, \"\") }
+                 sub(/[[:space:]]+$/, \"\");
+                 if (length(\$0) > 0) print;
+                 next
+             }
+             found && /^[^[:space:]-]/{exit}" "$file" 2>/dev/null | tr '\n' ' '
     fi
 }
 

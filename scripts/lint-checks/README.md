@@ -189,7 +189,10 @@ is the member directory), the JSON object lists `members`, and text output
 groups results under a heading per member. A declared member whose directory
 is missing, or that has no `.standards.yml`, is a `WARN` finding under the
 synthetic `members` check. Paths must stay inside the root: absolute entries
-and `..` are rejected with a note on stderr.
+and `..` are rejected, and a declared path is also resolved physically, so a
+symlink anywhere in it or a real location outside the root is rejected too;
+each rejection is a `WARN` under the same `members` check (and a note on
+stderr), never a silent skip.
 
 ### Runner flags for PR runs
 

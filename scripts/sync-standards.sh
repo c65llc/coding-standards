@@ -459,7 +459,13 @@ fi
 # auto-discovered. The root agent configs are assembled from the union of the
 # root's languages and every member's, so an agent that only reads the root
 # file (Cursor, Copilot, Aider) still sees each member's language rules.
-MEMBERS=$(resolve_members "$PROJECT_ROOT" | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+MEMBERS=$(resolve_members "$PROJECT_ROOT" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+while IFS= read -r rejected; do
+    [ -z "$rejected" ] && continue
+    echo "⚠️  members: $rejected"
+done <<EOF
+$(rejected_members "$PROJECT_ROOT" 2>/dev/null)
+EOF
 
 # If no languages from config, try auto-detection (members are skipped: each
 # contributes its own languages below).

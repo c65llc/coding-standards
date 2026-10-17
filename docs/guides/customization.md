@@ -151,7 +151,7 @@ lint:
   exclude: [migrations/]
 ```
 
-Paths are relative to the root config; absolute paths and `..` are rejected. Members are not recursive (a member's own `members:` key is ignored).
+Paths are relative to the root config; absolute paths and `..` are rejected. A declared path is also resolved physically: a symlink anywhere in it, or a real location outside the project root, is rejected and reported (`lint-standards.sh` records a `WARN` under the `members` check, `doctor.sh` a `FAIL`), because the root config is PR-controlled and a committed symlink must not let the scripts read or write outside the checkout. Members are not recursive (a member's own `members:` key is ignored).
 
 **Auto-discovery.** Without a `members:` key, every `*/.standards.yml` and `*/*/.standards.yml` one or two levels below the root is a member. Hidden directories (`.git`, `.standards`, `.worktrees`, `.claude/worktrees`, …), `node_modules`, `vendor`, `third_party`, `dist`, `build`, `target` and `coverage` are never entered. Declare `members:` to pin the list (new sub-roots then need an entry), or `members: []` to turn discovery off for a single-root project.
 

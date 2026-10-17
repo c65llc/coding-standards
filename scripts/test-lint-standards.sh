@@ -2434,6 +2434,63 @@ out=$(cd "$mono5" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
 if echo "$out" | grep 'Members' | grep 'FAIL' | grep -q 'ghost' && echo "$out" | grep 'Members' | grep 'WARN' | grep -q 'bare'; then pass; else
     fail "member problems not reported: $(echo "$out" | grep 'Members')"; fi
 
+# A declared member is PR-controlled, so a committed symlink must not let the
+# scripts read or write outside the checkout: lexically valid paths are also
+# resolved physically, and any symlink component is rejected.
+echo -n "Test 166: a declared member that is a symlink to a directory outside the root is rejected with a WARN and never scanned... "
+outside=$(mktemp -d "$TMP_BASE/outside.XXXXXX")
+mkdir -p "$outside/src"
+printf 'version: 1\nlanguages:\n  - python\n' > "$outside/.standards.yml"
+echo 'AWS_SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"' > "$outside/src/leak.py"
+mono7=$(make_monorepo "members-symlink-out" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - server\n  - escape\n')")
+ln -s "$outside" "$mono7/escape"
+out=$("$LINT" --format json "$mono7" 2>/dev/null || true)
+printf '%s\n' "$out" > "$TMP_BASE/symlink-out.json"
+if json_valid "$TMP_BASE/symlink-out.json" \
+   && echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *\]' \
+   && [ "$(json_member_status '\.' members < "$TMP_BASE/symlink-out.json")" = "WARN" ] \
+   && grep -q "declared member 'escape' rejected: 'escape' is a symlink" "$TMP_BASE/symlink-out.json" \
+   && ! grep -q 'leak.py\|wJalrXUtnFEMI' "$TMP_BASE/symlink-out.json"; then pass; else
+    fail "members=$(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') status=$(json_member_status '\.' members < "$TMP_BASE/symlink-out.json") $(grep -o '"message": "[^"]*symlink[^"]*"' "$TMP_BASE/symlink-out.json" | head -1)"; fi
+
+echo -n "Test 167: an in-repo symlink (and a symlinked path component) is rejected with the same message while the real member is kept... "
+mono8=$(make_monorepo "members-symlink-in" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - server\n  - alias\n  - link/web\n')")
+ln -s server "$mono8/alias"
+mkdir -p "$mono8/real"
+mv "$mono8/web" "$mono8/real/web"
+ln -s real "$mono8/link"
+out=$("$LINT" --format json "$mono8" 2>/dev/null || true)
+printf '%s\n' "$out" > "$TMP_BASE/symlink-in.json"
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *\]' \
+   && grep -q "declared member 'alias' rejected: 'alias' is a symlink (members must be real directories inside the project)" "$TMP_BASE/symlink-in.json" \
+   && grep -q "declared member 'link/web' rejected: 'link' is a symlink" "$TMP_BASE/symlink-in.json" \
+   && [ "$(json_member_status 'server' python/banned-functions < "$TMP_BASE/symlink-in.json")" = "FAIL" ]; then pass; else
+    fail "members=$(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') $(grep -o '"message": "[^"]*rejected[^"]*"' "$TMP_BASE/symlink-in.json")"; fi
+
+echo -n "Test 168: doctor.sh fails a symlinked member, and member_escape_reason rejects the symlink while accepting real and missing members... "
+out=$(cd "$mono7" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+# Exercise member_escape_reason directly with a root that is itself reached
+# through a symlink, so the comparison must use physical paths on both sides.
+lib_out=$(bash -c '
+    source "$1/scripts/lib/members.sh"
+    r=$(member_escape_reason "$2" "escape") && echo "escape:$r"
+    member_escape_reason "$2" "server" || echo "server:ok"
+    member_escape_reason "$2" "missing" || echo "missing:ok"
+' _ "$REPO_ROOT" "$mono7")
+if echo "$out" | grep 'Members' | grep 'FAIL' | grep -q "declared member 'escape' rejected" \
+   && echo "$lib_out" | grep -q "^escape:declared member 'escape' rejected: 'escape' is a symlink" \
+   && echo "$lib_out" | grep -q '^server:ok' && echo "$lib_out" | grep -q '^missing:ok'; then pass; else
+    fail "doctor: $(echo "$out" | grep 'Members') lib: $lib_out"; fi
+
+echo -n "Test 169: a trailing YAML comment on a members: entry (block or inline) is not split into bogus member names... "
+mono9=$(make_monorepo "members-comments" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - server   # backend service\n  - web # front end\n  - # a comment-only entry\n')")
+out=$("$LINT" --format json "$mono9" 2>/dev/null || true)
+mono10=$(make_monorepo "members-inline-comment" "$(printf 'version: 1\nlanguages: []\nmembers: [server, web]  # both sub-roots\n')")
+out2=$("$LINT" --format json "$mono10" 2>/dev/null || true)
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *, *"web" *\]' && ! echo "$out" | grep -q 'not found (no such directory)' \
+   && echo "$out2" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *, *"web" *\]' && ! echo "$out2" | grep -q 'not found (no such directory)'; then pass; else
+    fail "block: $(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') inline: $(echo "$out2" | tr -d '\n' | grep -o '"members": *\[[^]]*\]')"; fi
+
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

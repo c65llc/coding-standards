@@ -422,9 +422,16 @@ run_member() {
     fi
 }
 
-# A declared member that is missing, or has no .standards.yml, is a finding
-# in its own right (recorded under the root, before any module runs, so it
-# leads the root group), not a silent skip.
+# A declared member that was rejected (escapes the root lexically or through
+# a symlink), is missing, or has no .standards.yml, is a finding in its own
+# right (recorded under the root, before any module runs, so it leads the
+# root group), not a silent skip.
+while IFS= read -r rejected; do
+    [ -z "$rejected" ] && continue
+    record_result "." "WARN members $rejected"
+done <<EOF
+$(rejected_members "$PROJECT_ROOT" 2>/dev/null)
+EOF
 for member in "${MEMBERS[@]}"; do
     [ "$member" = "." ] && continue
     if ! problem=$(member_problem "$PROJECT_ROOT" "$member"); then
