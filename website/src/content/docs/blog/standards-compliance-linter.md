@@ -19,6 +19,7 @@ The linter is organized into two tiers: common checks that run on every project,
 | `test-directory` | A `tests/`, `test/`, `spec/`, or `__tests__/` directory exists and is non-empty |
 | `no-secrets` | No AWS keys, private key blocks, or hardcoded passwords/API keys in source files |
 | `coverage-config` | CI workflows, jest config, pytest config, or `.standards.yml` declare a coverage threshold |
+| `artifact-hygiene` | Committed `*.wasm`, `*.a`, `*.so`, `*.dylib`, `*.jar` files embed no absolute `/Users/` or `/home/` paths (WARN: non-reproducible build; see arch-06 §6) |
 
 ### Python checks
 
