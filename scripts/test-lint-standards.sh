@@ -114,15 +114,153 @@ for m in "$CHECKS"/*/*.sh; do
 done
 if [ -z "$bad" ]; then pass; else fail "modules with empty/unrecognized output:$bad"; fi
 
+# --- quarantine-policy module (proc-05) --------------------------------------
+
+# Portable date arithmetic for fixtures: GNU date first, then BSD/macOS date.
+shift_date() {
+    local days="$1"
+    date -u -d "+${days} days" +%Y-%m-%d 2>/dev/null \
+        || date -u -v+"${days}"d +%Y-%m-%d 2>/dev/null
+}
+TODAY="$(date -u +%Y-%m-%d)"
+IN_10_DAYS="$(shift_date 10)"
+IN_45_DAYS="$(shift_date 45)"
+
+write_quarantine() {
+    # $1 = file path, $2 = entries JSON (array body)
+    printf '{\n  "version": 1,\n  "entries": [\n%s\n  ]\n}\n' "$2" > "$1"
+}
+
+echo -n "Test 12: quarantine-policy PASSes a project with no quarantine registry... "
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$proj" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 13: quarantine-policy PASSes a valid registry (all fields, window <= 30 days)... "
+qp=$(make_project "quarantine-ok")
+write_quarantine "$qp/test-quarantine.json" "    {\"test\": \"tests/api/test_users.py::test_list_users\", \"issue\": \"#123\", \"owner\": \"@alice\", \"reason\": \"flaky under parallel DB fixture\", \"added\": \"$TODAY\", \"expires\": \"$IN_10_DAYS\"}"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qp" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 14: quarantine-policy FAILs an expired (past-due) entry... "
+qe=$(make_project "quarantine-expired")
+write_quarantine "$qe/test-quarantine.json" "    {\"test\": \"tests/api/test_users.py::test_list_users\", \"issue\": \"#123\", \"owner\": \"@alice\", \"reason\": \"flaky\", \"added\": \"2026-01-01\", \"expires\": \"2026-01-15\"}"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qe" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -qi 'expired'; then pass; else fail "expected FAIL mentioning expired, got: $out"; fi
+
+echo -n "Test 15: quarantine-policy FAILs an entry missing a required field (owner)... "
+qm=$(make_project "quarantine-missing")
+write_quarantine "$qm/test-quarantine.json" "    {\"test\": \"tests/api/test_users.py::test_list_users\", \"issue\": \"#123\", \"reason\": \"flaky\", \"added\": \"$TODAY\", \"expires\": \"$IN_10_DAYS\"}"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qm" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'owner'; then pass; else fail "expected FAIL naming owner, got: $out"; fi
+
+echo -n "Test 16: quarantine-policy FAILs a quarantine window longer than 30 days... "
+qw=$(make_project "quarantine-window")
+write_quarantine "$qw/test-quarantine.json" "    {\"test\": \"tests/api/test_users.py::test_list_users\", \"issue\": \"#123\", \"owner\": \"@alice\", \"reason\": \"flaky\", \"added\": \"$TODAY\", \"expires\": \"$IN_45_DAYS\"}"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qw" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q '30'; then pass; else fail "expected FAIL mentioning 30-day limit, got: $out"; fi
+
+echo -n "Test 17: quarantine-policy FAILs closed when .standards.yml declares a missing registry... "
+qd=$(make_project "quarantine-declared")
+printf 'version: 1\ntests:\n  quarantine_file: ci/test-quarantine.json\n' > "$qd/.standards.yml"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qd" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL'; then pass; else fail "expected FAIL, got: $out"; fi
+
+echo -n "Test 18: quarantine-policy FAILs closed on a malformed registry... "
+qb=$(make_project "quarantine-bad")
+printf '{ "entries": [ { "test": "x" \n' > "$qb/test-quarantine.json"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qb" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL'; then pass; else fail "expected FAIL, got: $out"; fi
+
+echo -n "Test 19: quarantine-policy honors tests.quarantine_file and counts entries... "
+qc=$(make_project "quarantine-custom")
+mkdir -p "$qc/ci"
+printf 'version: 1\ntests:\n  quarantine_file: ci/test-quarantine.json\n' > "$qc/.standards.yml"
+write_quarantine "$qc/ci/test-quarantine.json" "    {\"test\": \"a::b\", \"issue\": \"#1\", \"owner\": \"@a\", \"reason\": \"r\", \"added\": \"$TODAY\", \"expires\": \"$IN_10_DAYS\"},
+    {\"test\": \"c::d\", \"issue\": \"#2\", \"owner\": \"@b\", \"reason\": \"r\", \"added\": \"$TODAY\", \"expires\": \"$IN_10_DAYS\"}"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qc" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS' && echo "$out" | grep -q '2 '; then pass; else fail "expected PASS counting 2 entries, got: $out"; fi
+
+# --- coverage-config scopes (proc-05) ------------------------------------------
+
+echo -n "Test 20: coverage-config PASSes a legacy single-number .standards.yml gate... "
+cl=$(make_project "cov-legacy")
+printf 'version: 1\ncoverage:\n  minimum: 95\n  domain: 100\n' > "$cl/.standards.yml"
+out=$(bash "$CHECKS/common/coverage-config.sh" "$cl" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS' && echo "$out" | grep -q '95'; then pass; else fail "expected PASS with 95, got: $out"; fi
+
+echo -n "Test 21: coverage-config PASSes coverage.scopes and reports the scope count... "
+cs=$(make_project "cov-scopes")
+cat > "$cs/.standards.yml" <<'YML'
+version: 1
+coverage:
+  minimum: 95
+  domain: 100
+  scopes:
+    - path: src/domain
+      layer: domain
+      minimum: 100
+    - path: src/app
+      layer: application
+      minimum: 95
+    - path: vendor/engine
+      layer: inherited
+      minimum: 0
+      reason: inherited engine code, measured upstream
+architecture: clean
+YML
+out=$(bash "$CHECKS/common/coverage-config.sh" "$cs" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS' && echo "$out" | grep -q '3 scope'; then pass; else fail "expected PASS with 3 scopes, got: $out"; fi
+
+echo -n "Test 22: coverage-config FAILs a domain scope below 100%... "
+cd1=$(make_project "cov-domain-low")
+cat > "$cd1/.standards.yml" <<'YML'
+version: 1
+coverage:
+  minimum: 95
+  scopes:
+    - path: src/domain
+      layer: domain
+      minimum: 90
+YML
+out=$(bash "$CHECKS/common/coverage-config.sh" "$cd1" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'src/domain'; then pass; else fail "expected FAIL naming src/domain, got: $out"; fi
+
+echo -n "Test 23: coverage-config FAILs a lowered scope with no stated reason... "
+cr=$(make_project "cov-no-reason")
+cat > "$cr/.standards.yml" <<'YML'
+version: 1
+coverage:
+  minimum: 95
+  scopes:
+    - path: native/metal
+      layer: native
+      minimum: 0
+YML
+out=$(bash "$CHECKS/common/coverage-config.sh" "$cr" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'reason'; then pass; else fail "expected FAIL mentioning reason, got: $out"; fi
+
+echo -n "Test 24: coverage-config FAILs a scope entry with no path... "
+cp1=$(make_project "cov-no-path")
+cat > "$cp1/.standards.yml" <<'YML'
+version: 1
+coverage:
+  minimum: 95
+  scopes:
+    - layer: application
+      minimum: 95
+YML
+out=$(bash "$CHECKS/common/coverage-config.sh" "$cp1" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'path'; then pass; else fail "expected FAIL mentioning path, got: $out"; fi
+
 # --- Sibling scripts smoke --------------------------------------------------
 
-echo -n "Test 12: diff-standards.sh runs on a project without .standards.yml... "
+echo -n "Test 25: diff-standards.sh runs on a project without .standards.yml... "
 if bash "$REPO_ROOT/scripts/diff-standards.sh" "$proj" >/dev/null 2>&1; then pass; else
     # diff-standards may exit non-zero; accept as long as it doesn't crash hard (>1)
     rc=$?; if [ "$rc" -le 1 ]; then pass; else fail "diff-standards crashed (exit $rc)"; fi
 fi
 
-echo -n "Test 13: doctor.sh runs without a hard crash... "
+echo -n "Test 26: doctor.sh runs without a hard crash... "
 ( cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -le 1 ]; then pass; else fail "doctor.sh crashed (exit $rc)"; fi
 
