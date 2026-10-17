@@ -31,13 +31,17 @@ tool output; do not round.]
 
 ## Coverage per module
 
-[One row per module the change touched. The target is 95% unless an ADR
-grants an exception — cite it in the Notes column.]
+[One row per module the change touched. The target is the floor configured
+for that module's scope in `.standards.yml` (`coverage.scopes`): 95% by
+default, 100% for Domain/Core, and a lowered floor only where the scope
+entry states a `reason` (proc-05 §6). An ADR does not grant an exception —
+the scope entry does; cite its `reason` and the alternate verification in the
+Notes column.]
 
-| Module | Lines | Branches | Target | Notes |
-|--------|-------|----------|--------|-------|
+| Module | Lines | Branches | Target (scope floor) | Notes |
+|--------|-------|----------|----------------------|-------|
 | `[package/module]` | [97.2%] | [91.0%] | 95% | [—] |
-| `[package/module]` | [88.4%] | [80.1%] | 95% | [Below target: ADR NNNN — untestable boundary; manual check below] |
+| `[package/module]` | [88.4%] | [80.1%] | 85% | [Lowered scope floor — reason: untestable native boundary; exercised by the manual check below] |
 
 ## Manually verified
 

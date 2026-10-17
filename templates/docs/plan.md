@@ -66,8 +66,8 @@ they touch and the test that proves them. Tick as you go; never delete.]
 
 ### Phase 3: [Name — e.g. "Docs, cleanup, verification doc"]
 
-- [ ] **Task 3.1:** Write `docs/[feature]-verification.md` from `templates/docs/verification.md`
-- [ ] **Task 3.2:** Update docs index status column (plan → historical, spec → implemented)
+- [ ] **Task 3.1:** Write `docs/[feature]-verification.md` from `.standards/templates/docs/verification.md` (`templates/docs/verification.md` in the standards repo itself)
+- [ ] **Task 3.2:** Set the spec's `- **Status:**` to Implemented and flip its docs-index row to `historical`; add the verification doc to the index as `historical`. The plan's row has been `historical` since its first commit — leave it.
 
 ## PR Map
 

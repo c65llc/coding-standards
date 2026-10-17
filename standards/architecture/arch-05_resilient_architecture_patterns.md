@@ -169,10 +169,13 @@ response(seq)   →  if seq != latest: discard   (stale — log it)
 
 ### Rules
 
-* **Tag every in-flight request** with a monotonic sequence number, the request
-  id, or the exact input it was computed from. On completion compare the tag
-  with the current value and discard on mismatch. "Last write wins" by arrival
-  order is a bug, not a strategy.
+* **Tag every in-flight request** with a unique generation: a monotonic
+  sequence number or a request id minted when the request is fired. On
+  completion compare the tag with the current generation and discard on
+  mismatch. Do **not** tag with the input value itself — in an `A → B → A`
+  sequence the first, slow `A` response matches the latest input and overwrites
+  the newer `A` result. "Last write wins" by arrival order is a bug, not a
+  strategy.
 * **Cancel when you can, guard regardless.** Use `AbortController`, cancellation
   tokens or task cancellation to stop stale work, but still check the tag on
   completion — cancellation is best-effort and races with completion.

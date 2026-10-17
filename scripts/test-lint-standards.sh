@@ -681,12 +681,6 @@ An indented code block follows a blank line:
 	[tab-indented](missing-too.md)
 
 Percent-encoded [hash](a%23b.md) and [space](my%20file.md) resolve.
-
-A list item whose continuation is indented is still inside the list:
-
-- item one
-
-    [list continuation is skipped as code; acceptable false negative](nope.md)
 EOF
 out=$(bash "$DOC_LINT" "$link_ind" 2>/dev/null || true)
 if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
@@ -704,19 +698,90 @@ out=$(bash "$DOC_LINT" "$link_lazy" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'missing.md'; then pass; else
     fail "expected FAIL naming missing.md, got: $out"; fi
 
-echo -n "Test 43: doc-lint emits a status line on a project with no Markdown at all... "
+echo -n "Test 43: doc-lint lints a 4-space continuation paragraph inside a list item, skips deeper code... "
+link_list=$(make_project "link-list-continuation")
+mkdir -p "$link_list/docs"
+cat > "$link_list/docs/index.md" <<'EOF'
+# Index
+
+- item one
+
+    [continuation paragraph](missing.md) is list content, not code.
+
+      [six spaces inside a list is code](ignored.md)
+
+1. numbered
+
+    [also continuation](missing-two.md)
+EOF
+out=$(bash "$DOC_LINT" "$link_list" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'missing.md' && echo "$out" | grep -q 'missing-two.md' \
+   && echo "$out" | grep -q '2 broken'; then pass; else
+    fail "expected FAIL with exactly missing.md and missing-two.md, got: $out"; fi
+
+echo -n "Test 44: doc-lint treats fences inside block quotes as code and decodes entities, titles, double backslashes... "
+link_bq=$(make_project "link-blockquote")
+mkdir -p "$link_bq/docs"
+echo "# Amp" > "$link_bq/docs/a&b.md"
+echo "# Existing" > "$link_bq/docs/existing.md"
+cat > "$link_bq/docs/index.md" <<'EOF'
+# Index
+
+> A quoted example:
+>
+> ```markdown
+> [quoted fenced example](missing.md)
+> ```
+>
+> [quoted prose link](existing.md)
+
+Entity [amp](a&amp;b.md) and numeric [amp2](a&#38;b.md) and hex [amp3](a&#x26;b.md).
+
+A title containing a paren: [valid](existing.md "title ) then [example](missing.md)") is one link.
+Single quotes too: [valid2](existing.md 'another ) paren') and parens: [valid3](existing.md (a ) b)).
+EOF
+out=$(bash "$DOC_LINT" "$link_bq" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 45: doc-lint counts backslash parity: \\\\[label](x) is a real link... "
+link_par=$(make_project "link-parity")
+mkdir -p "$link_par/docs"
+cat > "$link_par/docs/index.md" <<'EOF'
+# Index
+
+Two backslashes leave the bracket active: \\[label](missing.md).
+One backslash escapes it: \[label](not-a-link.md).
+EOF
+out=$(bash "$DOC_LINT" "$link_par" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'missing.md' && echo "$out" | grep -q '1 broken'; then pass; else
+    fail "expected FAIL naming only missing.md, got: $out"; fi
+
+echo -n "Test 46: doc-lint rejects impossible calendar dates in ADRs and accepts leap days... "
+adr_dates=$(make_project "adr-dates")
+mkdir -p "$adr_dates/docs/adr"
+printf '# ADR 0006: Bad date\n\n- **Status:** Accepted\n- **Date:** 2026-02-31\n\n## Context\n\n## Decision\n\n## Consequences\n' \
+    > "$adr_dates/docs/adr/0006-bad-date.md"
+printf '# ADR 0007: Leap day\n\n- **Status:** Accepted\n- **Date:** 2024-02-29\n\n## Context\n\n## Decision\n\n## Consequences\n' \
+    > "$adr_dates/docs/adr/0007-leap.md"
+out=$(bash "$DOC_LINT" "$adr_dates" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q '0006-bad-date.md' && ! echo "$out" | grep -q '0007-leap.md' \
+   && echo "$out" | grep -q 'Date'; then pass; else
+    fail "expected FAIL naming only 0006-bad-date.md for Date, got: $out"; fi
+
+echo -n "Test 47: doc-lint FAILs closed on a project with no Markdown at all (proc-05 §7.2)... "
 out=$(bash "$DOC_LINT" "$proj" 2>/dev/null || true)
-if echo "$out" | grep -qE '^(PASS|WARN)'; then pass; else fail "expected PASS/WARN, got: $out"; fi
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'No Markdown files matched'; then pass; else
+    fail "expected FAIL naming the empty scan, got: $out"; fi
 
 # --- Sibling scripts smoke --------------------------------------------------
 
-echo -n "Test 44: diff-standards.sh runs on a project without .standards.yml... "
+echo -n "Test 48: diff-standards.sh runs on a project without .standards.yml... "
 if bash "$REPO_ROOT/scripts/diff-standards.sh" "$proj" >/dev/null 2>&1; then pass; else
     # diff-standards may exit non-zero; accept as long as it doesn't crash hard (>1)
     rc=$?; if [ "$rc" -le 1 ]; then pass; else fail "diff-standards crashed (exit $rc)"; fi
 fi
 
-echo -n "Test 45: doctor.sh runs without a hard crash... "
+echo -n "Test 49: doctor.sh runs without a hard crash... "
 ( cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -le 1 ]; then pass; else fail "doctor.sh crashed (exit $rc)"; fi
 
