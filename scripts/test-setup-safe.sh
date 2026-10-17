@@ -364,6 +364,24 @@ else
     fail "expected refusal (rc=$rc): $out"
 fi
 
+echo -n "Test 31: sync-standards continues from the local checkout when the remote is unreachable... "
+proj=$(make_project "sync-offline")
+make_inner_standards_repo "$proj"
+fake_standards "$proj"
+# Cached origin/main that differs from HEAD, plus an unreachable remote: the
+# fetch fails, and the stale comparison must not trigger a doomed pull.
+(cd "$proj/.standards" \
+    && git update-ref refs/remotes/origin/main HEAD \
+    && git -c user.email="test@test.local" -c user.name="Test" commit -q --allow-empty -m "local" \
+    && git remote add origin "$TMPDIR_BASE/does-not-exist.git")
+write_standards_yml "$proj" codex
+rc=0; out=$(cd "$proj" && "$SYNC" 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && [ -f "$proj/AGENTS.md" ] && echo "$out" | grep -q "Could not fetch"; then
+    pass
+else
+    fail "expected sync to continue offline (rc=$rc): $out"
+fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

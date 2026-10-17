@@ -27,7 +27,7 @@ Use `--dry-run` with setup or sync to preview changes without modifying files:
 ```bash
 ./scripts/setup.sh --dry-run
 ./scripts/sync-standards.sh --dry-run
-./scripts/diff-standards.sh --exit-code   # exit 1 when any agent config would change (CI gate)
+./scripts/diff-standards.sh --exit-code   # exit 1 when any assembled agent config would change (CI gate)
 ```
 
 In a consumer project the scripts live under `.standards/` and must be run from the project root (`./.standards/scripts/sync-standards.sh`). `setup.sh`, `sync-standards.sh` and `diff-standards.sh` refuse to run when the project root resolves to `.standards/` (`scripts/lib/guard.sh`). `sync-standards.sh` gates every side effect (Cursor commands, `.gemini/`, `.claude/`) on the `agents:` list in `.standards.yml`; git aliases are opt-in via `--aliases`.

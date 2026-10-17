@@ -401,15 +401,20 @@ if [ -d "$PROJECT_ROOT/.standards" ]; then
         UPDATED=true  # Assume updates for preview purposes
     else
         LOCAL=$(git rev-parse HEAD 2>/dev/null || true)
-        if ! git fetch origin >/dev/null 2>&1; then
+        REMOTE=""
+        if git fetch origin >/dev/null 2>&1; then
+            # --verify --quiet: print nothing (rather than the literal ref name)
+            # when the ref does not exist, so REMOTE stays empty and we fall through.
+            REMOTE=$(git rev-parse --verify --quiet origin/main 2>/dev/null \
+                || git rev-parse --verify --quiet origin/master 2>/dev/null || true)
+        else
+            # Leave REMOTE empty: a cached origin/main that differs from HEAD
+            # would otherwise send us into a pull against the same unreachable
+            # remote, which dies under set -e before any config is assembled.
             echo "⚠️  Could not fetch standards remote (offline?) — syncing from the local checkout"
         fi
-        # --verify --quiet: print nothing (rather than the literal ref name) when
-        # the ref does not exist, so REMOTE stays empty and we fall through.
-        REMOTE=$(git rev-parse --verify --quiet origin/main 2>/dev/null \
-            || git rev-parse --verify --quiet origin/master 2>/dev/null || true)
 
-        if [ "$LOCAL" != "$REMOTE" ] && [ -n "$REMOTE" ]; then
+        if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
             echo "📥 Pulling latest standards..."
             git pull origin main 2>/dev/null || git pull origin master 2>/dev/null
             UPDATED=true

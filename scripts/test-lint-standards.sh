@@ -161,12 +161,33 @@ echo -n "Test 17: diff-standards.sh --exit-code exits 0 once configs are up to d
 ( cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -eq 0 ]; then pass; else fail "expected 0 after setup, got $rc"; fi
 
-echo -n "Test 18: diff-standards.sh --exit-code exits 1 after a config drifts... "
-echo "# local drift" >> "$proj/AGENTS.md"
+echo -n "Test 18: diff-standards.sh --exit-code exits 0 when only the project-specific section was edited... "
+# Content below the BEGIN PROJECT-SPECIFIC marker is owned by the consumer and
+# preserved by sync; it must never register as drift.
+printf '\n## Local notes\n\nProject-owned content.\n' >> "$proj/AGENTS.md"
+( cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 0 ]; then pass; else fail "project-specific section counted as drift (rc=$rc)"; fi
+
+echo -n "Test 19: diff-standards.sh --exit-code exits 1 after the standards-owned section drifts... "
+# Insert a line right after the assembly header, i.e. above the sentinel.
+{ head -1 "$proj/AGENTS.md"; echo "# local drift"; tail -n +2 "$proj/AGENTS.md"; } > "$proj/AGENTS.md.tmp" \
+    && mv "$proj/AGENTS.md.tmp" "$proj/AGENTS.md"
 ( cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -eq 1 ]; then pass; else fail "expected 1 after drift, got $rc"; fi
 
-echo -n "Test 19: diff-standards.sh refuses to run from inside .standards/... "
+echo -n "Test 20: diff-standards.sh [project-root] resolves template vars against that root, not the cwd... "
+alpha=$(make_project "diff-alpha")
+fake_standards "$alpha"
+printf '{ "name": "alpha-pkg" }\n' > "$alpha/package.json"
+printf 'version: 1\nlanguages:\n  - typescript\nagents:\n  - claude-code\nrole: service\n' > "$alpha/.standards.yml"
+( cd "$alpha" && bash "$REPO_ROOT/scripts/setup.sh" --agents claude-code --languages typescript >/dev/null 2>&1 ) || true
+beta=$(make_project "diff-beta")
+( cd "$beta" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code "$alpha" >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 0 ] && grep -q "alpha-pkg" "$alpha/CLAUDE.md"; then pass; else
+    fail "expected 0 when run from another repo with explicit root, got $rc"
+fi
+
+echo -n "Test 21: diff-standards.sh refuses to run from inside .standards/... "
 inside=$(make_project "diff-inside")
 mkdir -p "$inside/.standards"
 ( cd "$inside/.standards" && git init -q \
@@ -174,7 +195,7 @@ mkdir -p "$inside/.standards"
 out=$( cd "$inside/.standards" && bash "$REPO_ROOT/scripts/diff-standards.sh" 2>&1 ); rc=$?
 if [ "$rc" -ne 0 ] && echo "$out" | grep -q "inside"; then pass; else fail "expected refusal (rc=$rc): $out"; fi
 
-echo -n "Test 20: diff-standards.sh rejects an unknown option with exit 2... "
+echo -n "Test 22: diff-standards.sh rejects an unknown option with exit 2... "
 ( cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --bogus >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -eq 2 ]; then pass; else fail "expected 2, got $rc"; fi
 

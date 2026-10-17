@@ -2,7 +2,10 @@
 # scripts/diff-standards.sh — Show what sync-standards would change without modifying anything
 #
 # For each declared agent, assembles to a temp file and diffs it against the
-# installed config. Prints color-coded output and cleans up temp files.
+# installed assembled config (CLAUDE.md, .cursorrules, AGENTS.md, ...). Prints
+# color-coded output and cleans up temp files. Auxiliary files that sync copies
+# verbatim (.aiderrc, .gemini/settings.json, .claude/settings.json, Cursor
+# commands) are outside this diff.
 #
 # Usage:
 #   ./.standards/scripts/diff-standards.sh [--exit-code] [project-root]
@@ -10,8 +13,8 @@
 #   make diff-standards
 #
 # Options:
-#   --exit-code   Exit 1 when any agent config would change or be created
-#                 (otherwise always exits 0). Lets the script act as a CI gate.
+#   --exit-code   Exit 1 when any assembled agent config would change or be
+#                 created (otherwise always exits 0). Lets the script gate CI.
 #   -h, --help    Show this help.
 
 set -e
@@ -224,11 +227,22 @@ for agent in $AGENTS_LIST; do
 
     printf "%s→ %s%s  (%s)\n" "$CYAN" "$agent" "$NC" "$(basename "$OUTPUT_PATH")"
 
-    # Assemble to temp file
+    # Assemble to temp file. Seed it from the installed config so the assembler
+    # carries the consumer's PROJECT-SPECIFIC section across, exactly as sync
+    # does — otherwise that section always reads as drift and --exit-code can
+    # never pass. The assembler may also drop a *.pre-standards-setup backup
+    # next to the temp file for a hand-written config; clean that up too.
     TEMP_FILE=$(mktemp)
-    TEMP_FILES+=("$TEMP_FILE")
+    TEMP_FILES+=("$TEMP_FILE" "$TEMP_FILE.pre-standards-setup")
+    if [ -f "$OUTPUT_PATH" ]; then
+        cp "$OUTPUT_PATH" "$TEMP_FILE"
+    fi
 
-    if ! "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$TEMP_FILE" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} 2>/dev/null; then
+    # --project-root: the temp file lives outside the project, so the assembler
+    # cannot infer the root from its location and would fall back to the cwd,
+    # mis-resolving {{PROJECT_NAME}} when [project-root] points elsewhere.
+    if ! "$ASSEMBLE_SCRIPT" --project-root "$PROJECT_ROOT" \
+            "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$TEMP_FILE" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} 2>/dev/null; then
         printf "  %s\n\n" "${YELLOW}⚠️  Assembly failed — skipping${NC}"
         SKIPPED=$((SKIPPED + 1))
         continue

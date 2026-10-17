@@ -97,7 +97,7 @@ make diff-standards
 
 | Flag | Effect |
 | ---- | ------ |
-| `--exit-code` | Exit 1 when any declared agent config would change or be created; exit 0 otherwise. Without the flag the script always exits 0. |
+| `--exit-code` | Exit 1 when any declared agent's assembled config (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, …) would change or be created; exit 0 otherwise. The project-specific section is never drift; verbatim-copied auxiliary files (`.aiderrc`, `.gemini/settings.json`, …) are not diffed. Without the flag the script always exits 0. |
 | `-h`, `--help` | Show usage. Unknown options exit 2. |
 
 **What it does:**
