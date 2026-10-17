@@ -1236,6 +1236,29 @@ out2=$(cd "$nh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
 if echo "$out1" | grep 'Git Hooks' | grep -q 'not executable' && echo "$out2" | grep 'Git Hooks' | grep -q 'commit-msg hook installed'; then pass; else
     fail "executable-bit check wrong: [$(echo "$out1" | grep commit-msg)] [$(echo "$out2" | grep commit-msg)]"; fi
 
+echo -n "Test 53: doctor.sh reads native hooks from core.hooksPath when it is set... "
+hp=$(make_project "doctor-hookspath")
+mkdir -p "$hp/githooks"
+printf '#!/bin/sh\nexit 0\n' > "$hp/githooks/commit-msg"
+chmod +x "$hp/githooks/commit-msg"
+printf '#!/bin/sh\nmake check-standards\n' > "$hp/githooks/post-merge"
+chmod +x "$hp/githooks/post-merge"
+( cd "$hp" && git config core.hooksPath githooks )
+out=$(cd "$hp" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Git Hooks' | grep -q 'commit-msg hook installed' \
+   && echo "$out" | grep 'Git Hooks' | grep -q 'post-merge hook contains standards sync'; then pass; else
+    fail "hooks under core.hooksPath not seen: $(echo "$out" | grep 'Git Hooks')"; fi
+
+echo -n "Test 54: doctor.sh requires the lefthook post-merge block to run the standards sync... "
+lh3=$(make_project "doctor-lefthook-postmerge")
+printf 'post-merge:\n  commands:\n    notify:\n      run: echo merged\n' > "$lh3/lefthook.yml"
+out=$(cd "$lh3" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+printf 'post-merge:\n  commands:\n    standards-sync-reminder:\n      run: make check-standards\n' > "$lh3/lefthook.yml"
+out2=$(cd "$lh3" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Git Hooks' | grep -q 'does not run the standards sync' \
+   && echo "$out2" | grep 'Git Hooks' | grep -q 'post-merge hook contains standards sync'; then pass; else
+    fail "lefthook post-merge content check wrong: [$(echo "$out" | grep post-merge)] [$(echo "$out2" | grep post-merge)]"; fi
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"
