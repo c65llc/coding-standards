@@ -8,10 +8,24 @@ PROJECT_ROOT="${1:-.}"
 
 CHECK_NAME="test-directory"
 
-# Look for a tests/test/spec directory
+# dir_exists_exact <parent> <name>
+# True only when <parent> contains a directory literally named <name>.
+# `[ -d "$parent/$name" ]` is not enough: on case-insensitive filesystems
+# (APFS, NTFS) it accepts Tests/ for tests/, so a project that passed on macOS
+# then fails on Linux CI (#180). Compare the real directory entries instead.
+dir_exists_exact() {
+    local parent="$1" name="$2" entry
+    for entry in "$parent"/*/; do
+        entry="${entry%/}"
+        [ "${entry##*/}" = "$name" ] && [ -d "$entry" ] && return 0
+    done
+    return 1
+}
+
+# Look for a tests/test/spec directory (case-sensitive)
 TEST_DIR=""
 for candidate in tests test spec __tests__; do
-    if [ -d "$PROJECT_ROOT/$candidate" ]; then
+    if dir_exists_exact "$PROJECT_ROOT" "$candidate"; then
         TEST_DIR="$PROJECT_ROOT/$candidate"
         TEST_DIR_NAME="$candidate"
         break

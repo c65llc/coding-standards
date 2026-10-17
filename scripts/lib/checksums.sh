@@ -228,8 +228,63 @@ yaml_nested_get() {
     awk "/^${parent}:/{found=1;next} found && /^[[:space:]]+${child}:/{gsub(/^[[:space:]]*${child}:[[:space:]]*/,\"\"); print; exit} found && /^[^[:space:]]/{exit}" "$file" 2>/dev/null | sed 's/[[:space:]]*$//'
 }
 
+# Read a nested YAML list into newline-separated values
+# Usage: yaml_nested_list "parent" "child" "file" → outputs one value per line
+# Handles both block lists and inline [a, b] under the nested key:
+#   lint:
+#     exclude:
+#       - docs/
+#       - fixtures/**
+yaml_nested_list() {
+    local parent="$1"
+    local child="$2"
+    local file="$3"
+    awk -v p="$parent" -v c="$child" '
+        !inp && index($0, p ":") == 1 { inp = 1; next }
+        inp && !inc && $0 ~ /^[^[:space:]]/ { exit }
+        inp && !inc && $0 ~ ("^[[:space:]]+" c ":") {
+            line = $0
+            sub(/^[[:space:]]*[^:]+:[[:space:]]*/, "", line)
+            if (line ~ /^\[/) {
+                # Inline list: split on commas outside quotes only, so a
+                # quoted value such as "generated,old/" stays one entry.
+                sub(/^\[/, "", line)
+                sub(/\][[:space:]]*$/, "", line)
+                len = length(line); cur = ""; q = ""
+                for (i = 1; i <= len; i++) {
+                    ch = substr(line, i, 1)
+                    if (q != "") {
+                        cur = cur ch
+                        if (ch == q) q = ""
+                    } else if (ch == "\"" || ch == "\047") {
+                        q = ch; cur = cur ch
+                    } else if (ch == ",") {
+                        gsub(/^[[:space:]]+|[[:space:]]+$/, "", cur)
+                        if (cur != "") print cur
+                        cur = ""
+                    } else {
+                        cur = cur ch
+                    }
+                }
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", cur)
+                if (cur != "") print cur
+                exit
+            }
+            inc = 1; next
+        }
+        inc && $0 ~ /^[[:space:]]*-/ {
+            sub(/^[[:space:]]*-[[:space:]]*/, "")
+            sub(/[[:space:]]+$/, "")
+            if ($0 != "") print
+            next
+        }
+        inc && $0 ~ /^[[:space:]]*(#|$)/ { next }
+        inc { exit }
+    ' "$file" 2>/dev/null
+}
+
 # Read .standards.yml or fall back to .standards-config
-# Sets global variables: STD_LANGUAGES, STD_AGENTS, STD_ROLE, STD_VERSION, STD_COVERAGE_MIN, STD_COVERAGE_DOMAIN, STD_ARCHITECTURE, STD_SECURITY
+# Sets global variables: STD_LANGUAGES, STD_AGENTS, STD_ROLE, STD_VERSION, STD_COVERAGE_MIN, STD_COVERAGE_DOMAIN, STD_ARCHITECTURE, STD_SECURITY, STD_LINT_EXCLUDE
 read_standards_config() {
     local project_root="$1"
     local yml="$project_root/.standards.yml"
@@ -244,6 +299,10 @@ read_standards_config() {
         STD_COVERAGE_DOMAIN=$(yaml_nested_get "coverage" "domain" "$yml")
         STD_ARCHITECTURE=$(yaml_get "architecture" "$yml")
         STD_SECURITY=$(yaml_get "security" "$yml")
+        # lint.exclude: space-separated list of project-relative path prefixes
+        # or globs that lint-standards.sh check modules skip (see
+        # scripts/lib/lint-files.sh for the matching rules).
+        STD_LINT_EXCLUDE=$(yaml_nested_list "lint" "exclude" "$yml" | tr '\n' ' ' | sed 's/[[:space:]]*$//')
         # Defaults
         STD_ROLE="${STD_ROLE:-service}"
         STD_COVERAGE_MIN="${STD_COVERAGE_MIN:-95}"
@@ -272,6 +331,7 @@ read_standards_config() {
         STD_COVERAGE_DOMAIN="100"
         STD_ARCHITECTURE="clean"
         STD_SECURITY="strict"
+        STD_LINT_EXCLUDE=""
         return 0
     else
         return 1

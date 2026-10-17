@@ -9,19 +9,27 @@ PROJECT_ROOT="${1:-.}"
 
 CHECK_NAME="rust/ffi-no-unwrap"
 
+# File enumeration (git ls-files with pruned-find fallback, built-in
+# cache/worktree exclusions, `.standards.yml` lint.exclude, and the runner's
+# --since/--changed scope) lives in scripts/lib/lint-files.sh.
+LINT_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" 2>/dev/null && pwd)/lint-files.sh"
+if [ ! -f "$LINT_LIB" ]; then
+    echo "WARN $CHECK_NAME lint-files library not found ($LINT_LIB)"
+    exit 2
+fi
+# shellcheck source=../../lib/lint-files.sh
+source "$LINT_LIB"
+
 # Facade files: ffi.rs / wasm.rs, *_ffi.rs / *_wasm.rs, and anything under an
 # ffi/ or wasm/ source directory.
-FACADE_FILES=$(find "$PROJECT_ROOT" -type f \
-    \( -name "ffi.rs" -o -name "wasm.rs" -o -name "*_ffi.rs" -o -name "*_wasm.rs" \
-       -o -path "*/ffi/*.rs" -o -path "*/wasm/*.rs" \) \
-    -not -path "*/.git/*" \
-    -not -path "*/target/*" \
-    -not -path "*/node_modules/*" \
-    -not -path "*/.standards/*" \
-    -not -path "*/.standards_tmp/*" \
-    2>/dev/null)
+FACADE_ERE='(^|/)(ffi|wasm)\.rs$|_(ffi|wasm)\.rs$|/(ffi|wasm)/.*\.rs$'
+FACADE_FILES=$(lint_list_files "$PROJECT_ROOT" | grep -E "$FACADE_ERE" || true)
 
-if [ -z "$FACADE_FILES" ]; then
+# Filenames containing a newline cannot be carried by the file list; report
+# them rather than skipping them silently.
+UNSCANNABLE=$(lint_unscannable_files "$PROJECT_ROOT" | grep -E "$FACADE_ERE" || true)
+
+if [ -z "$FACADE_FILES" ] && [ -z "$UNSCANNABLE" ]; then
     echo "PASS $CHECK_NAME No FFI/wasm facade files found (ffi.rs, wasm.rs, ffi/, wasm/)"
     exit 0
 fi
@@ -48,6 +56,12 @@ while IFS= read -r file; do
         VIOLATIONS="${VIOLATIONS}${rel}:${first_line} (${count}); "
     fi
 done <<< "$FACADE_FILES"
+
+if [ -n "$UNSCANNABLE" ]; then
+    n=$(echo "$UNSCANNABLE" | wc -l | tr -d ' ')
+    TOTAL=$((TOTAL + n))
+    VIOLATIONS="${VIOLATIONS}${n} file(s) not scanned (newline in filename): $(echo "$UNSCANNABLE" | head -3 | tr '\n' ' '); "
+fi
 
 if [ -z "$VIOLATIONS" ]; then
     count=$(printf '%s\n' "$FACADE_FILES" | wc -l | tr -d ' ')

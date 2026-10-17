@@ -3,21 +3,54 @@
 # Reads .standards.yml, runs matching check modules, reports results.
 #
 # Usage:
-#   ./scripts/lint-standards.sh [--format text|json|sarif] [project-root]
+#   ./scripts/lint-standards.sh [--format text|json|sarif] [--since <ref> | --changed]
+#                               [--timeout <seconds>] [--fail-on-timeout] [project-root]
 #
 # Options:
-#   --format text   Human-readable color output (default)
-#   --format json   Machine-readable JSON object (timestamp, projectRoot, summary, results)
-#   --format sarif  SARIF 2.1.0 format for GitHub Code Scanning
+#   --format text      Human-readable color output (default)
+#   --format json      Machine-readable JSON object (timestamp, projectRoot, summary, results)
+#   --format sarif     SARIF 2.1.0 format for GitHub Code Scanning
+#   --since <ref>      PR mode: file-scanning checks only look at files changed
+#                      since the merge-base with <ref> (plus untracked files).
+#                      Config/history checks still run on the whole project.
+#   --changed          Same as --since with the base auto-detected (origin/HEAD,
+#                      origin/main, origin/master, main, master). Falls back to a
+#                      full scan, with a note on stderr, when none exists.
+#   --timeout <secs>   Wall-clock guard per check module (default 60; 0 disables;
+#                      env LINT_CHECK_TIMEOUT). A check that overruns is killed
+#                      (SIGTERM, then SIGKILL after a short grace period) so the
+#                      run always finishes. The result is WARN, except that
+#                      security checks (no-secrets, */banned-functions) always
+#                      FAIL: an incomplete security scan must not pass a gate.
+#   --fail-on-timeout  Report every timed-out check as FAIL (env
+#                      LINT_FAIL_ON_TIMEOUT=1). The standards-review action sets
+#                      this so CI never fails open.
+#
+# Environment:
+#   LINT_CHECK_TIMEOUT    Default for --timeout.
+#   LINT_FAIL_ON_TIMEOUT  Default for --fail-on-timeout (1/true).
+#   LINT_CHECKS_DIR       Alternate check-module directory (tests use this).
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CHECKS_DIR="$SCRIPT_DIR/lint-checks"
+CHECKS_DIR="${LINT_CHECKS_DIR:-$SCRIPT_DIR/lint-checks}"
 
 # Defaults
 FORMAT="text"
 PROJECT_ROOT=""
+CHANGED_MODE=false
+SINCE_REF=""
+CHECK_TIMEOUT="${LINT_CHECK_TIMEOUT:-60}"
+FAIL_ON_TIMEOUT=false
+case "${LINT_FAIL_ON_TIMEOUT:-}" in 1|true|yes) FAIL_ON_TIMEOUT=true ;; esac
+
+# Checks whose incomplete scan must never be reported as a mere warning.
+SECURITY_CHECKS_ERE='^(no-secrets|[a-z]+/banned-functions)$'
+
+usage() {
+    echo "Usage: $0 [--format text|json|sarif] [--since <ref> | --changed] [--timeout <seconds>] [--fail-on-timeout] [project-root]" >&2
+}
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -30,9 +63,40 @@ while [[ $# -gt 0 ]]; do
             FORMAT="${1#--format=}"
             shift
             ;;
+        --since)
+            SINCE_REF="${2:-}"
+            CHANGED_MODE=true
+            if [ -z "$SINCE_REF" ]; then
+                echo "--since requires a git ref" >&2
+                usage
+                exit 1
+            fi
+            shift 2
+            ;;
+        --since=*)
+            SINCE_REF="${1#--since=}"
+            CHANGED_MODE=true
+            shift
+            ;;
+        --changed)
+            CHANGED_MODE=true
+            shift
+            ;;
+        --timeout)
+            CHECK_TIMEOUT="${2:-}"
+            shift 2
+            ;;
+        --timeout=*)
+            CHECK_TIMEOUT="${1#--timeout=}"
+            shift
+            ;;
+        --fail-on-timeout)
+            FAIL_ON_TIMEOUT=true
+            shift
+            ;;
         -*)
             echo "Unknown option: $1" >&2
-            echo "Usage: $0 [--format text|json|sarif] [project-root]" >&2
+            usage
             exit 1
             ;;
         *)
@@ -42,9 +106,68 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if ! [[ "$CHECK_TIMEOUT" =~ ^[0-9]+$ ]]; then
+    echo "--timeout must be a non-negative integer (seconds), got: $CHECK_TIMEOUT" >&2
+    exit 1
+fi
+# Force base 10: bash treats a leading zero as octal in arithmetic, so "08"
+# would otherwise abort the check loop and yield an empty, passing report.
+CHECK_TIMEOUT=$((10#$CHECK_TIMEOUT))
+
 # Resolve project root
 if [ -z "$PROJECT_ROOT" ]; then
     PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+fi
+
+# ---------------------------------------------------------------------------
+# Changed-files scope (--since / --changed)
+#
+# Writes the project-relative paths of tracked files changed since the
+# merge-base with the base ref (committed, staged and unstaged; deletions
+# dropped) to a NUL-delimited temp file and exports LINT_FILE_LIST.
+# File-scanning check modules read that list via scripts/lib/lint-files.sh in
+# place of `git ls-files`; the library still enumerates untracked files itself,
+# so a new, uncommitted file is scanned too.
+#
+# `--relative` matters when the project root is a subdirectory of a larger
+# work tree: without it git prints paths relative to the repository root and
+# the modules would look for "<root>/<repo-relative>" and silently miss every
+# changed file.
+# ---------------------------------------------------------------------------
+SCOPE_BASE=""
+SCOPE_FILE_COUNT=0
+if [ "$CHANGED_MODE" = true ]; then
+    if ! git -C "$PROJECT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        echo "lint-standards: --since/--changed needs a git repository; scanning all files" >&2
+    else
+        SCOPE_BASE="$SINCE_REF"
+        if [ -z "$SCOPE_BASE" ]; then
+            for candidate in origin/HEAD origin/main origin/master main master; do
+                if git -C "$PROJECT_ROOT" rev-parse --verify -q "$candidate" >/dev/null 2>&1; then
+                    SCOPE_BASE="$candidate"
+                    break
+                fi
+            done
+        fi
+        if [ -z "$SCOPE_BASE" ]; then
+            echo "lint-standards: --changed: no base ref found (tried origin/HEAD, origin/main, origin/master, main, master); scanning all files" >&2
+        elif ! git -C "$PROJECT_ROOT" rev-parse --verify -q "$SCOPE_BASE" >/dev/null 2>&1; then
+            echo "lint-standards: --since: unknown ref '$SCOPE_BASE'; scanning all files" >&2
+            SCOPE_BASE=""
+        else
+            merge_base=$(git -C "$PROJECT_ROOT" merge-base "$SCOPE_BASE" HEAD 2>/dev/null || echo "$SCOPE_BASE")
+            LINT_FILE_LIST=$(mktemp "${TMPDIR:-/tmp}/lint-scope.XXXXXX")
+            # ACMRT: added, copied, modified, renamed, and type changes (a symlink
+            # or submodule replaced by a regular file); deletions are dropped.
+            git -C "$PROJECT_ROOT" diff -z --relative --name-only --diff-filter=ACMRT "$merge_base" -- 2>/dev/null \
+                > "$LINT_FILE_LIST" || true
+            export LINT_FILE_LIST
+            # shellcheck disable=SC2064
+            trap "rm -f '$LINT_FILE_LIST'" EXIT
+            SCOPE_FILE_COUNT=$(tr -cd '\0' < "$LINT_FILE_LIST" | wc -c | tr -d ' ')
+            SCOPE_FILE_COUNT="${SCOPE_FILE_COUNT:-0}"
+        fi
+    fi
 fi
 
 # Source helpers for YAML parsing
@@ -69,6 +192,54 @@ PASS=0
 WARN=0
 FAIL=0
 
+# descendants <pid>: the pid and all of its descendants, deepest first, as a
+# space-separated list. Snapshotted before any signal is sent, because once a
+# parent dies its children are re-parented and pgrep -P can no longer find
+# them. pgrep exists on macOS and Linux; without it only the pid is returned.
+descendants() {
+    local pid="$1" child
+    if command -v pgrep >/dev/null 2>&1; then
+        for child in $(pgrep -P "$pid" 2>/dev/null || true); do
+            descendants "$child"
+        done
+    fi
+    printf '%s ' "$pid"
+}
+
+# kill_tree <pid>: terminate a process and its descendants (a check module's
+# grep/find children would otherwise outlive it). SIGTERM first; a module that
+# traps or ignores it is escalated to SIGKILL after a 2 s grace period, so the
+# wall-clock guard is a hard bound and `wait` cannot block on a survivor.
+kill_tree() {
+    local pid="$1" victims grace=0
+    victims=$(descendants "$pid")
+    # shellcheck disable=SC2086
+    kill -TERM $victims 2>/dev/null || true
+    while kill -0 "$pid" 2>/dev/null && [ "$grace" -lt 40 ]; do
+        sleep 0.05
+        grace=$((grace + 1))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        # Re-snapshot: a child spawned after the first pass must not survive.
+        victims="$(descendants "$pid") $victims"
+        # shellcheck disable=SC2086
+        kill -KILL $victims 2>/dev/null || true
+    fi
+}
+
+# check_label <script>: best-effort check name for a module that produced no
+# status line (e.g. it timed out) — "<group>/<name>", or "<name>" for common/.
+check_label() {
+    local script="$1" base group
+    base=$(basename "$script" .sh)
+    group=$(basename "$(dirname "$script")")
+    if [ "$group" = "common" ]; then
+        echo "$base"
+    else
+        echo "$group/$base"
+    fi
+}
+
 run_check() {
     local check_script="$1"
     if [ ! -f "$check_script" ] || [ ! -x "$check_script" ]; then
@@ -77,7 +248,42 @@ run_check() {
 
     local output
     # Capture output; allow non-zero exit (checks use exit codes for severity)
-    output=$("$check_script" "$PROJECT_ROOT" 2>/dev/null) || true
+    if [ "$CHECK_TIMEOUT" -eq 0 ]; then
+        output=$("$check_script" "$PROJECT_ROOT" 2>/dev/null) || true
+    else
+        # Wall-clock guard: run the module in the background and poll (bash 3.2
+        # has no `timeout`). A module that overruns is killed with its children
+        # (TERM, then KILL) so one slow check can never hang the run. The
+        # result is WARN, or FAIL for security checks and under
+        # --fail-on-timeout: an incomplete scan must not pass a gate.
+        local out_file pid ticks max_ticks timed_out=false label status
+        out_file=$(mktemp "${TMPDIR:-/tmp}/lint-check.XXXXXX")
+        "$check_script" "$PROJECT_ROOT" >"$out_file" 2>/dev/null &
+        pid=$!
+        ticks=0
+        max_ticks=$((CHECK_TIMEOUT * 20))
+        while kill -0 "$pid" 2>/dev/null; do
+            if [ "$ticks" -ge "$max_ticks" ]; then
+                kill_tree "$pid"
+                timed_out=true
+                break
+            fi
+            sleep 0.05
+            ticks=$((ticks + 1))
+        done
+        wait "$pid" 2>/dev/null || true
+        if [ "$timed_out" = true ]; then
+            label=$(check_label "$check_script")
+            status="WARN"
+            if [ "$FAIL_ON_TIMEOUT" = true ] || [[ "$label" =~ $SECURITY_CHECKS_ERE ]]; then
+                status="FAIL"
+            fi
+            output="$status $label Check timed out after ${CHECK_TIMEOUT}s — scan incomplete (raise --timeout, or skip paths via lint.exclude in .standards.yml)"
+        else
+            output=$(cat "$out_file")
+        fi
+        rm -f "$out_file"
+    fi
 
     if [ -n "$output" ]; then
         RESULTS+=("$output")
@@ -135,6 +341,10 @@ output_text() {
     printf "\n"
     printf "%s\n" "${BOLD}🔎 Standards Compliance Check${RESET}"
     printf "%s\n\n" "$separator"
+
+    if [ -n "$SCOPE_BASE" ]; then
+        printf "  %s\n\n" "${DIM}Scope: $SCOPE_FILE_COUNT changed file(s) since $SCOPE_BASE (file-scanning checks only)${RESET}"
+    fi
 
     if [ ${#RESULTS[@]} -eq 0 ]; then
         printf "  %s\n" "${DIM}No checks ran. Is .standards.yml configured?${RESET}"
