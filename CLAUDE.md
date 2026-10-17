@@ -14,7 +14,7 @@ make test-scripts            # Validate bash script syntax (setup.sh, sync-stand
 make lint                    # Lint markdown files (requires markdownlint)
 make format                  # Format markdown files (requires prettier)
 make setup                   # Run setup script to configure standards in a project
-make sync-standards          # Sync standards files and update .cursorrules
+make sync-standards          # Sync standards files and re-assemble declared agent configs
 make diff-standards          # Preview what sync-standards would change (no files modified)
 make setup-agents            # Setup AI agent configurations
 make add-copilot-instructions # Create PR to add Copilot instructions
@@ -27,7 +27,10 @@ Use `--dry-run` with setup or sync to preview changes without modifying files:
 ```bash
 ./scripts/setup.sh --dry-run
 ./scripts/sync-standards.sh --dry-run
+./scripts/diff-standards.sh --exit-code   # exit 1 when any assembled agent config would change (CI gate)
 ```
+
+In a consumer project the scripts live under `.standards/` and must be run from the project root (`./.standards/scripts/sync-standards.sh`). `setup.sh`, `sync-standards.sh` and `diff-standards.sh` refuse to run when the project root resolves to `.standards/` (`scripts/lib/guard.sh`). `sync-standards.sh` gates every side effect (Cursor commands, `.gemini/`, `.claude/`) on the `agents:` list in `.standards.yml`; git aliases are opt-in via `--aliases`.
 
 The standards-review composite GitHub Action lives at `.github/actions/standards-review/action.yml`. It runs `lint-standards.sh --format json` and posts structured PR comments. A ready-to-use workflow template is at `templates/standards-review.yml.example`. Installing it into a consumer project is **opt-in**: run `.standards/scripts/setup.sh --workflow` (or `./scripts/setup.sh --workflow` from a clone of this repo) to copy it to `.github/workflows/standards-review.yml`. Without `--workflow`, setup only prints how to install it.
 
@@ -61,7 +64,8 @@ Template configs deployed to consumer projects during setup:
 All bash. Key scripts:
 
 - `setup.sh` — Installs standards into a target project, detects and configures AI agents; copies the standards-review workflow template only when run with `--workflow`
-- `sync-standards.sh` — Pulls latest standards and updates agent configs in consumer projects
+- `sync-standards.sh` — Pulls latest standards and updates agent configs in consumer projects (honours `agents:`; `--aliases` opt-in)
+- `diff-standards.sh` — Previews what sync would change; `--exit-code` makes it a CI gate
 - `lint-standards.sh` — Standards compliance linter; outputs text, JSON, or SARIF
 - `add-copilot-instructions-pr.sh` — Creates a PR to add Copilot instructions to a repo
 - `setup-git-aliases.sh` — Configures git aliases

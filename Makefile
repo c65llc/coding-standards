@@ -34,12 +34,9 @@ check-standards: ## Check if standards are up to date
 		echo "ℹ️  Not a project with standards submodule"; \
 	fi
 
-update-standards: ## Update standards submodule to latest
+update-standards: ## Update standards submodule to latest and re-sync agent configs
 	@if [ -d ".standards" ]; then \
-		cd .standards && \
-		git pull origin main 2>/dev/null || git pull origin master 2>/dev/null && \
-		cd .. && \
-		cp .standards/.cursorrules .cursorrules 2>/dev/null || true && \
+		./.standards/scripts/sync-standards.sh && \
 		echo "✅ Standards updated"; \
 	else \
 		echo "❌ No .standards directory found"; \

@@ -6,6 +6,11 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
+# Refuse to run from inside the .standards/ submodule (see lib/guard.sh).
+# shellcheck source=lib/guard.sh disable=SC1091
+source "$SCRIPT_DIR/lib/guard.sh"
+refuse_if_inside_standards_dir "$PROJECT_ROOT" "setup.sh" || exit 2
+
 # Parse arguments
 ROLE="service"
 AGENTS_OVERRIDE=""
@@ -652,5 +657,5 @@ echo "4. If using Codex, it will read AGENTS.md in the project root"
 echo "5. If using Claude Code, customize CLAUDE.md with your project details"
 echo "6. If using Gemini CLI, it will automatically use .gemini/GEMINI.md and .gemini/settings.json"
 echo "7. If using submodule, ensure it's initialized: git submodule update --init"
-echo "8. To sync standards later, run: ./sync-standards.sh (or cd .standards && git pull)"
+echo "8. To sync standards later, run from the project root: ./.standards/scripts/sync-standards.sh"
 echo "   Note: After syncing, fully restart your IDE again to load updated configurations"

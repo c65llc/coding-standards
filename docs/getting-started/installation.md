@@ -175,13 +175,16 @@ git commit -m "chore: pin standards to v1.0.0"
 ### Standards Out of Sync
 
 ```bash
-# Use the sync script
+# Use the sync script (run from the project root)
+./.standards/scripts/sync-standards.sh
+# or, if your Makefile has the target
 make sync-standards
 
-# Or update the submodule manually
-cd .standards && git pull origin main && cd ..
-cp .standards/.cursorrules .cursorrules
+# Preview first, and fail CI when configs have drifted
+./.standards/scripts/diff-standards.sh --exit-code
 ```
+
+Do not copy `.standards/.cursorrules` over your own `.cursorrules` and do not run the scripts from inside `.standards/` (`make -C .standards ...`): that file is the standards repo's own config, and the scripts refuse to run when the project root resolves to `.standards/`.
 
 ### Submodule Shows Modified or Detached HEAD
 

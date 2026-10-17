@@ -2,27 +2,84 @@
 # scripts/diff-standards.sh — Show what sync-standards would change without modifying anything
 #
 # For each declared agent, assembles to a temp file and diffs it against the
-# installed config. Prints color-coded output and cleans up temp files.
+# installed assembled config (CLAUDE.md, .cursorrules, AGENTS.md, ...). Prints
+# color-coded output and cleans up temp files. Auxiliary files that sync copies
+# verbatim (.aiderrc, .gemini/settings.json, .claude/settings.json, Cursor
+# commands) are outside this diff.
 #
 # Usage:
-#   ./scripts/diff-standards.sh
+#   ./.standards/scripts/diff-standards.sh [--exit-code] [project-root]
+#   ./scripts/diff-standards.sh            (from a clone of the standards repo)
 #   make diff-standards
+#
+# Options:
+#   --exit-code   Exit 1 when any assembled agent config would change or be
+#                 created (otherwise always exits 0). Lets the script gate CI.
+#   -h, --help    Show this help.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+usage() {
+    sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+}
 
 # ---------------------------------------------------------------------------
-# Colors
+# Parse arguments
 # ---------------------------------------------------------------------------
 
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-BOLD='\033[1m'
+EXIT_CODE=false
+PROJECT_ROOT_ARG=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --exit-code)
+            EXIT_CODE=true
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            echo "Run '$0 --help' for usage." >&2
+            exit 2
+            ;;
+        *)
+            PROJECT_ROOT_ARG="$1"
+            shift
+            ;;
+    esac
+done
+
+if [ -n "$PROJECT_ROOT_ARG" ]; then
+    PROJECT_ROOT="$(cd "$PROJECT_ROOT_ARG" 2>/dev/null && pwd)" || {
+        echo "Error: project root not found: $PROJECT_ROOT_ARG" >&2
+        exit 2
+    }
+else
+    PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+fi
+
+# Refuse to run from inside the .standards/ submodule (see lib/guard.sh).
+# shellcheck source=lib/guard.sh disable=SC1091
+source "$SCRIPT_DIR/lib/guard.sh"
+refuse_if_inside_standards_dir "$PROJECT_ROOT" "diff-standards.sh" || exit 2
+
+# ---------------------------------------------------------------------------
+# Colors — real escape bytes ($'...'), so they render through %s as well as
+# inside format strings. Single-quoted '\033[...]' would print literally when
+# passed as a printf argument.
+# ---------------------------------------------------------------------------
+
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[1;33m'
+RED=$'\033[0;31m'
+CYAN=$'\033[0;36m'
+NC=$'\033[0m'
+BOLD=$'\033[1m'
 
 # ---------------------------------------------------------------------------
 # Source helpers
@@ -50,6 +107,17 @@ if [ -d "$PROJECT_ROOT/.standards" ]; then
 elif [ -d "$SCRIPT_DIR/../standards" ]; then
     STANDARDS_DIR="$SCRIPT_DIR/.."
 fi
+
+# How the consumer should invoke the sibling scripts. Inside a consumer project
+# the scripts live under .standards/; in a clone of the standards repo they are
+# under ./scripts/. Never name a Make target — the consumer may not have one.
+if [ "$STANDARDS_DIR" = "$PROJECT_ROOT/.standards" ]; then
+    SCRIPTS_PREFIX="./.standards/scripts"
+else
+    SCRIPTS_PREFIX="./scripts"
+fi
+SYNC_CMD="$SCRIPTS_PREFIX/sync-standards.sh"
+SETUP_CMD="$SCRIPTS_PREFIX/setup.sh"
 
 AGENTS_DIR=""
 if [ -n "$STANDARDS_DIR" ] && [ -d "$STANDARDS_DIR/standards/agents" ]; then
@@ -81,7 +149,7 @@ printf "=======================================\n\n"
 
 if ! declare -f read_standards_config >/dev/null 2>&1 || ! read_standards_config "$PROJECT_ROOT" 2>/dev/null; then
     printf "%s\n" "${YELLOW}⚠️  No .standards.yml found in $PROJECT_ROOT${NC}"
-    printf "   Run 'make setup' to initialize standards for this project.\n\n"
+    printf "   Run %s to initialize standards for this project.\n\n" "$SETUP_CMD"
     exit 0
 fi
 
@@ -134,7 +202,7 @@ SKIPPED=0
 TEMP_FILES=()
 # shellcheck disable=SC2317
 cleanup() {
-    for f in "${TEMP_FILES[@]}"; do
+    for f in ${TEMP_FILES[@]+"${TEMP_FILES[@]}"}; do
         rm -f "$f"
     done
 }
@@ -157,14 +225,24 @@ for agent in $AGENTS_LIST; do
         *)           continue ;;
     esac
 
-    # shellcheck disable=SC2059
-    printf "${CYAN}→ %s${NC}  (%s)\n" "$agent" "$(basename "$OUTPUT_PATH")"
+    printf "%s→ %s%s  (%s)\n" "$CYAN" "$agent" "$NC" "$(basename "$OUTPUT_PATH")"
 
-    # Assemble to temp file
+    # Assemble to temp file. Seed it from the installed config so the assembler
+    # carries the consumer's PROJECT-SPECIFIC section across, exactly as sync
+    # does — otherwise that section always reads as drift and --exit-code can
+    # never pass. The assembler may also drop a *.pre-standards-setup backup
+    # next to the temp file for a hand-written config; clean that up too.
     TEMP_FILE=$(mktemp)
-    TEMP_FILES+=("$TEMP_FILE")
+    TEMP_FILES+=("$TEMP_FILE" "$TEMP_FILE.pre-standards-setup")
+    if [ -f "$OUTPUT_PATH" ]; then
+        cp "$OUTPUT_PATH" "$TEMP_FILE"
+    fi
 
-    if ! "$ASSEMBLE_SCRIPT" "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$TEMP_FILE" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} 2>/dev/null; then
+    # --project-root: the temp file lives outside the project, so the assembler
+    # cannot infer the root from its location and would fall back to the cwd,
+    # mis-resolving {{PROJECT_NAME}} when [project-root] points elsewhere.
+    if ! "$ASSEMBLE_SCRIPT" --project-root "$PROJECT_ROOT" \
+            "$agent" "$BLOCKS_DIR" "$BASE_TEMPLATE" "$TEMP_FILE" ${BLOCK_ARGS[@]+"${BLOCK_ARGS[@]}"} 2>/dev/null; then
         printf "  %s\n\n" "${YELLOW}⚠️  Assembly failed — skipping${NC}"
         SKIPPED=$((SKIPPED + 1))
         continue
@@ -186,15 +264,13 @@ for agent in $AGENTS_LIST; do
     else
         ADDED=$(printf '%s\n' "$DIFF_OUTPUT" | grep -c '^+[^+]' || true)
         REMOVED=$(printf '%s\n' "$DIFF_OUTPUT" | grep -c '^-[^-]' || true)
-        # shellcheck disable=SC2059
-        printf "  ${YELLOW}~ Changes: +%d/-%d lines${NC}\n" "$ADDED" "$REMOVED"
-        # Print colored diff (SC2059: colors in format strings are intentional)
-        # shellcheck disable=SC2059
+        printf "  %s~ Changes: +%d/-%d lines%s\n" "$YELLOW" "$ADDED" "$REMOVED" "$NC"
+        # Print colored diff
         printf '%s\n' "$DIFF_OUTPUT" | while IFS= read -r line; do
             case "$line" in
-                +*) printf "${GREEN}%s${NC}\n" "$line" ;;
-                -*) printf "${RED}%s${NC}\n" "$line" ;;
-                @*) printf "${CYAN}%s${NC}\n" "$line" ;;
+                +*) printf "%s%s%s\n" "$GREEN" "$line" "$NC" ;;
+                -*) printf "%s%s%s\n" "$RED" "$line" "$NC" ;;
+                @*) printf "%s%s%s\n" "$CYAN" "$line" "$NC" ;;
                 *)  printf "%s\n" "$line" ;;
             esac
         done
@@ -208,22 +284,24 @@ done
 # ---------------------------------------------------------------------------
 
 printf "=======================================\n"
-# shellcheck disable=SC2059
-printf "  ${BOLD}Summary:${NC} "
-# shellcheck disable=SC2059
-printf "${GREEN}%d up to date${NC}  " "$UNCHANGED"
-# shellcheck disable=SC2059
-printf "${YELLOW}%d would change${NC}  " "$CHANGED"
-# shellcheck disable=SC2059
-printf "${GREEN}%d new${NC}  " "$NEW_FILES"
+printf "  %sSummary:%s " "$BOLD" "$NC"
+printf "%s%d up to date%s  " "$GREEN" "$UNCHANGED" "$NC"
+printf "%s%d would change%s  " "$YELLOW" "$CHANGED" "$NC"
+printf "%s%d new%s  " "$GREEN" "$NEW_FILES" "$NC"
 if [ "$SKIPPED" -gt 0 ]; then
-    # shellcheck disable=SC2059
-    printf "${YELLOW}%d skipped${NC}" "$SKIPPED"
+    printf "%s%d skipped%s" "$YELLOW" "$SKIPPED" "$NC"
 fi
 printf "\n\n"
 
+PENDING=false
 if [ "$CHANGED" -gt 0 ] || [ "$NEW_FILES" -gt 0 ]; then
-    printf "%s\n\n" "Run ${BOLD}make sync-standards${NC} to apply changes."
+    PENDING=true
+    printf "Run %s%s%s to apply changes.\n" "$BOLD" "$SYNC_CMD" "$NC"
+    printf "Preview the write operations first with %s%s --dry-run%s.\n\n" "$BOLD" "$SYNC_CMD" "$NC"
+fi
+
+if [ "$EXIT_CODE" = true ] && [ "$PENDING" = true ]; then
+    exit 1
 fi
 
 exit 0

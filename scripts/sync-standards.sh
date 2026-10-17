@@ -1,13 +1,32 @@
 #!/bin/bash
 # Sync script to update standards in existing projects
+#
+# Usage:
+#   ./.standards/scripts/sync-standards.sh [--dry-run] [--aliases]
+#
+# Run it from the project root. Every side effect is gated on the agents
+# declared in .standards.yml (`agents:`): Cursor commands only for `cursor`,
+# .gemini/settings.json only for `gemini`, .claude/ extras only for
+# `claude-code`, and so on.
+#
+# Options:
+#   --dry-run   Print every write that would happen; modify nothing.
+#   --aliases   Also run setup-git-aliases.sh (changes *global* git config).
+#               Off by default — a project sync never touches your git config.
+#   -h, --help  Show this help.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
+usage() {
+    sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'
+}
+
 # Parse arguments
 DRY_RUN=false
+SETUP_ALIASES=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -15,11 +34,26 @@ while [ $# -gt 0 ]; do
             DRY_RUN=true
             shift
             ;;
-        *)
+        --aliases)
+            SETUP_ALIASES=true
             shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            echo "Run '$0 --help' for usage." >&2
+            exit 2
             ;;
     esac
 done
+
+# Refuse to run from inside the .standards/ submodule (see lib/guard.sh).
+# shellcheck source=lib/guard.sh disable=SC1091
+source "$SCRIPT_DIR/lib/guard.sh"
+refuse_if_inside_standards_dir "$PROJECT_ROOT" "sync-standards.sh" || exit 2
 
 # Dry-run aware file operations (shared: scripts/lib/dry-run.sh)
 # shellcheck source=lib/dry-run.sh disable=SC1091
@@ -88,33 +122,9 @@ sync_ai_agents() {
         return
     fi
 
-    # Read project configuration (.standards.yml or legacy .standards-config)
-    local ROLE="service"
-    local DETECTED_LANGS=""
-    local AGENTS_LIST=""
-
-    if ! read_standards_config "$PROJECT_ROOT"; then
-        echo "⚠️  No .standards.yml or .standards-config found. Running auto-detection (default role: service)."
-        STD_ROLE="service"
-        STD_LANGUAGES=""
-        STD_AGENTS=""
-    fi
-    ROLE="$STD_ROLE"
-    DETECTED_LANGS="$STD_LANGUAGES"
-    AGENTS_LIST="$STD_AGENTS"
-
-    # If no languages from config, try auto-detection
-    if [ -z "$DETECTED_LANGS" ]; then
-        local DETECT_SCRIPT="$SCRIPT_DIR/detect-languages.sh"
-        if [ -x "$DETECT_SCRIPT" ]; then
-            DETECTED_LANGS=$("$DETECT_SCRIPT" "$PROJECT_ROOT")
-        fi
-    fi
-
-    # Default agents list if not in config
-    if [ -z "$AGENTS_LIST" ]; then
-        AGENTS_LIST="claude-code cursor copilot gemini codex aider"
-    fi
+    # ROLE, DETECTED_LANGS and AGENTS_LIST are read once at top level (from
+    # .standards.yml) so that every side effect in this script shares one view
+    # of the declared agents.
 
     # Build block arguments: language blocks + role block
     # shellcheck disable=SC2086
@@ -221,9 +231,9 @@ sync_ai_agents() {
         echo "$NEW_CHECKSUMS" > "$CHECKSUMS_PATH"
     fi
 
-    # Copy merge-standards skill if it exists and has changed
+    # Copy merge-standards skill if it exists and has changed (claude-code only)
     local SKILL_SOURCE="$AGENTS_DIR/claude-code/skills/merge-standards.md"
-    if [ -f "$SKILL_SOURCE" ]; then
+    if agent_enabled claude-code && [ -f "$SKILL_SOURCE" ]; then
         dry_run_mkdir "$PROJECT_ROOT/.claude/skills"
         if [ "$DRY_RUN" = true ]; then
             if ! cmp -s "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md" 2>/dev/null; then
@@ -248,8 +258,8 @@ sync_ai_agents() {
         echo "   Your .codexrc has been preserved. Remove it when ready."
     fi
 
-    # Claude Code settings.json (only create if missing)
-    if [ ! -f "$PROJECT_ROOT/.claude/settings.json" ]; then
+    # Claude Code settings.json (claude-code only; only create if missing)
+    if agent_enabled claude-code && [ ! -f "$PROJECT_ROOT/.claude/settings.json" ]; then
         if [ -f "$AGENTS_DIR/claude-code/settings.json.example" ]; then
             if [ "$DRY_RUN" = true ]; then
                 dry_run_mkdir "$PROJECT_ROOT/.claude"
@@ -327,7 +337,7 @@ sync_ai_agents() {
         done
     fi
 
-    # Sync Gemini settings.json (separate from GEMINI.md which is now assembled)
+    # Sync Gemini settings.json (gemini only; separate from the assembled GEMINI.md)
     local GEMINI_SOURCE=""
     if [ -n "$STANDARDS_DIR" ] && [ -d "$STANDARDS_DIR/.gemini" ]; then
         GEMINI_SOURCE="$STANDARDS_DIR/.gemini"
@@ -335,7 +345,7 @@ sync_ai_agents() {
         GEMINI_SOURCE="$SCRIPT_DIR/../.gemini"
     fi
 
-    if [ -n "$GEMINI_SOURCE" ] && [ -f "$GEMINI_SOURCE/settings.json" ]; then
+    if agent_enabled gemini && [ -n "$GEMINI_SOURCE" ] && [ -f "$GEMINI_SOURCE/settings.json" ]; then
         dry_run_mkdir "$PROJECT_ROOT/.gemini"
         # Validate JSON syntax before copying
         local JSON_VALID=true
@@ -390,11 +400,21 @@ if [ -d "$PROJECT_ROOT/.standards" ]; then
         echo "  [dry-run] Would fetch and pull .standards/ submodule"
         UPDATED=true  # Assume updates for preview purposes
     else
-        LOCAL=$(git rev-parse HEAD)
-        git fetch origin >/dev/null 2>&1
-        REMOTE=$(git rev-parse origin/main 2>/dev/null || git rev-parse origin/master 2>/dev/null)
+        LOCAL=$(git rev-parse HEAD 2>/dev/null || true)
+        REMOTE=""
+        if git fetch origin >/dev/null 2>&1; then
+            # --verify --quiet: print nothing (rather than the literal ref name)
+            # when the ref does not exist, so REMOTE stays empty and we fall through.
+            REMOTE=$(git rev-parse --verify --quiet origin/main 2>/dev/null \
+                || git rev-parse --verify --quiet origin/master 2>/dev/null || true)
+        else
+            # Leave REMOTE empty: a cached origin/main that differs from HEAD
+            # would otherwise send us into a pull against the same unreachable
+            # remote, which dies under set -e before any config is assembled.
+            echo "⚠️  Could not fetch standards remote (offline?) — syncing from the local checkout"
+        fi
 
-        if [ "$LOCAL" != "$REMOTE" ] && [ -n "$REMOTE" ]; then
+        if [ -n "$REMOTE" ] && [ "$LOCAL" != "$REMOTE" ]; then
             echo "📥 Pulling latest standards..."
             git pull origin main 2>/dev/null || git pull origin master 2>/dev/null
             UPDATED=true
@@ -414,7 +434,44 @@ else
     exit 1
 fi
 
-# Update Cursor custom commands if they exist
+# ---------------------------------------------------------------------------
+# Read project configuration once (.standards.yml or legacy .standards-config).
+# Every side effect below is gated on the declared agents list.
+# ---------------------------------------------------------------------------
+
+ROLE="service"
+DETECTED_LANGS=""
+AGENTS_LIST=""
+
+if declare -f read_standards_config >/dev/null 2>&1 && read_standards_config "$PROJECT_ROOT"; then
+    ROLE="${STD_ROLE:-service}"
+    DETECTED_LANGS="${STD_LANGUAGES:-}"
+    AGENTS_LIST="${STD_AGENTS:-}"
+else
+    echo "⚠️  No .standards.yml or .standards-config found. Running auto-detection (default role: service)."
+fi
+
+# If no languages from config, try auto-detection
+if [ -z "$DETECTED_LANGS" ] && [ -x "$SCRIPT_DIR/detect-languages.sh" ]; then
+    DETECTED_LANGS=$("$SCRIPT_DIR/detect-languages.sh" "$PROJECT_ROOT")
+fi
+
+# Default agents list if not in config
+if [ -z "$AGENTS_LIST" ]; then
+    AGENTS_LIST="claude-code cursor copilot gemini codex aider"
+fi
+
+# agent_enabled <name> — true when <name> is in the declared agents list.
+agent_enabled() {
+    case " $AGENTS_LIST " in
+        *" $1 "*) return 0 ;;
+        *)        return 1 ;;
+    esac
+}
+
+echo "🤖 Declared agents: $AGENTS_LIST"
+
+# Update Cursor custom commands if they exist (cursor only)
 if [ -d "$STANDARDS_DIR/.cursor/commands" ]; then
     CURSOR_COMMANDS_SOURCE="$STANDARDS_DIR/.cursor/commands"
 elif [ -d "$SCRIPT_DIR/../.cursor/commands" ]; then
@@ -423,7 +480,7 @@ else
     CURSOR_COMMANDS_SOURCE=""
 fi
 
-if [ -n "$CURSOR_COMMANDS_SOURCE" ] && [ -d "$CURSOR_COMMANDS_SOURCE" ]; then
+if agent_enabled cursor && [ -n "$CURSOR_COMMANDS_SOURCE" ] && [ -d "$CURSOR_COMMANDS_SOURCE" ]; then
     echo "📝 Syncing Cursor custom commands..."
     dry_run_mkdir "$PROJECT_ROOT/.cursor/commands"
     if [ "$DRY_RUN" = true ]; then
@@ -441,31 +498,36 @@ echo ""
 echo "🤖 Syncing AI agent configurations..."
 sync_ai_agents "$STANDARDS_DIR" "$SCRIPT_DIR" "$PROJECT_ROOT"
 
-# Update git aliases if setup script exists
-if [ -d "$STANDARDS_DIR" ]; then
-    GIT_ALIASES_SCRIPT="$STANDARDS_DIR/scripts/setup-git-aliases.sh"
-elif [ -f "$SCRIPT_DIR/setup-git-aliases.sh" ]; then
-    GIT_ALIASES_SCRIPT="$SCRIPT_DIR/setup-git-aliases.sh"
-else
-    GIT_ALIASES_SCRIPT=""
-fi
-
-if [ -n "$GIT_ALIASES_SCRIPT" ] && [ -f "$GIT_ALIASES_SCRIPT" ] && command -v git >/dev/null 2>&1; then
-    if [ "$DRY_RUN" = true ]; then
-        echo ""
-        echo "  [dry-run] Would set up git aliases and configuration"
+# Git aliases are opt-in (--aliases). They change *global* git config, which a
+# project sync must never do on its own.
+if [ "$SETUP_ALIASES" = true ]; then
+    if [ -f "$STANDARDS_DIR/scripts/setup-git-aliases.sh" ]; then
+        GIT_ALIASES_SCRIPT="$STANDARDS_DIR/scripts/setup-git-aliases.sh"
+    elif [ -f "$SCRIPT_DIR/setup-git-aliases.sh" ]; then
+        GIT_ALIASES_SCRIPT="$SCRIPT_DIR/setup-git-aliases.sh"
     else
-        # Always check for new aliases, not just when updated
-        # The setup script will skip existing aliases, so it's safe to run
-        echo ""
-        echo "🔧 Checking git aliases and configuration..."
-        echo "   (Ensuring all aliases are up to date)"
-        if bash "$GIT_ALIASES_SCRIPT" 2>/dev/null; then
-            echo "✅ Git aliases checked/updated"
-        else
-            echo "⚠️  Git aliases update had issues (non-fatal, continuing...)"
-        fi
+        GIT_ALIASES_SCRIPT=""
     fi
+
+    if [ -n "$GIT_ALIASES_SCRIPT" ] && command -v git >/dev/null 2>&1; then
+        if [ "$DRY_RUN" = true ]; then
+            echo ""
+            echo "  [dry-run] Would set up git aliases and configuration (--aliases)"
+        else
+            echo ""
+            echo "🔧 Setting up git aliases and configuration (--aliases)..."
+            if bash "$GIT_ALIASES_SCRIPT" 2>/dev/null; then
+                echo "✅ Git aliases checked/updated"
+            else
+                echo "⚠️  Git aliases update had issues (non-fatal, continuing...)"
+            fi
+        fi
+    else
+        echo "⚠️  --aliases requested but setup-git-aliases.sh (or git) not found — skipping"
+    fi
+else
+    echo ""
+    echo "ℹ️  Git aliases not changed (opt in with --aliases)"
 fi
 
 # Check for new standards files

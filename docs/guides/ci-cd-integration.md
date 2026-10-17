@@ -39,6 +39,17 @@ jobs:
 
 `make check-standards` compares the local submodule commit with `origin/main`. If they differ, the step exits with a non-zero code and the workflow fails.
 
+## Agent Config Drift Check
+
+The submodule can be current while a generated agent config (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, …) has drifted from what the standards would assemble. `diff-standards.sh --exit-code` catches that: it exits 1 when any declared agent's assembled config would change or be created, and prints the exact command to fix it. Content below the `BEGIN PROJECT-SPECIFIC` marker is yours and never counts as drift. Auxiliary files that sync copies verbatim (`.aiderrc`, `.gemini/settings.json`, `.claude/settings.json`, Cursor commands) are outside the gate.
+
+```yaml
+      - name: Agent configs match the standards
+        run: ./.standards/scripts/diff-standards.sh --exit-code
+```
+
+Run it from the project root (never `make -C .standards ...`); the script refuses to run when the project root resolves to `.standards/`.
+
 ## Scheduled Auto-Update
 
 Create a workflow that opens a commit (or a pull request) when new standards are available:

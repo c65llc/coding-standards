@@ -76,11 +76,15 @@ Every project MUST include the following targets in the root `Makefile`:
 * **Requirement:** GitHub CLI (`gh`) must be installed and authenticated.
 * **Post-condition:** PR is created on GitHub with title, description, and proper base/head branches.
 
-### `make setup-cursor`
-* **Goal:** Install or update Cursor AI rules configuration.
-* **Action:** Copies or updates `.cursorrules` file from standards repository (`.standards/.cursorrules` if using submodule, or from standards installation).
-* **Post-condition:** `.cursorrules` file exists in project root and is up to date with standards.
-* **Note:** This target is automatically called by `make sync-standards` when syncing standards in projects using the standards repository.
+### `make sync-standards`
+* **Goal:** Pull the latest coding standards and regenerate every declared AI agent config.
+* **Action:** Runs `./.standards/scripts/sync-standards.sh` **from the project root**. The script reads `agents:` from `.standards.yml` and only touches what those agents need.
+* **Post-condition:** Agent configs (`CLAUDE.md`, `.cursorrules`, `AGENTS.md`, …) are up to date, or staged to `.standards-pending/` when customized.
+* **Never:** `make -C .standards ...` or `cp .standards/.cursorrules .cursorrules`. Running from inside the submodule resolves the project root to `.standards/`, and the standards repo's own `.cursorrules` would overwrite the project's assembled one.
+
+### `make diff-standards`
+* **Goal:** Preview what `make sync-standards` would change.
+* **Action:** Runs `./.standards/scripts/diff-standards.sh`. Add `--exit-code` to fail (exit 1) when any config would change — usable as a CI gate.
 
 ### `make ls`
 * **Goal:** List all available make targets.
@@ -111,21 +115,25 @@ This implementation:
 * Sorts the list alphabetically
 * Produces a clean list of target names only
 
-### Implementation Example for `make setup-cursor`
+### Implementation Example for `make sync-standards` and `make diff-standards`
 
-The `setup-cursor` target should install or update `.cursorrules` from the standards repository:
+Both targets invoke the scripts from the project root so that `PROJECT_ROOT` resolves to the consumer project, not the submodule:
 
 ```makefile
-.PHONY: setup-cursor
-setup-cursor: ## Install or update Cursor AI rules configuration
-	@if [ -d ".standards" ] && [ -f ".standards/.cursorrules" ]; then \
-		cp .standards/.cursorrules .cursorrules && \
-		echo "✅ .cursorrules updated from .standards"; \
-	elif [ -f ".standards/.cursorrules" ]; then \
-		cp .standards/.cursorrules .cursorrules && \
-		echo "✅ .cursorrules installed"; \
+.PHONY: sync-standards diff-standards
+sync-standards: ## Sync project standards to latest version (run from project root)
+	@if [ -d ".standards" ]; then \
+		./.standards/scripts/sync-standards.sh; \
 	else \
-		echo "⚠️  Standards directory not found. Run setup script first."; \
+		echo "❌ .standards directory not found. Run install script first."; \
+		exit 1; \
+	fi
+
+diff-standards: ## Show what sync-standards would change (add --exit-code to gate CI)
+	@if [ -d ".standards" ]; then \
+		./.standards/scripts/diff-standards.sh; \
+	else \
+		echo "❌ .standards directory not found. Run install script first."; \
 		exit 1; \
 	fi
 ```
@@ -133,7 +141,8 @@ setup-cursor: ## Install or update Cursor AI rules configuration
 This implementation:
 
 * Checks for standards submodule at `.standards`
-* Copies `.cursorrules` from standards to project root
+* Runs the scripts from the project root (never `make -C .standards`)
+* Lets `sync-standards.sh` honour the `agents:` list in `.standards.yml` for every side effect
 * Provides clear feedback on success or failure
 * Is idempotent (safe to run multiple times)
 

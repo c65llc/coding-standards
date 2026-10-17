@@ -43,12 +43,12 @@ make setup
 
 ## sync-standards.sh
 
-**Purpose:** Pull the latest standards and update all configuration files.
+**Purpose:** Pull the latest standards and update the configuration files for the agents declared in `.standards.yml`.
 
-**Usage:**
+**Usage (from the project root):**
 
 ```bash
-./scripts/sync-standards.sh
+./.standards/scripts/sync-standards.sh [--dry-run] [--aliases]
 ```
 
 Or via Make:
@@ -57,15 +57,61 @@ Or via Make:
 make sync-standards
 ```
 
+**Flags:**
+
+| Flag | Effect |
+| ---- | ------ |
+| `--dry-run` | Print every write that would happen; modify nothing. |
+| `--aliases` | Also run `setup-git-aliases.sh`. This changes **global** git config, so it is off by default and never runs as part of a plain project sync. |
+| `-h`, `--help` | Show usage. Unknown options exit 2. |
+
 **What it does:**
 
-1. If a `.standards` submodule exists, fetches from the remote and pulls if there are new commits.
-2. Updates `.cursorrules` if it has changed.
-3. Syncs Cursor custom commands.
-4. Syncs all AI agent configurations (Copilot, Aider, Codex, Gemini). Missing configurations are added automatically; existing ones are updated when they differ from the source.
-5. Validates Gemini `settings.json` for valid JSON before copying (uses `python3` or `jq` if available).
-6. Runs `setup-git-aliases.sh` to ensure aliases are current.
+1. Refuses to run when the project root resolves to `.standards/` (i.e. you ran it from inside the submodule, as the old `make -C .standards sync-standards` wrapper did). Run it from the project root instead.
+2. If a `.standards` submodule exists, fetches from the remote and pulls if there are new commits. An unreachable remote is a warning, not a failure — the sync continues from the local checkout.
+3. Reads `agents:`, `languages:` and `role:` from `.standards.yml` (falls back to the legacy `.standards-config`, then to all agents + language auto-detection).
+4. Re-assembles one config per declared agent (`CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `.aider-instructions.md`). Customized files are staged to `.standards-pending/` instead of being overwritten.
+5. Installs agent-specific extras **only for declared agents**: Cursor custom commands (`cursor`), `.gemini/settings.json` (`gemini`, JSON-validated first), `.claude/settings.json` and the `/merge-standards` skill (`claude-code`).
+6. Syncs language-specific tool configs for detected languages.
 7. Lists available standards files.
+
+---
+
+## diff-standards.sh
+
+**Purpose:** Show what `sync-standards.sh` would change, without modifying anything.
+
+**Usage (from the project root):**
+
+```bash
+./.standards/scripts/diff-standards.sh [--exit-code] [project-root]
+```
+
+Or via Make:
+
+```bash
+make diff-standards
+```
+
+**Flags:**
+
+| Flag | Effect |
+| ---- | ------ |
+| `--exit-code` | Exit 1 when any declared agent's assembled config (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, …) would change or be created; exit 0 otherwise. The project-specific section is never drift; verbatim-copied auxiliary files (`.aiderrc`, `.gemini/settings.json`, …) are not diffed. Without the flag the script always exits 0. |
+| `-h`, `--help` | Show usage. Unknown options exit 2. |
+
+**What it does:**
+
+1. Refuses to run from inside `.standards/` (same guard as `sync-standards.sh`).
+2. Assembles each declared agent config to a temp file and prints a unified diff against the installed file (`+ Would create` for missing ones).
+3. Prints a summary and, when changes are pending, the exact command to apply them (`./.standards/scripts/sync-standards.sh`).
+
+Use it as a CI gate:
+
+```yaml
+- name: Agent configs match the standards
+  run: ./.standards/scripts/diff-standards.sh --exit-code
+```
 
 ---
 
@@ -79,7 +125,7 @@ make sync-standards
 ./scripts/setup-git-aliases.sh
 ```
 
-Called automatically by `setup.sh` and `sync-standards.sh`.
+Called by `setup.sh`, and by `sync-standards.sh` only when you pass `--aliases` (it changes global git config, so a plain project sync never runs it).
 
 **What it configures:**
 

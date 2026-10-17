@@ -37,13 +37,23 @@ Equivalent to running `./scripts/setup.sh`.
 
 ### `sync-standards`
 
-Pull the latest standards from the remote and update all configuration files (`.cursorrules`, `.aiderrc`, `.codexrc`, `.github/copilot-instructions.md`, `.gemini/`). Also syncs Cursor custom commands and checks git aliases.
+Pull the latest standards from the remote and update the configuration files for the agents declared in `.standards.yml` (`CLAUDE.md`, `.cursorrules`, `AGENTS.md`, `.github/copilot-instructions.md`, `.gemini/`, `.aider-instructions.md`). Agent-specific extras (Cursor commands, Gemini settings, Claude settings/skills) are installed only for declared agents. Git aliases are never changed unless you run the script directly with `--aliases`.
 
 ```bash
 make sync-standards
 ```
 
-Equivalent to running `./scripts/sync-standards.sh`.
+Equivalent to running `./.standards/scripts/sync-standards.sh` from the project root. Never run it as `make -C .standards sync-standards` — the scripts refuse to run when the project root resolves to `.standards/`.
+
+### `diff-standards`
+
+Show what `sync-standards` would change, as a unified diff per agent config, without modifying anything.
+
+```bash
+make diff-standards
+```
+
+Equivalent to running `./.standards/scripts/diff-standards.sh`. Add `--exit-code` to the script invocation to exit 1 when any config would change — a drop-in CI gate.
 
 ### `check-standards`
 
@@ -67,7 +77,7 @@ Standards are out of date. Run 'make sync-standards'
 
 ### `update-standards`
 
-Pull the latest commit from the standards remote and copy the updated `.cursorrules` into the project root.
+Pull the latest commit from the standards remote and re-sync the agent configs by running `./.standards/scripts/sync-standards.sh` from the project root.
 
 ```bash
 make update-standards
@@ -122,7 +132,8 @@ make test-scripts
 | `help` | Show all targets with descriptions |
 | `ls` | List target names |
 | `setup` | First-time project setup |
-| `sync-standards` | Pull latest and update all configs |
+| `sync-standards` | Pull latest and update declared agent configs |
+| `diff-standards` | Preview what sync-standards would change (`--exit-code` to gate CI) |
 | `check-standards` | Check if standards are current (CI-friendly) |
 | `update-standards` | Pull latest submodule commit |
 | `setup-agents` | Install agent configs only |
