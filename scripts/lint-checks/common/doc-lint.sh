@@ -1,6 +1,6 @@
 #!/bin/bash
 # Check: documentation lint — ADRs carry their required fields and relative
-#        Markdown links resolve to a real file or directory.
+#        Markdown links resolve to a real file or directory inside the project.
 # Receives: $1 = project root
 # Outputs: PASS|WARN|FAIL <check-name> <message>
 # Exit:    0=PASS, 1=FAIL (findings, empty scan, or self-test failure), 2=WARN
@@ -8,26 +8,32 @@
 # Gate rules (proc-05 §7): the ADR validator and the link extractor self-test
 # on every run against built-in fixtures that must trip them and must pass,
 # and the check FAILs with "self-test failed" rather than reporting a clean
-# result if either has rotted. A scan that finds no Markdown at all FAILs and
-# names the pathspec — every project is required to carry at least a README.
+# result if either has rotted. A full scan that finds no Markdown at all FAILs
+# and names the pathspec — every project is required to carry at least a
+# README. A changed-file scope (`lint-standards.sh --since/--changed`) that
+# contains no Markdown is a legitimate empty result and PASSes, saying so.
 #
-# Scope: every tracked or untracked-but-not-ignored Markdown file (any case of
-# the .md extension) in the project (via `git ls-files`), falling back to
-# `find` with a fixed exclusion list outside a git checkout. The vendored
-# standards checkout (.standards/) and the .standards-pending/ staging dir are
-# always skipped.
+# Scope: candidate files come from scripts/lib/lint-files.sh — tracked files
+# (or the runner's LINT_FILE_LIST when `--since/--changed` is in effect) plus
+# untracked-but-not-ignored files, enumerated NUL-delimited by git, with the
+# built-in directory exclusions and `.standards.yml` lint.exclude applied —
+# filtered to any case of the .md extension. A Markdown filename containing a
+# newline cannot be carried by the list and is reported as a finding rather
+# than skipped. .standards-pending/ is always skipped.
 #
-# Code and comments are never content. Block-quote prefixes are removed first.
-# Fenced blocks (opener indented less than the current indented-code
-# threshold, closed only by a fence of the same character and at least the
-# same length), indented code blocks (four columns past the innermost open
-# list item's content column, or a tab, after a blank line, until a
-# less-indented non-blank line; nested list items each raise the threshold)
-# and HTML comments (single- or multi-line) are removed before both the ADR
-# checks and the link scan, so an example ADR or an example link inside them
-# can neither satisfy nor fail a rule. Inline code spans (any backtick run
-# length, including spans that continue onto following lines of the same
-# paragraph) are removed from the remaining lines.
+# Code and comments are never content. An open HTML comment is consumed first
+# (so a fence opener inside a comment is not a fence). Then, for the link scan,
+# block-quote prefixes are removed so quoted fences and links are classified
+# like top-level text; for the ADR checks, quoted lines are dropped entirely
+# because a quoted example cannot satisfy the document's own structure. Fenced
+# blocks (opener indented less than the current indented-code threshold,
+# closed only by a fence of the same character and at least the same length),
+# single-line HTML comments and indented code blocks (four columns past the
+# innermost open list item's content column, or a tab, after a blank line,
+# until a less-indented non-blank line; nested list items each raise the
+# threshold) are removed. Inline code spans (any backtick run length) are
+# removed per paragraph, so a span may continue onto later lines of the same
+# paragraph and an unmatched backtick run stays literal text.
 #
 # ADR rules — files under docs/adr/, docs/adrs/, docs/decisions/ or
 # docs/architecture/decisions/. README.md, index.md and the template file
@@ -47,52 +53,62 @@
 # Link rules — inline `[text](target)`, `![alt](target)` and reference
 # definitions `[label]: target` whose target is relative (no URL scheme, no
 # leading `/`, not a bare `#anchor`) must resolve from the linking file's
-# directory. Destinations follow CommonMark: optional whitespace after `(`,
-# `<...>` may contain spaces, otherwise balanced parentheses are part of the
-# target and the destination ends at whitespace (title) or the unbalanced `)`;
-# a quoted or parenthesised title is parsed so a `)` inside it does not close
-# the link; backslash escapes, percent-encoding and HTML character references
-# are decoded. A `[` or `]` preceded by an odd number of backslashes is
-# escaped and does not form a link; footnote definitions (`[^1]: …`) are not
+# directory to a path that stays inside the project root (a `..` chain that
+# climbs above the root is a broken link even when the host has such a file).
+# Destinations follow CommonMark: optional whitespace after `(`, `<...>` may
+# contain spaces, otherwise balanced parentheses are part of the target and
+# the destination ends at whitespace (title) or the unbalanced `)`; a quoted
+# or parenthesised title is parsed so a `)` inside it does not close the
+# link; backslash escapes, percent-encoding and HTML character references are
+# decoded. A `[` or `]` preceded by an odd number of backslashes is escaped
+# and does not form a link; footnote definitions (`[^1]: …`) are not
 # reference links. Fragments, query strings and titles are stripped.
 #
 # See standards/process/proc-01_documentation_standards.md §1 and §10.
 
 PROJECT_ROOT="${1:-.}"
 CHECK_NAME="doc-lint"
-PATHSPEC=':(icase)*.md'
 
 if ! PROJECT_ROOT="$(cd "$PROJECT_ROOT" 2>/dev/null && pwd)"; then
     echo "WARN $CHECK_NAME Project root not found: ${1:-.}"
     exit 2
 fi
 
+LINT_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" 2>/dev/null && pwd)/lint-files.sh"
+if [ ! -f "$LINT_LIB" ]; then
+    echo "WARN $CHECK_NAME lint-files library not found ($LINT_LIB)"
+    exit 2
+fi
+# shellcheck source=../../lib/lint-files.sh
+source "$LINT_LIB"
+
+MD_EXT_ERE='\.md$'
+
 # ---------------------------------------------------------------------------
-# Collect Markdown files (paths relative to PROJECT_ROOT, one per line)
+# Collect Markdown files (project-relative paths, one per line)
 # ---------------------------------------------------------------------------
 list_markdown_files() {
-    if git -C "$PROJECT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        # core.quotePath=false: emit non-ASCII names verbatim instead of the
-        # C-escaped, double-quoted form ("docs/\346\227\245.md") that would
-        # never match a real file. :(icase) matches .md, .MD, .Md and .mD.
-        git -C "$PROJECT_ROOT" -c core.quotePath=false ls-files \
-            --cached --others --exclude-standard -- "$PATHSPEC" 2>/dev/null
-    else
-        ( cd "$PROJECT_ROOT" && find . -type f -iname '*.md' \
-            -not -path '*/.git/*' -not -path '*/node_modules/*' \
-            -not -path '*/vendor/*' -not -path '*/dist/*' -not -path '*/build/*' \
-            -not -path '*/target/*' -not -path '*/.venv/*' -not -path '*/venv/*' \
-            -not -path '*/.next/*' 2>/dev/null | sed 's|^\./||' )
-    fi | grep -vE '^(\.standards|\.standards-pending|\.standards_tmp)/' || true
+    lint_list_files "$PROJECT_ROOT" .standards-pending \
+        | lint_strip_root "$PROJECT_ROOT" \
+        | grep -iE -- "$MD_EXT_ERE" || true
+}
+
+# Markdown filenames that contain a newline: the list cannot carry them, so
+# they are reported instead of being skipped.
+list_unscannable_markdown() {
+    lint_unscannable_files "$PROJECT_ROOT" .standards-pending \
+        | grep -iE -- "$MD_EXT_ERE" || true
 }
 
 # ---------------------------------------------------------------------------
-# Shared awk rules: strip block-quote prefixes and HTML comments, skip fenced
-# and indented code
+# Shared awk rules: consume HTML comments, handle block quotes, skip fenced and
+# indented code
 # ---------------------------------------------------------------------------
 # Prepended to every awk program below. Lines inside code blocks or comments
 # are consumed with `next`; everything else falls through to the program's own
-# rules with $0 rewritten to the line's content.
+# rules with $0 rewritten to the line's content. `-v adr_mode=1` drops quoted
+# lines instead of unwrapping them. A fence opener or indented-code block sets
+# para_break so the link scanner can end the current paragraph.
 #
 # All awk programs run under LC_ALL=C: they walk lines one position at a time,
 # and in a UTF-8 locale macOS awk aborts ("multibyte conversion failure") when
@@ -111,9 +127,22 @@ AWK_SKIP_CODE='
         return n
     }
     BEGIN { prev_blank = 1; code_indent = 4; depth = 0 }
-    # Block quotes: drop every leading "> " so the content is classified like
-    # top-level text (fences and links inside quotes are still fences/links).
-    { while (match($0, /^ ? ? ?> ?/)) $0 = substr($0, RLENGTH + 1) }
+    # An open multi-line HTML comment is consumed before anything else, so a
+    # fence opener or heading inside it is never recognised.
+    {
+        if (in_comment) {
+            k = index($0, "-->")
+            if (k == 0) next
+            $0 = substr($0, k + 3); in_comment = 0
+        }
+    }
+    # Block quotes: for the ADR checks a quoted line is never the document'"'"'s
+    # own structure, so it is dropped; for the link scan the markers are
+    # removed and the content is classified like top-level text.
+    {
+        if (adr_mode) { if ($0 ~ /^ ? ? ?>/) next }
+        else { while (match($0, /^ ? ? ?> ?/)) $0 = substr($0, RLENGTH + 1) }
+    }
     # Fenced code: the opener may be indented up to three columns past the
     # innermost list item content column (deeper is indented code). Remember
     # the delimiter character and run length; only a fence of the same
@@ -125,21 +154,16 @@ AWK_SKIP_CODE='
             match($0, /^[ \t]*/); rest = substr($0, RLENGTH + 1)
             ch = substr(rest, 1, 1); n = 0
             while (substr(rest, n + 1, 1) == ch) n++
-            if (!in_fence) { in_fence = 1; fence_ch = ch; fence_len = n; prev_blank = 0; span_open = 0; next }
+            if (!in_fence) { in_fence = 1; fence_ch = ch; fence_len = n; prev_blank = 0; para_break = 1; next }
             if (ch == fence_ch && n >= fence_len && substr(rest, n + 1) ~ /^[[:space:]]*$/) {
                 in_fence = 0; prev_blank = 1; next
             }
         }
     }
     in_fence { next }
-    # HTML comments: remove <!-- ... --> on a line; an unterminated opener
-    # drops the rest of the line and every following line up to "-->".
+    # HTML comments opened on this line: remove <!-- ... --> in place; an
+    # unterminated opener drops the rest of the line and arms in_comment.
     {
-        if (in_comment) {
-            k = index($0, "-->")
-            if (k == 0) next
-            $0 = substr($0, k + 3); in_comment = 0
-        }
         while ((k = index($0, "<!--")) > 0) {
             e = index(substr($0, k + 4), "-->")
             if (e == 0) { $0 = substr($0, 1, k - 1); in_comment = 1; break }
@@ -159,7 +183,7 @@ AWK_SKIP_CODE='
             if (blank || ind >= code_indent) next
             in_indented = 0
         } else if (prev_blank && !blank && ind >= code_indent) {
-            in_indented = 1; next
+            in_indented = 1; para_break = 1; next
         }
         if (!blank) {
             if (ind < code_indent && match($0, /^[ \t]*([-*+]|[0-9]+[.)])([ ]+|\t)/)) {
@@ -198,10 +222,9 @@ is_adr_path() {
     return 0
 }
 
-# Prints a Markdown file with block-quote prefixes, HTML comments, fenced and
-# indented code blocks removed.
+# Prints an ADR with comments, quoted lines, fenced and indented code removed.
 strip_code_blocks() {
-    LC_ALL=C awk "$AWK_SKIP_CODE"' { print }' "$1"
+    LC_ALL=C awk -v adr_mode=1 "$AWK_SKIP_CODE"' { print }' "$1"
 }
 
 # Reads a code-stripped ADR on stdin and prints the value of a Status/Date-style
@@ -245,8 +268,8 @@ starts_with_valid_date() {
 }
 
 # Prints the missing or invalid fields for one ADR (space-separated);
-# empty = complete. Code blocks are removed first so an embedded example
-# cannot satisfy the structure.
+# empty = complete. Code, comments and quoted lines are removed first so an
+# embedded example cannot satisfy the structure.
 adr_missing_fields() {
     local file="$1" missing="" body status date
     body="$(strip_code_blocks "$file")"
@@ -366,25 +389,12 @@ extract_relative_links() {
             if (target ~ /\{\{/) return                        # template var
             print target
         }
-        # Drop inline code spans. A span opens with a run of N backticks and
-        # closes at the next run of exactly N, which may be on a later line of
-        # the same paragraph (span_open carries the run length across lines
-        # and is reset at a blank line). "\`" outside a span is a literal
-        # backtick.
+        # Drop inline code spans from a whole paragraph (lines joined with
+        # "\n"). A span opens with a run of N backticks and closes at the next
+        # run of exactly N, possibly on a later line; a run with no matching
+        # close is literal text and stays. "\`" is a literal backtick.
         function strip_code_spans(s,    out, i, L, c, n, j, m, found) {
             out = ""; L = length(s); i = 1
-            if (span_open > 0) {
-                j = 1; found = 0
-                while (j <= L) {
-                    if (substr(s, j, 1) == "`") {
-                        m = 0; while (substr(s, j + m, 1) == "`") m++
-                        if (m == span_open) { found = 1; break }
-                        j += m
-                    } else j++
-                }
-                if (!found) return ""
-                i = j + span_open; span_open = 0
-            }
             while (i <= L) {
                 c = substr(s, i, 1)
                 if (c == "\\" && i < L) { out = out substr(s, i, 2); i += 2; continue }
@@ -399,7 +409,7 @@ extract_relative_links() {
                     } else j++
                 }
                 if (found) i = j + n
-                else { span_open = n; return out }      # continues on a later line
+                else { out = out substr(s, i, n); i += n }
             }
             return out
         }
@@ -476,9 +486,9 @@ extract_relative_links() {
             if (k == 0) return 0
             return lead + j + k - 1
         }
-        {
-            if ($0 ~ /^[[:space:]]*$/) { span_open = 0; next }   # paragraph break ends an open span
-            line = strip_code_spans($0)
+        # Scan one code-span-free line for reference definitions and inline
+        # links / images.
+        function scan_line(line,    rest, j, pos, i, b, start, used) {
             # Reference-style definition: [label]: target  (not footnotes [^1]:)
             if (match(line, /^[[:space:]]*\[[^]^][^]]*\]:[[:space:]]*/)) {
                 rest = substr(line, RLENGTH + 1)
@@ -488,7 +498,7 @@ extract_relative_links() {
                 } else if (match(rest, /^[^[:space:]]+/)) {
                     emit(substr(rest, 1, RLENGTH), 0)
                 }
-                next
+                return
             }
             # Inline links and images: [text](destination "title")
             pos = 1
@@ -503,7 +513,51 @@ extract_relative_links() {
                 pos = start + used
             }
         }
+        # A paragraph is buffered until a blank line, a code block or EOF, then
+        # code spans are removed across the whole paragraph and each remaining
+        # line is scanned.
+        function flush_para(    text, nl, i, plines) {
+            if (para == "") return
+            text = strip_code_spans(para)
+            nl = split(text, plines, "\n")
+            for (i = 1; i <= nl; i++) scan_line(plines[i])
+            para = ""
+        }
+        {
+            if (para_break) { flush_para(); para_break = 0 }
+            if ($0 ~ /^[[:space:]]*$/) { flush_para(); next }
+            para = (para == "") ? $0 : para "\n" $0
+        }
+        END { flush_para() }
     ' "$1"
+}
+
+# ---------------------------------------------------------------------------
+# Path resolution
+# ---------------------------------------------------------------------------
+# Prints the lexically normalised project-relative path for <dir>/<target>,
+# or returns 1 when the path climbs above the project root.
+resolve_in_project() {
+    local path="$1" part
+    local -a parts out=()
+    IFS='/' read -r -a parts <<< "$path"
+    for part in "${parts[@]}"; do
+        case "$part" in
+            ''|.) ;;
+            ..) [ "${#out[@]}" -gt 0 ] || return 1
+                unset "out[$((${#out[@]} - 1))]" ;;
+            *)  out+=("$part") ;;
+        esac
+    done
+    local IFS='/'
+    printf '%s' "${out[*]}"
+}
+
+# True when <rel-dir>/<target> exists inside the project.
+link_resolves() {
+    local rel_dir="$1" target="$2" norm
+    norm="$(resolve_in_project "$rel_dir/$target")" || return 1
+    [ -e "$PROJECT_ROOT/$norm" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -529,6 +583,9 @@ self_test() {
 ## Decision
 ## Consequences
 ```
+
+> - **Status:** Accepted
+> ## Decision
 
 <!-- ## Decision -->
 
@@ -567,14 +624,26 @@ Prose [one](missing-one.md) and `[code](ignored.md)` and [two](<missing two.md> 
 
 <!-- [commented](ignored.md) -->
 A span that `continues
-[across](ignored.md) lines` ends here.
+[across](ignored.md) lines` ends here, and a stray ` then [three](missing-three.md).
 
-[three]: missing-three.md
+<!--
+```md
+-->
+[four](missing-four.md)
+
+[five]: missing-five.md
 [^1]: footnote, not a link
 EOF
     out="$(extract_relative_links "$dir/links.md" | tr '\n' '|')"
-    if [ "$out" != "missing-one.md|missing two.md|missing-three.md|" ]; then
-        echo "link fixture extracted '$out' instead of 'missing-one.md|missing two.md|missing-three.md|'"; return 1
+    if [ "$out" != "missing-one.md|missing two.md|missing-three.md|missing-four.md|missing-five.md|" ]; then
+        echo "link fixture extracted '$out' instead of 'missing-one.md|missing two.md|missing-three.md|missing-four.md|missing-five.md|'"; return 1
+    fi
+
+    if resolve_in_project "docs/../../etc/passwd" >/dev/null; then
+        echo "path resolver accepted a target above the project root"; return 1
+    fi
+    if [ "$(resolve_in_project "docs/guides/../specs/./x.md")" != "docs/specs/x.md" ]; then
+        echo "path resolver normalised docs/guides/../specs/./x.md incorrectly"; return 1
     fi
     return 0
 }
@@ -599,7 +668,7 @@ while IFS= read -r rel; do
     file="$PROJECT_ROOT/$rel"
     [ -f "$file" ] || continue
     FILE_COUNT=$((FILE_COUNT + 1))
-    dir="$(dirname "$file")"
+    rel_dir="$(dirname "$rel")"
 
     if is_adr_path "$rel"; then
         ADR_COUNT=$((ADR_COUNT + 1))
@@ -614,7 +683,7 @@ while IFS= read -r rel; do
 
     while IFS= read -r target; do
         [ -n "$target" ] || continue
-        if [ ! -e "$dir/$target" ]; then
+        if ! link_resolves "$rel_dir" "$target"; then
             BROKEN_COUNT=$((BROKEN_COUNT + 1))
             if [ "$BROKEN_COUNT" -le 3 ]; then
                 BROKEN_EXAMPLES="${BROKEN_EXAMPLES}${rel} -> ${target}; "
@@ -627,16 +696,26 @@ done <<EOF
 $(list_markdown_files)
 EOF
 
+UNSCANNABLE="$(list_unscannable_markdown)"
+UNSCANNABLE_COUNT=0
+if [ -n "$UNSCANNABLE" ]; then
+    UNSCANNABLE_COUNT=$(printf '%s\n' "$UNSCANNABLE" | grep -c .)
+fi
+
 # ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
-if [ "$FILE_COUNT" -eq 0 ]; then
-    # proc-05 §7.2: an empty scan is a configuration error, not a clean result.
-    echo "FAIL $CHECK_NAME No Markdown files matched '$PATHSPEC' under $PROJECT_ROOT — every project carries at least a README.md; check the working directory or the ignore rules"
+if [ "$FILE_COUNT" -eq 0 ] && [ "$UNSCANNABLE_COUNT" -eq 0 ]; then
+    if lint_scope_is_changed; then
+        echo "PASS $CHECK_NAME No Markdown files in the changed-file scope (--since/--changed) — nothing to lint"
+        exit 0
+    fi
+    # proc-05 §7.2: an empty full scan is a configuration error, not a clean result.
+    echo "FAIL $CHECK_NAME No Markdown files matched '*.md' (any case) under $PROJECT_ROOT — every project carries at least a README.md; check the working directory or the ignore rules"
     exit 1
 fi
 
-if [ "$ADR_BAD_COUNT" -eq 0 ] && [ "$BROKEN_COUNT" -eq 0 ]; then
+if [ "$ADR_BAD_COUNT" -eq 0 ] && [ "$BROKEN_COUNT" -eq 0 ] && [ "$UNSCANNABLE_COUNT" -eq 0 ]; then
     echo "PASS $CHECK_NAME $FILE_COUNT Markdown file(s) checked; $ADR_COUNT ADR(s) complete; all relative links resolve"
     exit 0
 fi
@@ -647,6 +726,9 @@ if [ "$ADR_BAD_COUNT" -gt 0 ]; then
 fi
 if [ "$BROKEN_COUNT" -gt 0 ]; then
     MSG="${MSG}${BROKEN_COUNT} broken relative link(s): ${BROKEN_EXAMPLES%; }; "
+fi
+if [ "$UNSCANNABLE_COUNT" -gt 0 ]; then
+    MSG="${MSG}${UNSCANNABLE_COUNT} Markdown file(s) cannot be scanned because the name contains a newline: $(printf '%s\n' "$UNSCANNABLE" | head -3 | tr '\n' ' ')— rename them; "
 fi
 echo "FAIL $CHECK_NAME ${MSG%; } — fix the link target or add the missing ADR field, then re-run lint-standards"
 exit 1

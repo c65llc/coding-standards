@@ -836,20 +836,113 @@ out=$(bash "$DOC_LINT" "$adr_cmt" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'Consequences'; then pass; else
     fail "expected FAIL naming Consequences, got: $out"; fi
 
-echo -n "Test 50: doc-lint FAILs closed on a project with no Markdown at all (proc-05 §7.2)... "
+echo -n "Test 50: doc-lint honours LINT_FILE_LIST (changed-file scope) and PASSes an empty scope... "
+link_scope=$(make_project "link-scope")
+mkdir -p "$link_scope/docs"
+printf '# Old\n\n[pre-existing breakage](missing.md)\n' > "$link_scope/docs/old.md"
+printf '# New\n\nAll good: [index](../README.md).\n' > "$link_scope/docs/new.md"
+echo "# Project" > "$link_scope/README.md"
+( cd "$link_scope" && git add -A && git -c user.email="t@t.local" -c user.name="T" commit -q -m "chore: files" )
+out_full=$(bash "$DOC_LINT" "$link_scope" 2>/dev/null || true)
+scope_list=$(mktemp "${TMP_BASE}/scope.XXXXXX")
+printf 'docs/new.md\0README.md\0' > "$scope_list"
+out_scoped=$(LINT_FILE_LIST="$scope_list" bash "$DOC_LINT" "$link_scope" 2>/dev/null || true)
+printf 'Makefile\0' > "$scope_list"
+out_empty=$(LINT_FILE_LIST="$scope_list" bash "$DOC_LINT" "$link_scope" 2>/dev/null || true)
+if echo "$out_full" | grep -q '^FAIL' && echo "$out_full" | grep -q 'missing.md' \
+   && echo "$out_scoped" | grep -q '^PASS' && echo "$out_scoped" | grep -q '2 Markdown' \
+   && echo "$out_empty" | grep -q '^PASS' && echo "$out_empty" | grep -qi 'changed-file scope'; then pass; else
+    fail "expected FAIL(full)/PASS(scoped, 2 files)/PASS(empty scope); got: [$out_full] [$out_scoped] [$out_empty]"; fi
+
+echo -n "Test 51: doc-lint consumes a multi-line comment containing a fence opener and still lints after it... "
+link_cf=$(make_project "link-comment-fence")
+mkdir -p "$link_cf/docs"
+cat > "$link_cf/docs/index.md" <<'EOF'
+# Index
+
+<!--
+```md
+-->
+
+[active after the comment](missing.md)
+EOF
+out=$(bash "$DOC_LINT" "$link_cf" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'missing.md'; then pass; else
+    fail "expected FAIL naming missing.md, got: $out"; fi
+
+echo -n "Test 52: doc-lint reports a Markdown filename containing a newline instead of skipping it... "
+link_nl=$(make_project "link-newline-name")
+mkdir -p "$link_nl/docs"
+echo "# Project" > "$link_nl/README.md"
+printf '# Bad\n\n[broken](missing.md)\n' > "$link_nl/docs/bad"$'\n'"name.md"
+out=$(bash "$DOC_LINT" "$link_nl" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'cannot be scanned' && echo "$out" | grep -q 'bad\\nname.md'; then pass; else
+    fail "expected FAIL naming the newline filename, got: $out"; fi
+
+echo -n "Test 53: doc-lint ignores a block-quoted ADR example when validating structure... "
+adr_q=$(make_project "adr-quoted")
+mkdir -p "$adr_q/docs/adr"
+cat > "$adr_q/docs/adr/0011-quoted.md" <<'EOF'
+# ADR 0011: Quoted example only
+
+> - **Status:** Accepted
+> - **Date:** 2026-10-17
+>
+> ## Context
+>
+> ## Decision
+>
+> ## Consequences
+
+Nothing of its own yet.
+EOF
+out=$(bash "$DOC_LINT" "$adr_q" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q '0011-quoted.md' && echo "$out" | grep -q 'Status' \
+   && echo "$out" | grep -q 'Consequences'; then pass; else
+    fail "expected FAIL naming 0011-quoted.md with Status and Consequences, got: $out"; fi
+
+echo -n "Test 54: doc-lint rejects links that climb above the project root but accepts ../ inside it... "
+link_esc=$(make_project "link-escape")
+mkdir -p "$link_esc/docs/deep"
+echo "# Project" > "$link_esc/README.md"
+cat > "$link_esc/docs/deep/index.md" <<'EOF'
+# Deep
+
+Inside: [root readme](../../README.md) and [docs dir](../).
+Outside: [host file](../../../../../../../../etc/passwd) and [way up](../../../README.md).
+EOF
+out=$(bash "$DOC_LINT" "$link_esc" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'etc/passwd' && echo "$out" | grep -q '2 broken'; then pass; else
+    fail "expected FAIL with exactly the two escaping links, got: $out"; fi
+
+echo -n "Test 55: doc-lint treats an unmatched backtick as literal text and still lints the link after it... "
+link_stray=$(make_project "link-stray-backtick")
+mkdir -p "$link_stray/docs"
+cat > "$link_stray/docs/index.md" <<'EOF'
+# Index
+
+A stray ` then [link](missing.md) on the same line,
+and another ``` run with no close before [second](missing-two.md).
+EOF
+out=$(bash "$DOC_LINT" "$link_stray" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'missing.md' && echo "$out" | grep -q 'missing-two.md' \
+   && echo "$out" | grep -q '2 broken'; then pass; else
+    fail "expected FAIL with exactly missing.md and missing-two.md, got: $out"; fi
+
+echo -n "Test 56: doc-lint FAILs closed on a project with no Markdown at all (proc-05 §7.2)... "
 out=$(bash "$DOC_LINT" "$proj" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'No Markdown files matched'; then pass; else
     fail "expected FAIL naming the empty scan, got: $out"; fi
 
 # --- Sibling scripts smoke --------------------------------------------------
 
-echo -n "Test 51: diff-standards.sh runs on a project without .standards.yml... "
+echo -n "Test 57: diff-standards.sh runs on a project without .standards.yml... "
 if bash "$REPO_ROOT/scripts/diff-standards.sh" "$proj" >/dev/null 2>&1; then pass; else
     # diff-standards may exit non-zero; accept as long as it doesn't crash hard (>1)
     rc=$?; if [ "$rc" -le 1 ]; then pass; else fail "diff-standards crashed (exit $rc)"; fi
 fi
 
-echo -n "Test 52: doctor.sh runs without a hard crash... "
+echo -n "Test 58: doctor.sh runs without a hard crash... "
 ( cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -le 1 ]; then pass; else fail "doctor.sh crashed (exit $rc)"; fi
 
