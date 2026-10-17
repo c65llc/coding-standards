@@ -12,7 +12,7 @@ mean the linter enforces it — the table below is the source of truth.
 
 | Category | Machine-enforced by `lint-standards.sh`? | Checks |
 | --- | --- | --- |
-| Common (all repos) | ✅ | conventional-commits, coverage-config, no-secrets, test-directory-structure |
+| Common (all repos) | ✅ | artifact-hygiene, conventional-commits, coverage-config, no-secrets, test-directory-structure |
 | Python (lang-01) | ✅ | banned-functions, ruff-config, type-annotations |
 | TypeScript (lang-06) | ✅ | banned-functions, eslint-config, strict-tsconfig |
 | Go (lang-12) | ✅ | error-handling, golangci-config |

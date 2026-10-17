@@ -114,15 +114,92 @@ for m in "$CHECKS"/*/*.sh; do
 done
 if [ -z "$bad" ]; then pass; else fail "modules with empty/unrecognized output:$bad"; fi
 
+echo -n "Test 12: artifact-hygiene module PASSes a project with no binary artifacts... "
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$clean" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 13: artifact-hygiene module PASSes a committed wasm with no home paths... "
+hyg_ok=$(make_project "hygiene-ok")
+mkdir -p "$hyg_ok/pkg"
+# Minimal wasm magic + version header plus a remapped (host-agnostic) path.
+printf '\000asm\001\000\000\000/rustc/1.80.0/library/core/src/lib.rs\000' > "$hyg_ok/pkg/core_bg.wasm"
+( cd "$hyg_ok" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+    commit -q -m "chore: commit clean wasm" )
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_ok" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 14: artifact-hygiene module WARNs on committed artifacts embedding home paths... "
+hyg_bad=$(make_project "hygiene-bad")
+mkdir -p "$hyg_bad/pkg" "$hyg_bad/dist"
+printf '\000asm\001\000\000\000/Users/alice/src/core/crates/core/src/lib.rs\000' > "$hyg_bad/pkg/core_bg.wasm"
+printf '\177ELF\002\001\001\000/home/bob/work/core/build/libcore.so\000' > "$hyg_bad/dist/libcore.so"
+( cd "$hyg_bad" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+    commit -q -m "chore: commit tainted artifacts" )
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_bad" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' \
+   && echo "$out" | grep -q 'core_bg.wasm' \
+   && echo "$out" | grep -q 'libcore.so'; then pass; else fail "expected WARN naming both artifacts, got: $out"; fi
+
+echo -n "Test 15: artifact-hygiene module redacts the username from its report... "
+if echo "$out" | grep -q '/Users/alice\|/home/bob'; then fail "username leaked in: $out"; else pass; fi
+
+echo -n "Test 16: artifact-hygiene module falls back to a filesystem scan outside git... "
+hyg_nogit="$TMP_BASE/hygiene-nogit"
+mkdir -p "$hyg_nogit/lib"
+printf 'PK\003\004/Users/carol/proj/build/libs/app.jar\000' > "$hyg_nogit/lib/app.jar"
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_nogit" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'app.jar'; then pass; else fail "expected WARN naming app.jar, got: $out"; fi
+
+echo -n "Test 17: artifact-hygiene module handles a project root containing '&' and '|'... "
+hyg_amp=$(make_project "hygiene r&d|x")
+mkdir -p "$hyg_amp/pkg"
+printf '\000asm\001\000\000\000/Users/dave/src/core/src/lib.rs\000' > "$hyg_amp/pkg/core_bg.wasm"
+( cd "$hyg_amp" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+    commit -q -m "chore: commit tainted wasm" )
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_amp" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'core_bg.wasm'; then pass; else fail "expected WARN naming core_bg.wasm, got: $out"; fi
+
+echo -n "Test 18: artifact-hygiene fallback only excludes directories below the project root... "
+hyg_anc="$TMP_BASE/target/exported-project"
+mkdir -p "$hyg_anc/lib" "$hyg_anc/node_modules/dep"
+printf '\177ELF\002\001\001\000/home/erin/work/core/build/libcore.so\000' > "$hyg_anc/lib/libcore.so"
+printf '\177ELF\002\001\001\000/home/erin/.npm/libdep.so\000' > "$hyg_anc/node_modules/dep/libdep.so"
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_anc" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'libcore.so' \
+   && ! echo "$out" | grep -q 'libdep.so'; then pass; else fail "expected WARN naming libcore.so only, got: $out"; fi
+
+echo -n "Test 19: artifact-hygiene module inspects deflated JAR entries... "
+if command -v python3 >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
+    hyg_jar=$(make_project "hygiene-jar")
+    mkdir -p "$hyg_jar/build/libs"
+    python3 -c '
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as z:
+    z.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\n")
+    z.writestr("com/example/build.properties",
+               "source=/Users/frank/src/app/src/main/java/com/example/App.java\n" * 8)
+' "$hyg_jar/build/libs/app.jar"
+    if LC_ALL=C grep -aq '/Users/frank' "$hyg_jar/build/libs/app.jar"; then
+        fail "test fixture is not compressed; cannot prove inflation"
+    else
+        ( cd "$hyg_jar" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+            commit -q -m "chore: commit jar" )
+        out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_jar" 2>/dev/null || true)
+        if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'app.jar'; then pass; else fail "expected WARN naming app.jar, got: $out"; fi
+    fi
+else
+    echo "skipped (python3/unzip unavailable)"
+fi
+
 # --- Sibling scripts smoke --------------------------------------------------
 
-echo -n "Test 12: diff-standards.sh runs on a project without .standards.yml... "
+echo -n "Test 20: diff-standards.sh runs on a project without .standards.yml... "
 if bash "$REPO_ROOT/scripts/diff-standards.sh" "$proj" >/dev/null 2>&1; then pass; else
     # diff-standards may exit non-zero; accept as long as it doesn't crash hard (>1)
     rc=$?; if [ "$rc" -le 1 ]; then pass; else fail "diff-standards crashed (exit $rc)"; fi
 fi
 
-echo -n "Test 13: doctor.sh runs without a hard crash... "
+echo -n "Test 21: doctor.sh runs without a hard crash... "
 ( cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -le 1 ]; then pass; else fail "doctor.sh crashed (exit $rc)"; fi
 
