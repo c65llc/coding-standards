@@ -317,7 +317,7 @@ the two rules below are the merge-blocking floor.
 ### Unfenced External Content `[P1]`
 
 - **Never return content the server did not author to an agent without fencing it.** Fetched web pages, uploaded files, ticket and email bodies, search results, and other agents' output are untrusted and may carry prompt-injection payloads.
-- Wrap each payload in a delimited `<untrusted-data source="..." kind="...">` container, escape any closing delimiter inside it, strip active content (scripts, hidden text, zero-width characters), and emit the fixed handling sentence outside the fence.
+- Wrap each payload in a delimited `<untrusted-data source="..." kind="...">` container, escape any closing delimiter inside it and every attribute value in the opening tag (`source` is attacker-chosen), strip active content (scripts, hidden text, zero-width characters), and emit the fixed handling sentence outside the fence.
 - Never interpolate untrusted content into tool descriptions, system prompts, or the server's own instructions.
 - Shipped skills that use tools returning external content must teach the untrusted-data rule, and a CI test must assert that they do.
 
