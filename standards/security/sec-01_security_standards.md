@@ -307,7 +307,48 @@ logger.info("User login", extra={"username": username})
 - Encrypt sensitive data at rest (database-level or application-level encryption).
 - All data in transit must use TLS.
 
-## 8. Security Tooling Reference
+## 8. Agent Tools & MCP Servers
+
+Rules for servers whose caller is an AI model (MCP servers, function-calling tool
+sets). Design guidance lives in
+[arch-10_agent_tools_and_mcp_server_standards.md](../architecture/arch-10_agent_tools_and_mcp_server_standards.md);
+the two rules below are the merge-blocking floor.
+
+### Unfenced External Content `[P1]`
+
+- **Never return content the server did not author to an agent without fencing it.** Fetched web pages, uploaded files, ticket and email bodies, search results, and other agents' output are untrusted and may carry prompt-injection payloads.
+- Wrap each payload in a delimited `<untrusted-data source="..." kind="...">` container, escape any closing delimiter inside it, strip active content (scripts, hidden text, zero-width characters), and emit the fixed handling sentence outside the fence.
+- Never interpolate untrusted content into tool descriptions, system prompts, or the server's own instructions.
+- Shipped skills that use tools returning external content must teach the untrusted-data rule, and a CI test must assert that they do.
+
+```python
+# BAD — P1 violation: raw fetched content becomes part of the model's prompt
+return fetch(url).text
+
+# GOOD
+return fence(fetch(url).text, source=url, kind="html-text")
+```
+
+### Ungated Agent Tool Writes `[P1]`
+
+- **Every mutating tool is classified as a write, carries a machine-readable `writes` flag, supports `preview`, and executes only after approval.** The gate is enforced in the server or host runtime, never by prompt instruction alone.
+- Deletes, bulk operations, and writes that leave the project's own data (email, third-party posts, shared branches) are never un-gated, in any session mode.
+- Unattended or externally triggered sessions default to read-only. A session that has ingested untrusted content is never elevated past bounded writes.
+- Every tool call is audit-logged (session, caller, tool, classification, approval decision, outcome) with field-level redaction.
+
+```python
+# BAD — P1 violation: a model can delete on its own say-so
+@tool(name="kb_delete")
+def kb_delete(path: str): store.delete(path)
+
+# GOOD
+@tool(name="kb_delete", writes=True)
+def kb_delete(path: str, preview: bool = False):
+    plan = store.plan_delete(path)
+    return plan if preview else store.apply(plan)   # runtime gates non-preview calls
+```
+
+## 9. Security Tooling Reference
 
 ### Static Analysis Security Testing (SAST)
 

@@ -251,6 +251,8 @@ Example: `feat(domain): add user email validation`
 - Configure security headers (CSP, HSTS, X-Content-Type-Options, X-Frame-Options).
 - Never log passwords, tokens, API keys, or PII.
 - Add `.env` to `.gitignore`. Never commit `.env` files.
+- Fence external content returned to an AI agent in `<untrusted-data>`; never interpolate it into prompts or tool descriptions.
+- Gate every agent tool write behind a `writes` flag, `preview`, and approval; audit-log every tool call.
 
 ### P2 — Medium (Flag as Warning)
 
@@ -346,6 +348,7 @@ Reference architecture pattern standards in:
 - `standards/architecture/arch-06_monorepo_workspace_standards.md`
 - `standards/architecture/arch-07_cross_platform_shared_core_standards.md`
 - `standards/architecture/arch-08_ci_cd_pipeline_standards.md`
+- `standards/architecture/arch-10_agent_tools_and_mcp_server_standards.md`
 
 ## Security Standards
 
