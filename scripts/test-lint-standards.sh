@@ -1166,7 +1166,7 @@ if echo "$out" | grep 'Git Hooks' | grep -q 'WARN' && echo "$out" | grep 'Git Ho
 
 # --- review follow-ups (#201) -----------------------------------------------
 
-echo -n "Test 43: STANDARDS_COMMITS_SINCE (PR range) beats commits.window... "
+echo -n "Test 91: STANDARDS_COMMITS_SINCE (PR range) beats commits.window... "
 # With commits.window pinned, the module must still report "commits since
 # cc-base" (the CI PR range), not "commits (window 1)".
 printf 'version: 1\ncommits:\n  window: 1\n' > "$win/.standards.yml"
@@ -1175,14 +1175,14 @@ if echo "$out" | grep -q 'since cc-base' && echo "$out" | grep -qE '^(WARN|FAIL)
     fail "expected the PR range to win over commits.window, got: $out"; fi
 rm -f "$win/.standards.yml"
 
-echo -n "Test 44: commits.since beats STANDARDS_COMMITS_SINCE... "
+echo -n "Test 92: commits.since beats STANDARDS_COMMITS_SINCE... "
 ( cd "$win" && git tag cc-head HEAD )
 printf 'version: 1\ncommits:\n  since: cc-head\n' > "$win/.standards.yml"
 out=$(cd "$win" && STANDARDS_COMMITS_SINCE=cc-base bash "$CC_MOD" "$win" 2>/dev/null || true)
 if echo "$out" | grep -q 'cc-head'; then pass; else fail "expected commits.since to win, got: $out"; fi
 rm -f "$win/.standards.yml"
 
-echo -n "Test 45: single-quoted YAML scalars are parsed (window: '5', since: 'ref')... "
+echo -n "Test 93: single-quoted YAML scalars are parsed (window: '5', since: 'ref')... "
 printf "version: 1\ncommits:\n  window: '5'\n" > "$win/.standards.yml"
 out1=$(bash "$CC_MOD" "$win" 2>/dev/null || true)
 printf "version: 1\ncommits:\n  since: 'cc-base'\n" > "$win/.standards.yml"
@@ -1191,43 +1191,43 @@ rm -f "$win/.standards.yml"
 if echo "$out1" | grep -q 'window 5' && echo "$out2" | grep -q 'since cc-base'; then pass; else
     fail "quoted scalars not parsed: [$out1] [$out2]"; fi
 
-echo -n "Test 46: a scope containing whitespace cannot match two allow-list entries... "
+echo -n "Test 94: a scope containing whitespace cannot match two allow-list entries... "
 printf 'version: 1\ncommits:\n  scopes: [api, domain]\n' > "$sc/.standards.yml"
 if ! bash "$CHK" --project-root "$sc" "feat(api domain): bypass" >/dev/null 2>&1; then pass; else
     fail "'api domain' was accepted against [api, domain]"; fi
 
-echo -n "Test 47: check-commit-message.sh --no-exempt rejects merge/fixup/revert-style titles... "
+echo -n "Test 95: check-commit-message.sh --no-exempt rejects merge/fixup/revert-style titles... "
 if ! bash "$CHK" --no-exempt "Merge branch 'topic'" >/dev/null 2>&1 \
    && ! bash "$CHK" --no-exempt "fixup! feat: wip" >/dev/null 2>&1 \
    && ! bash "$CHK" --no-exempt 'Revert "feat: thing"' >/dev/null 2>&1 \
    && bash "$CHK" --no-exempt 'revert: "feat: thing"' >/dev/null 2>&1; then pass; else
     fail "--no-exempt did not reject exempt-style subjects"; fi
 
-echo -n "Test 48: doctor.sh warns when lefthook.yml exists but hooks are not installed... "
+echo -n "Test 96: doctor.sh warns when lefthook.yml exists but hooks are not installed... "
 out=$(cd "$lh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
 if echo "$out" | grep 'Git Hooks' | grep -q 'not installed'; then pass; else
     fail "expected 'not installed' WARN: $(echo "$out" | grep 'Git Hooks')"; fi
 
-echo -n "Test 49: doctor.sh passes once lefthook hooks are installed (core.hooksPath set)... "
+echo -n "Test 97: doctor.sh passes once lefthook hooks are installed (core.hooksPath set)... "
 ( cd "$lh" && git config core.hooksPath .lefthook-hooks )
 out=$(cd "$lh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
 if echo "$out" | grep 'Git Hooks' | grep -q 'hooks installed' && ! echo "$out" | grep 'Git Hooks' | grep -q 'not installed'; then pass; else
     fail "expected installed PASS: $(echo "$out" | grep 'Git Hooks')"; fi
 
-echo -n "Test 50: block-form commits.scopes survives blank and comment lines... "
+echo -n "Test 98: block-form commits.scopes survives blank and comment lines... "
 printf 'version: 1\ncommits:\n  scopes:\n    # core areas\n    - api\n\n    # shared kernel\n    - domain\n' > "$sc/.standards.yml"
 if bash "$CHK" --project-root "$sc" "feat(domain): after a comment line" >/dev/null 2>&1 \
    && ! bash "$CHK" --project-root "$sc" "feat(web): still enforced" >/dev/null 2>&1; then pass; else
     fail "block list truncated or emptied by comment/blank lines"; fi
 
-echo -n "Test 51: doctor.sh does not credit lefthook for a core.hooksPath owned by another manager... "
+echo -n "Test 99: doctor.sh does not credit lefthook for a core.hooksPath owned by another manager... "
 mkdir -p "$lh2/.husky/_"
 ( cd "$lh2" && git config core.hooksPath .husky/_ )
 out=$(cd "$lh2" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
 if echo "$out" | grep 'Git Hooks' | grep -q 'lefthook hooks are not installed'; then pass; else
     fail "expected lefthook 'not installed' with husky hooksPath: $(echo "$out" | grep 'Git Hooks')"; fi
 
-echo -n "Test 52: doctor.sh requires a native commit-msg hook to be executable... "
+echo -n "Test 100: doctor.sh requires a native commit-msg hook to be executable... "
 printf '#!/bin/sh\nexit 0\n' > "$nh/.git/hooks/commit-msg"
 chmod -x "$nh/.git/hooks/commit-msg"
 out1=$(cd "$nh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
@@ -1236,7 +1236,7 @@ out2=$(cd "$nh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
 if echo "$out1" | grep 'Git Hooks' | grep -q 'not executable' && echo "$out2" | grep 'Git Hooks' | grep -q 'commit-msg hook installed'; then pass; else
     fail "executable-bit check wrong: [$(echo "$out1" | grep commit-msg)] [$(echo "$out2" | grep commit-msg)]"; fi
 
-echo -n "Test 53: doctor.sh reads native hooks from core.hooksPath when it is set... "
+echo -n "Test 101: doctor.sh reads native hooks from core.hooksPath when it is set... "
 hp=$(make_project "doctor-hookspath")
 mkdir -p "$hp/githooks"
 printf '#!/bin/sh\nexit 0\n' > "$hp/githooks/commit-msg"
@@ -1249,7 +1249,7 @@ if echo "$out" | grep 'Git Hooks' | grep -q 'commit-msg hook installed' \
    && echo "$out" | grep 'Git Hooks' | grep -q 'post-merge hook contains standards sync'; then pass; else
     fail "hooks under core.hooksPath not seen: $(echo "$out" | grep 'Git Hooks')"; fi
 
-echo -n "Test 54: doctor.sh requires the lefthook post-merge block to run the standards sync... "
+echo -n "Test 102: doctor.sh requires the lefthook post-merge block to run the standards sync... "
 lh3=$(make_project "doctor-lefthook-postmerge")
 printf 'post-merge:\n  commands:\n    notify:\n      run: echo merged\n' > "$lh3/lefthook.yml"
 out=$(cd "$lh3" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
