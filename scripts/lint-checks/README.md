@@ -12,7 +12,7 @@ mean the linter enforces it — the table below is the source of truth.
 
 | Category | Machine-enforced by `lint-standards.sh`? | Checks |
 | --- | --- | --- |
-| Common (all repos) | ✅ | ci-workflow-hygiene, conventional-commits, coverage-config, headless-ci, no-secrets, quarantine-policy, test-directory-structure |
+| Common (all repos) | ✅ | ci-workflow-hygiene, conventional-commits, coverage-config, doc-lint, headless-ci, no-secrets, quarantine-policy, test-directory-structure |
 | Python (lang-01) | ✅ | banned-functions, ruff-config, type-annotations |
 | Swift (lang-04) | ✅ | swift-format-config, package-resolved, warnings-as-errors |
 | TypeScript (lang-06) | ✅ | banned-functions, eslint-config, strict-tsconfig |
@@ -44,6 +44,7 @@ no automated check modules for them yet. Consumers should not assume
 | --- | --- | --- | --- |
 | `conventional-commits` | proc-02 | Recent commit subjects match `type(scope): subject` | WARN/FAIL |
 | `coverage-config` | core-standards, proc-05 § 6 | A coverage gate exists in CI, test config, or `.standards.yml`; `coverage.scopes` entries have a path, an integer floor, 100% for domain/core, and a stated `reason` for any lowered scope | FAIL |
+| `doc-lint` | proc-01 §1, §10 | ADRs under `docs/adr/` (also `docs/adrs/`, `docs/decisions/`, `docs/architecture/decisions/`) carry a Status (Proposed, Accepted, Rejected, Deprecated or Superseded), an ISO Date, and Context, Decision and Consequences sections; only the template file itself (`template.md`, `0000-template.md`, `adr-template.md` …) is exempt. Every relative Markdown link in the repo resolves; destinations follow CommonMark (`<...>` with spaces, balanced parentheses). Fenced code (matched by delimiter and length) and inline code are ignored; `.standards/` is skipped | FAIL |
 | `no-secrets` | sec-01 | AWS keys, private-key blocks, hardcoded passwords/tokens in source | FAIL |
 | `quarantine-policy` | proc-05 § 2 | The flaky-test quarantine registry is valid JSON whose every `entries` element is a complete entry: non-blank required fields, exact unique test ids, real ISO dates, `added` not in the future, ≤ 30-day windows, no past-due entries, and no coverage overrides; fails closed when a declared registry is missing, empty, or not valid JSON | WARN/FAIL |
 | `test-directory-structure` | core-standards | A recognizable test directory exists | WARN/FAIL |

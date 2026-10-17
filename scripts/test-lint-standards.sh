@@ -359,6 +359,125 @@ YML
 out=$(bash "$CHECKS/common/coverage-config.sh" "$ch" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'invalid minimum'; then pass; else fail "expected FAIL mentioning invalid minimum, got: $out"; fi
 
+# --- doc-lint module --------------------------------------------------------
+
+DOC_LINT="$CHECKS/common/doc-lint.sh"
+
+echo -n "Test 12: doc-lint module exists and is executable... "
+if [ -x "$DOC_LINT" ]; then pass; else fail "$DOC_LINT missing or not executable"; fi
+
+echo -n "Test 13: doc-lint PASSes an ADR with bullet metadata and required sections... "
+adr_ok=$(make_project "adr-ok")
+mkdir -p "$adr_ok/docs/adr"
+cat > "$adr_ok/docs/adr/0001-use-sqlite.md" <<'EOF'
+# ADR 0001: Use SQLite for local state
+
+- **Status:** Accepted
+- **Date:** 2026-10-17
+- **Related:** #42
+
+## Context
+
+We need a local store.
+
+## Decision
+
+Use SQLite.
+
+## Consequences
+
+Single-file database; no server to run.
+EOF
+out=$(bash "$DOC_LINT" "$adr_ok" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 14: doc-lint FAILs an ADR missing Date and Consequences... "
+adr_bad=$(make_project "adr-bad")
+mkdir -p "$adr_bad/docs/adr"
+cat > "$adr_bad/docs/adr/0002-incomplete.md" <<'EOF'
+# ADR 0002: Incomplete
+
+- **Status:** Proposed
+
+## Context
+
+Something.
+
+## Decision
+
+Something else.
+EOF
+out=$(bash "$DOC_LINT" "$adr_bad" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q '0002-incomplete.md' \
+   && echo "$out" | grep -qi 'date' && echo "$out" | grep -qi 'consequences'; then pass; else
+    fail "expected FAIL naming the ADR and the missing fields, got: $out"; fi
+
+echo -n "Test 15: doc-lint accepts the legacy heading-style ADR (## Status / ## Date)... "
+adr_legacy=$(make_project "adr-legacy")
+mkdir -p "$adr_legacy/docs/adr"
+cat > "$adr_legacy/docs/adr/0001-legacy.md" <<'EOF'
+# ADR 0001: Legacy shape
+
+## Status
+
+Accepted
+
+## Date
+
+2025-12-22
+
+## Context
+
+Text.
+
+## Decision
+
+Text.
+
+## Consequences
+
+Text.
+EOF
+out=$(bash "$DOC_LINT" "$adr_legacy" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 16: doc-lint FAILs a broken relative Markdown link... "
+link_bad=$(make_project "link-bad")
+mkdir -p "$link_bad/docs/guides"
+printf '# Guide\n\nSee [the spec](../specs/missing-spec.md) and [home](../../README.md).\n' \
+    > "$link_bad/docs/guides/intro.md"
+echo "# Project" > "$link_bad/README.md"
+out=$(bash "$DOC_LINT" "$link_bad" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'missing-spec.md'; then pass; else
+    fail "expected FAIL naming missing-spec.md, got: $out"; fi
+
+echo -n "Test 17: doc-lint resolves good relative links; ignores URLs, anchors, and code... "
+link_ok=$(make_project "link-ok")
+mkdir -p "$link_ok/docs/specs" "$link_ok/docs/guides"
+echo "# Spec" > "$link_ok/docs/specs/2026-10-17-topic-design.md"
+cat > "$link_ok/docs/guides/intro.md" <<'EOF'
+# Guide
+
+See [the spec](../specs/2026-10-17-topic-design.md#purpose), the [README](../../README.md "Project README"),
+[GitHub](https://github.com/example/repo), [mail](mailto:dev@example.com), [section](#heading),
+[site page](/docs/absolute/), and the [specs dir](../specs/).
+
+```markdown
+[placeholder](../does-not-exist.md)
+```
+
+Inline code `[also-placeholder](./nope.md)` is ignored too.
+
+[ref-style]: ../specs/2026-10-17-topic-design.md
+EOF
+echo "# Project" > "$link_ok/README.md"
+out=$(bash "$DOC_LINT" "$link_ok" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 18: doc-lint emits a status line on a project with no Markdown at all... "
+out=$(bash "$DOC_LINT" "$proj" 2>/dev/null || true)
+if echo "$out" | grep -qE '^(PASS|WARN)'; then pass; else fail "expected PASS/WARN, got: $out"; fi
+
 # --- Sibling scripts smoke --------------------------------------------------
 
 echo -n "Test 25: diff-standards.sh runs on a project without .standards.yml... "

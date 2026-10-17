@@ -1144,8 +1144,8 @@ Identify Section 1 (coverage gates — duplicates arch-02/core) and Section 6 (n
 
 - [ ] **Step 2: Replace duplicated sections with cross-references**
 
-Section 1: Replace with "See [core-standards.md](../shared/core-standards.md) Section 4 for coverage requirements."
-Section 6: Replace with "See [core-standards.md](../shared/core-standards.md) Section 2 for naming conventions."
+Section 1: Replace with "See `core-standards.md` Section 4 for coverage requirements."
+Section 6: Replace with "See `core-standards.md` Section 2 for naming conventions."
 
 Keep Sections 2-5 intact (pure render logic, semantic state, error layering, centralized paths — these are unique).
 
