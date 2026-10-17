@@ -70,30 +70,44 @@ runs:
         fi
         chmod +x "$CHECKER"
 
+        # The PR title is untrusted input (anyone who can open a PR sets it).
+        # Everything derived from it is printed inside a ::stop-commands:: block so
+        # a title such as "::add-mask::x" or "::set-output name=a::b" is never
+        # interpreted by the runner, and it is kept out of ::warning::/::error::
+        # annotations entirely.
+        STOP_TOKEN="stop-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+
         # --no-exempt: fixup!/Merge/Revert "..." exemptions are for branch commits
         # that git rewrites; a PR title lands verbatim on squash-merge.
         if DETAIL=$("$CHECKER" --no-exempt "$PR_TITLE" 2>&1); then
           echo "status=pass" >> "$GITHUB_OUTPUT"
+          echo "::stop-commands::$STOP_TOKEN"
           echo "PR title follows Conventional Commits: $PR_TITLE"
+          echo "::$STOP_TOKEN::"
           exit 0
         fi
 
         echo "status=fail" >> "$GITHUB_OUTPUT"
+        # Random heredoc delimiter: a title containing the delimiter line could
+        # otherwise terminate the value early and inject further outputs.
+        OUT_TOKEN="DETAIL_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
         {
-          echo "detail<<DETAIL_EOF"
+          echo "detail<<$OUT_TOKEN"
           echo "$DETAIL"
-          echo "DETAIL_EOF"
+          echo "$OUT_TOKEN"
         } >> "$GITHUB_OUTPUT"
+        echo "::stop-commands::$STOP_TOKEN"
         echo "$DETAIL"
+        echo "::$STOP_TOKEN::"
         echo ""
         echo "Why this matters: with squash-merge, GitHub writes the PR title (not your"
         echo "branch commits) as the commit subject on the default branch. A prose title"
         echo "becomes a permanent non-Conventional commit in mainline history."
         echo "Fix: edit the PR title to <type>(<scope>): <subject>, e.g. feat(api): add endpoint"
         if [ "$TITLE_MODE" = "warn" ]; then
-          echo "::warning::PR title is not a Conventional Commit (pr-title-check: warn): $PR_TITLE"
+          echo "::warning::PR title is not a Conventional Commit (pr-title-check: warn); see this step's log for the title and the expected format"
         else
-          echo "::error::PR title is not a Conventional Commit: $PR_TITLE"
+          echo "::error::PR title is not a Conventional Commit; see this step's log for the title and the expected format"
         fi
 
     - name: Run standards linter
@@ -218,10 +232,15 @@ runs:
 
           case "$TITLE_STATUS" in
             fail)
+              # The title is untrusted: strip markdown-active characters (backtick,
+              # @, brackets, parens, angle brackets), drop non-printables and cap the
+              # length so it cannot break out of the code span, @-mention anyone, or
+              # inject links/HTML into a bot comment.
+              SAFE_TITLE=$(printf '%s' "$PR_TITLE" | tr -d '\140@[]()<>' | tr -cd '[:print:]' | cut -c1-120)
               if [ "$TITLE_MODE" = "warn" ]; then
-                printf ":warning: **PR title** is not a Conventional Commit: \`%s\`\n\n" "$PR_TITLE"
+                printf ":warning: **PR title** is not a Conventional Commit: \`%s\`\n\n" "$SAFE_TITLE"
               else
-                printf ":x: **PR title** is not a Conventional Commit: \`%s\`\n\n" "$PR_TITLE"
+                printf ":x: **PR title** is not a Conventional Commit: \`%s\`\n\n" "$SAFE_TITLE"
               fi
               printf "Squash-merge writes the PR title as the mainline commit subject, so it must be "
               printf "\`<type>(<scope>): <subject>\` (e.g. \`feat(api): add endpoint\`) even when every branch commit already is.\n\n"
