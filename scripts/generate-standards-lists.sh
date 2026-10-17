@@ -199,7 +199,7 @@ run_write() {
         [ -n "$target" ] || continue
         missing=$(missing_required_regions "$target" | tr '\n' ' ')
         if [ -n "$missing" ]; then
-            echo "ERROR: $target is missing required generated region(s): ${missing% }— restore the BEGIN/END GENERATED sentinels" >&2
+            echo "ERROR: $target is missing required generated region(s): ${missing% } — restore the BEGIN/END GENERATED sentinels" >&2
             rc=1
         fi
     done <<EOF
@@ -268,7 +268,7 @@ check_required_regions() {
         if [ -z "$missing" ]; then
             report_pass "required-region" "$f carries every required generated region"
         else
-            report_fail "required-region" "$f is missing required generated region(s): ${missing% }— restore the BEGIN/END GENERATED sentinels and run 'make generate-standards-lists'"
+            report_fail "required-region" "$f is missing required generated region(s): ${missing% } — restore the BEGIN/END GENERATED sentinels and run 'make generate-standards-lists'"
         fi
     done <<EOF
 $(required_region_files)
