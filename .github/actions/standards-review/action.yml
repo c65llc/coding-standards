@@ -14,6 +14,25 @@ inputs:
       silently disable the check.
     required: false
     default: 'fail'
+  changed-only:
+    description: >-
+      On pull_request events, scan only files changed against the PR base
+      branch (lint-standards.sh --since origin/<base>). Requires
+      actions/checkout with fetch-depth: 0. Config/history checks still run on
+      the whole project.
+    required: false
+    default: 'false'
+  timeout:
+    description: 'Per-check wall-clock guard in seconds (0 disables). Default: linter default (60).'
+    required: false
+    default: ''
+  fail-on-timeout:
+    description: >-
+      Report any check that hits the timeout as FAIL instead of WARN, so an
+      incomplete scan can never pass the gate. Security checks (no-secrets,
+      banned-functions) FAIL on timeout regardless of this input.
+    required: false
+    default: 'true'
 runs:
   using: 'composite'
   steps:
@@ -82,6 +101,9 @@ runs:
       shell: bash
       env:
         PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        CHANGED_ONLY: ${{ inputs.changed-only }}
+        CHECK_TIMEOUT: ${{ inputs.timeout }}
+        FAIL_ON_TIMEOUT: ${{ inputs.fail-on-timeout }}
       run: |
         LINTER="${{ inputs.standards-path }}/scripts/lint-standards.sh"
         if [ ! -f "$LINTER" ]; then
@@ -102,10 +124,36 @@ runs:
               echo "::warning::origin/$PR_BASE_REF is not in this checkout; use actions/checkout with fetch-depth: 0 so the conventional-commits check can inspect the PR's commits."
             fi
           fi
-          RESULTS=$("$LINTER" --format json 2>/dev/null || true)
-          if [ -z "$RESULTS" ]; then
-            RESULTS='{"summary":{"pass":0,"warn":0,"fail":0,"total":0},"results":[]}'
+          LINT_ARGS=()
+          if [ "$CHANGED_ONLY" = "true" ] && [ -n "$PR_BASE_REF" ]; then
+            # No --depth: the checkout is already complete (fetch-depth: 0) and
+            # a shallow fetch would turn the base tip into a history boundary,
+            # breaking the merge-base that --since relies on.
+            git fetch --no-tags origin "+refs/heads/${PR_BASE_REF}:refs/remotes/origin/${PR_BASE_REF}" 2>/dev/null || true
+            LINT_ARGS+=(--since "origin/${PR_BASE_REF}")
           fi
+          if [ -n "$CHECK_TIMEOUT" ]; then
+            LINT_ARGS+=(--timeout "$CHECK_TIMEOUT")
+          fi
+          if [ "$FAIL_ON_TIMEOUT" = "true" ]; then
+            LINT_ARGS+=(--fail-on-timeout)
+          fi
+          LINT_ERR=$(mktemp)
+          set +e
+          RESULTS=$("$LINTER" --format json "${LINT_ARGS[@]+"${LINT_ARGS[@]}"}" 2>"$LINT_ERR")
+          LINT_RC=$?
+          set -e
+          case "$RESULTS" in
+            \{*) ;;
+            *)
+              # The linter exits 1 with JSON when checks FAIL; no JSON at all
+              # means it aborted (bad --timeout value, unknown option, crash).
+              # That must not be reported as a clean run.
+              echo "::error::lint-standards.sh produced no results (exit $LINT_RC): $(tr '\n' ' ' < "$LINT_ERR")"
+              RESULTS='{"summary":{"pass":0,"warn":0,"fail":1,"total":1},"results":[{"status":"FAIL","check":"lint-standards","message":"linter aborted before producing results (exit '"$LINT_RC"')"}]}'
+              ;;
+          esac
+          rm -f "$LINT_ERR"
           echo "results<<RESULTS_EOF" >> "$GITHUB_OUTPUT"
           echo "$RESULTS" >> "$GITHUB_OUTPUT"
           echo "RESULTS_EOF" >> "$GITHUB_OUTPUT"

@@ -83,6 +83,101 @@ The same type list, regex and allow-list parser live in
 `templates/lefthook.yml.example`, and the PR-title step of the
 standards-review action).
 
+## File enumeration and exclusions
+
+Checks that scan file contents (`no-secrets`, `python/banned-functions`,
+`typescript/banned-functions`, `go/error-handling`, `rust/ffi-no-unwrap`) do
+not walk the tree with `find`. They source
+[`scripts/lib/lint-files.sh`](../lib/lint-files.sh), which enumerates
+candidates in this order:
+
+1. **Tracked files** — `git ls-files -z`, or, under `--since` / `--changed`,
+   the runner's list of tracked files changed since the merge-base (see
+   below).
+2. **Untracked, not-ignored files** — `git ls-files -z -o --exclude-standard`.
+   `.gitignore` is honoured, so build output and caches are never read, and
+   nested worktrees (`.claude/worktrees/*`, `.worktrees/*`) are never
+   descended into. Untracked files are enumerated even in `--since` mode, so
+   a new, uncommitted file is still scanned.
+3. **Pruned `find -print0`** — only when the project is not a git repository.
+   The built-in exclusions below are `-prune`d, so excluded trees are not
+   walked.
+
+After enumeration the list is filtered by:
+
+- **Built-in directory exclusions** (any depth): `.git`, `node_modules`,
+  `.standards`, `.standards_tmp`, `vendor`, `third_party`, `dist`, `build`,
+  `.build`, `target`, `.next`, `__pycache__`, `.venv`, `venv`, `.tox`,
+  `coverage`, `.pnpm-store`, `.wrangler`, `DerivedData`, `.worktrees`,
+  `.claude/worktrees`, `.Codex/worktrees`, `.workspaces`.
+- **`lint.exclude` in `.standards.yml`** — project-relative path prefixes or
+  shell-style globs (`*` within a segment, `**` any run of characters,
+  `**/` zero or more whole segments, so `**/*.py` also matches a top-level
+  `app.py`):
+
+  ```yaml
+  lint:
+    exclude:
+      - docs/              # whole directory
+      - skills/smoke.sh    # single file
+      - fixtures/**        # glob
+      - "gen#tmp/"         # quote a value that contains "#"
+  ```
+
+  A `#` starts a comment only at the start of a value or after whitespace
+  (YAML's rule), so a quoted or unspaced `#` is part of the path. Backslashes
+  are literal. An entry that still yields an invalid pattern is ignored with
+  a note on stderr rather than emptying the scan — scanning too much is the
+  safe failure.
+
+- **Per-check defaults** — both `banned-functions` checks skip the top-level
+  `docs/` directory (wireframes and mockups are not shipped code).
+- **Regular files only** — a tracked symlink is never followed (its target may
+  lie outside the project, or be a FIFO that would block the scan), and a
+  tracked path deleted from the working tree is dropped.
+
+**`no-secrets` is strict.** It applies neither `lint.exclude` nor the built-in
+directory exclusions to *tracked* files: a committed secret under `vendor/`,
+`docs/`, or a path a PR adds to `lint.exclude` is still reported, so the
+exclude list cannot be used to smuggle a secret past CI. Built-in exclusions
+still drop *untracked* worktrees and caches, which never reach CI. If a
+tracked file is a legitimate false positive, fix the content (the password /
+API-key patterns already skip `test`, `spec`, `fixture`, `example`, `sample`,
+`mock`, `dummy` and `placeholder` paths) rather than excluding the path.
+
+**Path safety.** Enumeration is NUL-delimited end to end (`git -z`,
+`find -print0`, `xargs -0`), so names with spaces, quotes, `#` or `:` are
+passed to grep exactly. A filename that contains a newline cannot be carried
+by a line-oriented list; such files are not skipped silently — every
+file-scanning check reports them as `N file(s) not scanned (newline in
+filename)`, after the same exclusion policy as ordinary candidates, so a
+name under an excluded path is not reported. Comment suppression in the `banned-functions` checks is anchored
+on a per-file `<line>:` prefix (two-stage grep: `grep -l --null` to find the
+files, then `grep -n` per matching file), so neither a filename containing
+`:1:#` nor a trailing `# :1: #` on the offending line can forge a
+suppression.
+
+Matches are grepped in batches, skip binaries, and report project-relative
+`path:line:` locations.
+
+`test-directory-structure` compares directory names exactly: `Tests/` does
+not satisfy `tests/`, even on a case-insensitive filesystem, so a project that
+passes on macOS also passes on Linux CI.
+
+### Runner flags for PR runs
+
+| Flag | Effect |
+| --- | --- |
+| `--since <ref>` | File-scanning checks only look at files changed since the merge-base with `<ref>` (added, copied, modified, renamed or type-changed — e.g. a symlink replaced by a real file — committed, staged or unstaged) plus untracked files. Paths are relative to the project root (`git diff --relative`), so a root that is a subdirectory of a larger work tree is scoped correctly. Config/history checks still run on the whole project. |
+| `--changed` | `--since` with the base auto-detected (`origin/HEAD`, `origin/main`, `origin/master`, `main`, `master`); falls back to a full scan with a note on stderr. |
+| `--timeout <secs>` | Wall-clock guard per check module (default 60, `0` disables, env `LINT_CHECK_TIMEOUT`). A check that overruns is sent `SIGTERM`, then `SIGKILL` after a 2 s grace period (so a module that traps the signal cannot hang the run), and reported as `WARN` — except `no-secrets` and `*/banned-functions`, which are always reported as `FAIL`: an incomplete security scan must not pass a gate. |
+| `--fail-on-timeout` | Report *every* timed-out check as `FAIL` (env `LINT_FAIL_ON_TIMEOUT=1`). The `standards-review` action sets this by default so CI never fails open. |
+
+The `standards-review` composite action exposes these as the `changed-only`,
+`timeout` and `fail-on-timeout` inputs. If the linter aborts before producing
+JSON (for example an invalid `timeout` value), the action reports a failure
+rather than an empty, passing result.
+
 ## Roadmap
 
 Per-language check modules are added incrementally. Rust and Swift landed in
@@ -135,7 +230,10 @@ in this directory therefore follows the rules in
    `WARN <check-name> <message>`, or `FAIL <check-name> <message>`.
    Exit 0 for PASS, 1 for FAIL, 2 for WARN, and document that in the header.
 3. Keep it POSIX/bash-3.2 compatible (macOS is a first-class dev platform) and
-   pass `shellcheck -x --severity=warning`.
+   pass `shellcheck -x --severity=warning`. If the check reads file contents,
+   enumerate them with `lint_list_files` from `scripts/lib/lint-files.sh`
+   rather than `find`, so `.gitignore`, worktrees, `lint.exclude` and the
+   runner's `--since` scope are honoured consistently.
 4. Follow **Writing a gate** above: self-test fixture, fail closed, no silent
    skips.
 5. Language directories are auto-discovered: `lint-standards.sh` runs every

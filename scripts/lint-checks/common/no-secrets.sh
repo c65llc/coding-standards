@@ -3,65 +3,43 @@
 # Receives: $1 = project root
 # Outputs: PASS|WARN|FAIL <check-name> <message>
 # Exit:    0=PASS, 1=FAIL, 2=WARN
+#
+# File enumeration (tracked via git ls-files, untracked-not-ignored, pruned
+# find fallback) lives in scripts/lib/lint-files.sh. This check uses --strict:
+# every tracked file is scanned — the built-in directory exclusions and
+# `.standards.yml` lint.exclude are NOT applied to tracked content, so a
+# contributor cannot hide a committed secret by editing the config or placing
+# the file under vendor/. Built-in exclusions still drop untracked worktrees
+# and caches, which never reach CI.
 
 PROJECT_ROOT="${1:-.}"
 
 CHECK_NAME="no-secrets"
 
-# Directories and file patterns to exclude from scanning
-EXCLUDE_DIRS=(
-    ".git"
-    "node_modules"
-    ".standards"
-    ".standards_tmp"
-    "vendor"
-    "dist"
-    "build"
-    ".next"
-    "__pycache__"
-    ".venv"
-    "venv"
-)
+LINT_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" 2>/dev/null && pwd)/lint-files.sh"
+if [ ! -f "$LINT_LIB" ]; then
+    echo "WARN $CHECK_NAME lint-files library not found ($LINT_LIB)"
+    exit 2
+fi
+# shellcheck source=../../lib/lint-files.sh
+source "$LINT_LIB"
 
-# Build find exclusion args
-EXCLUDE_ARGS=()
-for dir in "${EXCLUDE_DIRS[@]}"; do
-    EXCLUDE_ARGS+=(-not -path "*/$dir/*")
-done
+# Lock files, minified bundles, source maps and binary assets are never
+# meaningful secret carriers; drop them by extension (case-insensitive).
+# grep -I (in lint_grep_files) skips any remaining binaries.
+EXCLUDE_FILES_ERE='(\.lock|\.min\.js|\.min\.css|\.map|\.png|\.jpe?g|\.gif|\.ico|\.pdf|\.zip|\.tar|\.gz|(^|/)(package-lock\.json|yarn\.lock|Cargo\.lock|Gemfile\.lock))$'
 
-# Exclude common lock files and binary files
-EXCLUDE_FILES=(
-    "*.lock"
-    "package-lock.json"
-    "yarn.lock"
-    "Cargo.lock"
-    "Gemfile.lock"
-    "*.min.js"
-    "*.min.css"
-    "*.map"
-    "*.png"
-    "*.jpg"
-    "*.jpeg"
-    "*.gif"
-    "*.ico"
-    "*.pdf"
-    "*.zip"
-    "*.tar"
-    "*.gz"
-)
+SOURCE_FILES=$(lint_list_files --strict "$PROJECT_ROOT" | grep -viE "$EXCLUDE_FILES_ERE" || true)
 
-EXCLUDE_FILE_ARGS=()
-for pattern in "${EXCLUDE_FILES[@]}"; do
-    EXCLUDE_FILE_ARGS+=(-not -name "$pattern")
-done
+# Filenames containing a newline cannot be carried by the file list; report
+# them rather than skipping them silently.
+UNSCANNABLE=$(lint_unscannable_files --strict "$PROJECT_ROOT" | grep -viE "$EXCLUDE_FILES_ERE" || true)
 
-# Build file list
-SOURCE_FILES=$(find "$PROJECT_ROOT" -type f \
-    "${EXCLUDE_ARGS[@]}" \
-    "${EXCLUDE_FILE_ARGS[@]}" \
-    2>/dev/null)
-
-if [ -z "$SOURCE_FILES" ]; then
+if [ -z "$SOURCE_FILES" ] && [ -z "$UNSCANNABLE" ]; then
+    if lint_scope_is_changed; then
+        echo "PASS $CHECK_NAME No changed source files to scan"
+        exit 0
+    fi
     echo "WARN $CHECK_NAME No source files found to scan"
     exit 2
 fi
@@ -69,12 +47,9 @@ fi
 # Secret patterns to scan for
 MATCHES=""
 
-# Helper: grep a pattern across all source files safely (handles spaces in paths)
+# Helper: list files matching a pattern (batched grep, paths made relative)
 grep_source_files() {
-    local pattern="$1"
-    while IFS= read -r file; do
-        grep -lE "$pattern" "$file" 2>/dev/null || true
-    done <<< "$SOURCE_FILES"
+    lint_grep_files "$SOURCE_FILES" -lE "$1" | lint_strip_root "$PROJECT_ROOT"
 }
 
 # AWS access key pattern
@@ -99,6 +74,11 @@ api_matches=$(grep_source_files 'api_key\s*=\s*["'"'"'][^"'"'"']{8,}["'"'"']' \
 secret_matches=$(grep_source_files '(secret|token)\s*=\s*["'"'"'][^"'"'"']{8,}["'"'"']' \
     | grep -vE '(test|spec|fixture|example|sample|mock|dummy|placeholder|your[-_])' || true)
 [ -n "$secret_matches" ] && MATCHES="${MATCHES}Hardcoded secrets/tokens in: $(echo "$secret_matches" | head -3 | tr '\n' ' '); "
+
+if [ -n "$UNSCANNABLE" ]; then
+    n=$(echo "$UNSCANNABLE" | wc -l | tr -d ' ')
+    MATCHES="${MATCHES}${n} file(s) not scanned (newline in filename): $(echo "$UNSCANNABLE" | head -3 | tr '\n' ' '); "
+fi
 
 if [ -z "$MATCHES" ]; then
     echo "PASS $CHECK_NAME No hardcoded secrets detected"

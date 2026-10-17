@@ -77,3 +77,15 @@ tests:
 #     - api
 #     - domain
 #     - ui
+
+# Compliance linter options (lint-standards.sh)
+# exclude: project-relative paths that the banned-functions checks skip, in
+# addition to .gitignore and the built-in exclusions (node_modules, vendor,
+# dist, build, target, coverage, .worktrees, .claude/worktrees, ...). Entries
+# are path prefixes or shell-style globs (* within a segment, ** across
+# segments, **/ may match zero segments). no-secrets ignores this list and
+# scans every tracked file, so it cannot be used to hide a committed secret.
+# lint:
+#   exclude:
+#     - docs/
+#     - fixtures/**

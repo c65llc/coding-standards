@@ -72,7 +72,7 @@ All bash. Key scripts:
 - `setup.sh` — Installs standards into a target project, detects and configures AI agents; copies the standards-review workflow template only when run with `--workflow`
 - `sync-standards.sh` — Pulls latest standards and updates agent configs in consumer projects (honours `agents:`; `--aliases` opt-in)
 - `diff-standards.sh` — Previews what sync would change; `--exit-code` makes it a CI gate
-- `lint-standards.sh` — Standards compliance linter; outputs text, JSON, or SARIF
+- `lint-standards.sh` — Standards compliance linter; outputs text, JSON, or SARIF. `--since <ref>`/`--changed` scope file scans to a PR's changed files; `--timeout <secs>` guards each check (`--fail-on-timeout` turns a timed-out check into a FAIL; security checks always FAIL on timeout). File-scanning checks enumerate via `git ls-files` through `scripts/lib/lint-files.sh`; `banned-functions` honour `lint.exclude` in `.standards.yml`, `no-secrets` never does (see `scripts/lint-checks/README.md`)
 - `add-copilot-instructions-pr.sh` — Creates a PR to add Copilot instructions to a repo
 - `setup-git-aliases.sh` — Configures git aliases
 

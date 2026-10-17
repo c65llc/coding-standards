@@ -1330,6 +1330,348 @@ cc_commit "$cj" "$(printf 'bad\tsubject with tab')"
 "$LINT" --format json "$cj" > "$TMP_BASE/cc-json.out" 2>/dev/null || true
 if json_valid "$TMP_BASE/cc-json.out"; then pass; else fail "JSON output invalid: $(head -c 300 "$TMP_BASE/cc-json.out")"; fi
 
+# --- File enumeration (#180) ------------------------------------------------
+# A valid-length AWS access key id (AKIA + 16 chars), assembled at runtime so no
+# key-shaped literal is committed to trip secret scanners.
+aws_key="AKIA$(printf '%s' 'IOSFODNN7EXAMPLE')"
+
+git_commit_all() {
+    ( cd "$1" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+        commit -q -m "${2:-feat: fixture}" )
+}
+
+echo -n "Test 111: no-secrets skips worktree/cache dirs in a git repo (untracked, not ignored)... "
+wt=$(make_project "worktree-skip")
+mkdir -p "$wt/.claude/worktrees/agent-1" "$wt/.worktrees/agent-2" "$wt/target/debug"
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$wt/.claude/worktrees/agent-1/config.py"
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$wt/.worktrees/agent-2/config.py"
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$wt/target/debug/config.py"
+echo "print('ok')" > "$wt/app.py"
+out=$(bash "$CHECKS/common/no-secrets.sh" "$wt" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 112: no-secrets skips .worktrees/ outside a git repo (find fallback)... "
+nogit="$TMP_BASE/no-git"
+mkdir -p "$nogit/.worktrees/agent-1" "$nogit/DerivedData/x" "$nogit/src"
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$nogit/.worktrees/agent-1/config.py"
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$nogit/DerivedData/x/config.py"
+echo "print('ok')" > "$nogit/src/app.py"
+out=$(bash "$CHECKS/common/no-secrets.sh" "$nogit" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 113: no-secrets honours .gitignore (ignored path is never scanned)... "
+ign=$(make_project "gitignored")
+mkdir -p "$ign/generated"
+echo "generated/" > "$ign/.gitignore"
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$ign/generated/config.py"
+echo "print('ok')" > "$ign/app.py"
+out=$(bash "$CHECKS/common/no-secrets.sh" "$ign" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 114: no-secrets still flags a secret in an untracked, not-ignored file... "
+ut=$(make_project "untracked-secret")
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$ut/config.py"
+out=$(bash "$CHECKS/common/no-secrets.sh" "$ut" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL'; then pass; else fail "expected FAIL, got: $out"; fi
+
+echo -n "Test 115: typescript/banned-functions skips docs/ mockups by default... "
+docs=$(make_project "docs-mockup")
+mkdir -p "$docs/docs/design/wireframes" "$docs/src"
+echo 'el.innerHTML = "<b>mock</b>";' > "$docs/docs/design/wireframes/mock.js"
+echo 'export const x = 1;' > "$docs/src/index.ts"
+out=$(bash "$CHECKS/typescript/banned-functions.sh" "$docs" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 116: typescript/banned-functions still flags innerHTML in src/ and names the file... "
+echo 'el.innerHTML = user;' > "$docs/src/bad.ts"
+out=$(bash "$CHECKS/typescript/banned-functions.sh" "$docs" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'src/bad.ts'; then pass; else fail "expected FAIL naming src/bad.ts, got: $out"; fi
+
+echo -n "Test 117: python/banned-functions honours lint.exclude (prefix, trailing **, and **/ matching zero segments)... "
+excl=$(make_project "lint-exclude")
+mkdir -p "$excl/skills" "$excl/fixtures/sub"
+printf 'version: 1\nlanguages:\n  - python\nlint:\n  exclude:\n    - skills/\n    - fixtures/**\n    - "**/*_gen.py"\n' > "$excl/.standards.yml"
+echo 'eval("1+1")' > "$excl/skills/smoke.py"
+echo 'eval("1+1")' > "$excl/fixtures/sub/gen.py"
+echo 'eval("1+1")' > "$excl/fixtures/gen.py"
+echo 'eval("1+1")' > "$excl/top_gen.py"     # "**/" must match zero segments
+echo 'print("ok")' > "$excl/app.py"
+out=$(bash "$CHECKS/python/banned-functions.sh" "$excl" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 118: no-secrets IGNORES lint.exclude (an excluded path cannot hide a tracked secret)... "
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$excl/skills/creds.py"
+git_commit_all "$excl" "feat: fixtures"
+out=$(bash "$CHECKS/common/no-secrets.sh" "$excl" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'skills/creds.py'; then pass; else fail "expected FAIL naming skills/creds.py, got: $out"; fi
+
+echo -n "Test 119: no-secrets scans TRACKED files under built-in excluded dirs (vendor/)... "
+vend=$(make_project "tracked-vendor")
+mkdir -p "$vend/vendor/lib"
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$vend/vendor/lib/config.py"
+echo "print('ok')" > "$vend/app.py"
+git_commit_all "$vend"
+out=$(bash "$CHECKS/common/no-secrets.sh" "$vend" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'vendor/lib/config.py'; then pass; else fail "expected FAIL naming vendor/lib/config.py, got: $out"; fi
+
+echo -n "Test 120: test-directory does not accept Tests/ for tests/ (case-sensitive)... "
+cs=$(make_project "case-sensitive")
+mkdir -p "$cs/Tests"
+echo "x" > "$cs/Tests/ExampleTests.swift"
+out=$(bash "$CHECKS/common/test-directory-structure.sh" "$cs" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL'; then pass; else fail "expected FAIL, got: $out"; fi
+
+echo -n "Test 121: test-directory accepts an exact-case tests/ directory... "
+# Fresh project: on a case-insensitive filesystem Tests/ and tests/ would be
+# the same directory, so the two cases cannot share a fixture.
+cs2=$(make_project "case-exact")
+mkdir -p "$cs2/tests"
+echo "def test_x(): pass" > "$cs2/tests/test_x.py"
+out=$(bash "$CHECKS/common/test-directory-structure.sh" "$cs2" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+# --- Path and suppression safety (security review) --------------------------
+
+echo -n "Test 122: python/banned-functions flags a file whose NAME contains ':1:#' (anchored suppression)... "
+odd=$(make_project "odd-names")
+mkdir -p "$odd/src"
+echo 'eval(user_input)' > "$odd/src/weird:1:#.py"
+out=$(bash "$CHECKS/python/banned-functions.sh" "$odd" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -qF 'weird:1:#.py'; then pass; else fail "expected FAIL naming weird:1:#.py, got: $out"; fi
+
+echo -n "Test 123: python/banned-functions: trailing '# :1: #' does not suppress; a real comment line does... "
+odd2=$(make_project "odd-content")
+printf 'eval(x)  # :1: #\n' > "$odd2/a.py"
+out=$(bash "$CHECKS/python/banned-functions.sh" "$odd2" 2>/dev/null || true)
+printf '# eval(x) is banned\nprint("ok")\n' > "$odd2/a.py"
+out2=$(bash "$CHECKS/python/banned-functions.sh" "$odd2" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out2" | grep -q '^PASS'; then pass; else fail "inline='$out' comment='$out2'"; fi
+
+echo -n "Test 124: typescript/banned-functions flags a file whose NAME contains ':1:*' (anchored suppression)... "
+echo 'eval(user)' > "$odd/src/weird:1:*.ts"
+out=$(bash "$CHECKS/typescript/banned-functions.sh" "$odd" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -qF 'weird:1:*.ts'; then pass; else fail "expected FAIL naming weird:1:*.ts, got: $out"; fi
+
+echo -n "Test 125: no-secrets reports (not skips) a file whose name contains a newline... "
+nl=$(make_project "newline-name")
+echo "print('ok')" > "$nl/app.py"
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$nl/odd"$'\n'"name.py"
+out=$(bash "$CHECKS/common/no-secrets.sh" "$nl" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'not scanned'; then pass; else fail "expected FAIL with 'not scanned', got: $out"; fi
+
+echo -n "Test 126: no-secrets handles spaces and quotes in filenames exactly... "
+sp=$(make_project "space-names")
+mkdir -p "$sp/my dir"
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$sp/my dir/it's \"config\".py"
+out=$(bash "$CHECKS/common/no-secrets.sh" "$sp" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -qF "my dir/it's"; then pass; else fail "expected FAIL naming the file, got: $out"; fi
+
+echo -n "Test 127: a newline-named file under an EXCLUDED path is not reported (docs/ for banned-functions, .worktrees/ for no-secrets)... "
+# Two fixtures: no-secrets is strict and does scan docs/, so the docs/ case
+# only applies to the per-check docs exclusion of banned-functions.
+nx=$(make_project "newline-excluded-docs")
+mkdir -p "$nx/docs"
+echo "print('ok')" > "$nx/app.py"
+echo 'eval("1")' > "$nx/docs/odd"$'\n'"mock.py"
+out=$(bash "$CHECKS/python/banned-functions.sh" "$nx" 2>/dev/null || true)
+nx2=$(make_project "newline-excluded-worktree")
+mkdir -p "$nx2/.worktrees/a"
+echo "print('ok')" > "$nx2/app.py"
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$nx2/.worktrees/a/odd"$'\n'"creds.py"
+out2=$(bash "$CHECKS/common/no-secrets.sh" "$nx2" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS' && echo "$out2" | grep -q '^PASS'; then pass; else fail "banned='$out' secrets='$out2'"; fi
+
+echo -n "Test 128: lint.exclude keeps a '#' inside a quoted value (\"gen#tmp/\" excludes gen#tmp/, not gen/)... "
+hx=$(make_project "hash-exclude")
+mkdir -p "$hx/gen#tmp" "$hx/gen"
+printf 'version: 1\nlanguages:\n  - python\nlint:\n  exclude:\n    - "gen#tmp/"\n    - skills/   # trailing comment is still stripped\n' > "$hx/.standards.yml"
+echo 'eval("1")' > "$hx/gen#tmp/x.py"
+echo 'print("ok")' > "$hx/gen/ok.py"
+out=$(bash "$CHECKS/python/banned-functions.sh" "$hx" 2>/dev/null || true)
+echo 'eval("1")' > "$hx/gen/bad.py"
+out2=$(bash "$CHECKS/python/banned-functions.sh" "$hx" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS' && echo "$out2" | grep -q '^FAIL' && echo "$out2" | grep -q 'gen/bad.py'; then pass; else
+    fail "excluded='$out' then='$out2'"; fi
+
+echo -n "Test 129: a tracked symlink to a file outside the project is not scanned... "
+sl=$(make_project "symlink")
+mkdir -p "$TMP_BASE/outside"
+echo 'eval("1")' > "$TMP_BASE/outside/evil.py"
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$TMP_BASE/outside/creds.py"
+echo "print('ok')" > "$sl/app.py"
+ln -s "$TMP_BASE/outside/evil.py" "$sl/link.py"
+ln -s "$TMP_BASE/outside/creds.py" "$sl/creds_link.py"
+git_commit_all "$sl" "feat: links"
+out=$(bash "$CHECKS/python/banned-functions.sh" "$sl" 2>/dev/null || true)
+out2=$(bash "$CHECKS/common/no-secrets.sh" "$sl" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS' && echo "$out2" | grep -q '^PASS'; then pass; else fail "banned='$out' secrets='$out2'"; fi
+
+# --- Runner: --since / --changed and --timeout (#180) -----------------------
+
+# Extract the status of one check from the runner's JSON output.
+json_check_status() {
+    tr -d '\n' | grep -o "\"status\": \"[A-Z]*\",[[:space:]]*\"check\": \"$1\"" | head -1 | grep -o '"[A-Z]*"' | head -1 | tr -d '"'
+}
+
+echo -n "Test 130: --since <ref> scans only files changed since the ref... "
+ch=$(make_project "changed-mode")
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$ch/legacy.py"
+git_commit_all "$ch" "feat: legacy"
+base=$(cd "$ch" && git rev-parse HEAD)
+echo "print('new')" > "$ch/new.py"
+git_commit_all "$ch" "feat: new file"
+full_status=$("$LINT" --format json "$ch" 2>/dev/null | json_check_status no-secrets)
+since_status=$("$LINT" --format json --since "$base" "$ch" 2>/dev/null | json_check_status no-secrets)
+if [ "$full_status" = "FAIL" ] && [ "$since_status" = "PASS" ]; then pass; else
+    fail "full='$full_status' since='$since_status'"; fi
+
+echo -n "Test 131: --since still scans an untracked (new, uncommitted) file... "
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$ch/wip.py"
+since_status=$("$LINT" --format json --since "$base" "$ch" 2>/dev/null | json_check_status no-secrets)
+rm -f "$ch/wip.py"
+if [ "$since_status" = "FAIL" ]; then pass; else fail "since='$since_status'"; fi
+
+echo -n "Test 132: --since with a project root that is a SUBDIRECTORY of the repo finds its changed files... "
+mono=$(make_project "monorepo")
+mkdir -p "$mono/app"
+echo "print('ok')" > "$mono/app/ok.py"
+git_commit_all "$mono" "feat: app"
+mbase=$(cd "$mono" && git rev-parse HEAD)
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$mono/app/bad.py"
+git_commit_all "$mono" "feat: bad"
+out=$("$LINT" --format json --since "$mbase" "$mono/app" 2>/dev/null || true)
+if [ "$(echo "$out" | json_check_status no-secrets)" = "FAIL" ] && echo "$out" | grep -q 'bad.py'; then pass; else
+    fail "status=$(echo "$out" | json_check_status no-secrets) out=$out"; fi
+
+echo -n "Test 133: --since scopes go/error-handling and rust/ffi-no-unwrap too (pre-existing findings are out of scope)... "
+gr=$(make_project "go-rust-scope")
+mkdir -p "$gr/src"
+printf 'version: 1\nlanguages:\n  - go\n  - rust\n' > "$gr/.standards.yml"
+printf 'package main\nfunc main() {\n\t_ = run()\n}\n' > "$gr/main.go"
+printf 'pub extern "C" fn f() { x.unwrap(); }\n' > "$gr/src/ffi.rs"
+git_commit_all "$gr" "feat: legacy"
+gbase=$(cd "$gr" && git rev-parse HEAD)
+echo "// new" > "$gr/new.go"
+git_commit_all "$gr" "feat: new"
+full=$("$LINT" --format json "$gr" 2>/dev/null || true)
+since=$("$LINT" --format json --since "$gbase" "$gr" 2>/dev/null || true)
+if [ "$(echo "$full" | json_check_status go/error-handling)" = "WARN" ] \
+   && [ "$(echo "$full" | json_check_status rust/ffi-no-unwrap)" = "FAIL" ] \
+   && [ "$(echo "$since" | json_check_status go/error-handling)" = "PASS" ] \
+   && [ "$(echo "$since" | json_check_status rust/ffi-no-unwrap)" = "PASS" ]; then pass; else
+    fail "full go=$(echo "$full" | json_check_status go/error-handling) rust=$(echo "$full" | json_check_status rust/ffi-no-unwrap); since go=$(echo "$since" | json_check_status go/error-handling) rust=$(echo "$since" | json_check_status rust/ffi-no-unwrap)"; fi
+
+echo -n "Test 134: go/error-handling skips untracked worktrees and honours lint.exclude... "
+mkdir -p "$gr/.worktrees/a" "$gr/gen"
+printf 'package w\nfunc g() { _ = run() }\n' > "$gr/.worktrees/a/w.go"
+printf 'package g\nfunc g() { _ = run() }\n' > "$gr/gen/g.go"
+printf 'version: 1\nlanguages:\n  - go\nlint:\n  exclude:\n    - gen/\n' > "$gr/.standards.yml"
+( cd "$gr" && git rm -q --cached main.go && rm -f main.go )
+out=$(bash "$CHECKS/go/error-handling.sh" "$gr" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 135: --changed with no base branch falls back to a full scan without crashing... "
+# Rename the only branch so none of the auto-detected bases (origin/HEAD,
+# origin/main, origin/master, main, master) exist.
+( cd "$ch" && git branch -m feature/no-base )
+"$LINT" --format json --changed "$ch" > "$TMP_BASE/changed.json" 2>/dev/null; rc=$?
+if [ "$rc" -le 1 ] && json_valid "$TMP_BASE/changed.json" \
+   && [ "$(json_check_status no-secrets < "$TMP_BASE/changed.json")" = "FAIL" ]; then pass; else
+    fail "exit $rc / invalid JSON / status=$(json_check_status no-secrets < "$TMP_BASE/changed.json")"; fi
+
+echo -n "Test 136: --timeout guards a hung check and reports WARN... "
+slow_checks="$TMP_BASE/slow-checks/common"
+mkdir -p "$slow_checks"
+printf '#!/bin/bash\nsleep 30\necho "PASS slow never gets here"\n' > "$slow_checks/slow.sh"
+chmod +x "$slow_checks/slow.sh"
+start=$(date +%s)
+out=$(LINT_CHECKS_DIR="$TMP_BASE/slow-checks" "$LINT" --format json --timeout 1 "$proj" 2>/dev/null || true)
+elapsed=$(( $(date +%s) - start ))
+if [ "$(echo "$out" | json_check_status slow)" = "WARN" ] && echo "$out" | grep -qi 'timed out' \
+   && [ "$elapsed" -lt 10 ]; then pass; else fail "elapsed=${elapsed}s out=$out"; fi
+
+echo -n "Test 137: a timed-out SECURITY check is FAIL, and --fail-on-timeout makes every timeout FAIL... "
+sec_checks="$TMP_BASE/sec-checks/common"
+mkdir -p "$sec_checks"
+cp "$slow_checks/slow.sh" "$sec_checks/no-secrets.sh"
+sec_status=$(LINT_CHECKS_DIR="$TMP_BASE/sec-checks" "$LINT" --format json --timeout 1 "$proj" 2>/dev/null | json_check_status no-secrets)
+strict_status=$(LINT_CHECKS_DIR="$TMP_BASE/slow-checks" "$LINT" --format json --timeout 1 --fail-on-timeout "$proj" 2>/dev/null | json_check_status slow)
+if [ "$sec_status" = "FAIL" ] && [ "$strict_status" = "FAIL" ]; then pass; else
+    fail "security='$sec_status' fail-on-timeout='$strict_status'"; fi
+
+echo -n "Test 138: --timeout escalates to SIGKILL for a check that ignores SIGTERM (no survivors)... "
+stub_checks="$TMP_BASE/stubborn-checks/common"
+mkdir -p "$stub_checks"
+printf '#!/bin/bash\ntrap "" TERM\nsleep 30\necho "PASS stubborn never gets here"\n' > "$stub_checks/stubborn.sh"
+chmod +x "$stub_checks/stubborn.sh"
+start=$(date +%s)
+out=$(LINT_CHECKS_DIR="$TMP_BASE/stubborn-checks" "$LINT" --format json --timeout 1 "$proj" 2>/dev/null || true)
+elapsed=$(( $(date +%s) - start ))
+leftover=$(pgrep -f "$stub_checks/stubborn.sh" 2>/dev/null | wc -l | tr -d ' ')
+if [ "$(echo "$out" | json_check_status stubborn)" = "WARN" ] && [ "$elapsed" -lt 10 ] && [ "$leftover" -eq 0 ]; then pass; else
+    fail "elapsed=${elapsed}s leftover=$leftover out=$out"; fi
+
+# --- Review round 3: regex safety, generator methods, type changes ----------
+
+echo -n "Test 139: an invalid lint.exclude pattern (trailing backslash) never empties the scan... "
+bs=$(make_project "backslash-exclude")
+mkdir -p "$bs/gen"
+printf 'version: 1\nlanguages:\n  - python\nlint:\n  exclude:\n    - '"'"'generated\\'"'"'\n' > "$bs/.standards.yml"
+echo 'eval("1")' > "$bs/gen/bad.py"
+out=$(bash "$CHECKS/python/banned-functions.sh" "$bs" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'gen/bad.py'; then pass; else fail "expected FAIL naming gen/bad.py, got: $out"; fi
+
+echo -n "Test 140: go/error-handling and rust/ffi-no-unwrap report (not skip) newline-named files... "
+gn=$(make_project "go-rust-newline")
+mkdir -p "$gn/src/ffi"
+printf 'package main\nfunc main() {}\n' > "$gn/ok.go"
+printf 'package main\nfunc g() { _ = run() }\n' > "$gn/odd"$'\n'"bad.go"
+printf 'pub fn ok() {}\n' > "$gn/src/ffi/ok.rs"
+printf 'pub fn f() { x.unwrap(); }\n' > "$gn/src/ffi/odd"$'\n'"bad.rs"
+out=$(bash "$CHECKS/go/error-handling.sh" "$gn" 2>/dev/null || true)
+out2=$(bash "$CHECKS/rust/ffi-no-unwrap.sh" "$gn" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'not scanned' \
+   && echo "$out2" | grep -q '^FAIL' && echo "$out2" | grep -q 'not scanned'; then pass; else fail "go='$out' rust='$out2'"; fi
+
+echo -n "Test 141: typescript/banned-functions flags a generator method line but still skips block-comment continuations... "
+gm=$(make_project "generator-method")
+printf 'class A {\n  *run() { eval(input); }\n}\n' > "$gm/a.ts"
+out=$(bash "$CHECKS/typescript/banned-functions.sh" "$gm" 2>/dev/null || true)
+printf '/**\n * eval(x) must not be used here\n */\nexport const ok = 1;\n' > "$gm/a.ts"
+out2=$(bash "$CHECKS/typescript/banned-functions.sh" "$gm" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'a.ts' && echo "$out2" | grep -q '^PASS'; then pass; else fail "generator='$out' comment='$out2'"; fi
+
+echo -n "Test 142: --since includes a symlink replaced by a regular file (type change)... "
+tc=$(make_project "type-change")
+echo "print('ok')" > "$tc/app.py"
+echo "placeholder" > "$TMP_BASE/outside-target.txt"
+ln -s "$TMP_BASE/outside-target.txt" "$tc/config.py"
+git_commit_all "$tc" "feat: link"
+tbase=$(cd "$tc" && git rev-parse HEAD)
+rm "$tc/config.py"
+printf 'aws_secret_access_key = "%s"\n' "$aws_key" > "$tc/config.py"
+git_commit_all "$tc" "feat: real file"
+since_status=$("$LINT" --format json --since "$tbase" "$tc" 2>/dev/null | json_check_status no-secrets)
+if [ "$since_status" = "FAIL" ]; then pass; else fail "since='$since_status'"; fi
+
+# --- Review round 4: decimal timeouts, quoted commas in inline lists ---------
+
+echo -n "Test 143: --timeout with a leading zero (08) is decimal and still runs every check... "
+out=$("$LINT" --format json --timeout 08 "$proj" 2>/dev/null || true)
+total=$(echo "$out" | tr -d '\n' | grep -o '"total": *[0-9]*' | grep -o '[0-9]*$')
+if [ -n "$out" ] && [ "${total:-0}" -gt 0 ]; then pass; else fail "total='$total' out=$out"; fi
+
+echo -n "Test 144: an inline lint.exclude list keeps a quoted comma inside one value... "
+ic=$(make_project "inline-comma")
+mkdir -p "$ic/gen,old" "$ic/gen"
+printf 'version: 1\nlanguages:\n  - python\nlint:\n  exclude: ["gen,old/", '"'"'skills/'"'"']\n' > "$ic/.standards.yml"
+echo 'eval("1")' > "$ic/gen,old/x.py"
+echo 'eval("1")' > "$ic/gen/bad.py"
+out=$(bash "$CHECKS/python/banned-functions.sh" "$ic" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'gen/bad.py' && ! echo "$out" | grep -q 'gen,old'; then pass; else
+    fail "expected FAIL naming gen/bad.py only, got: $out"; fi
+
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"

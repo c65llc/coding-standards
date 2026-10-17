@@ -186,6 +186,32 @@ Default: `strict`
 
 ---
 
+### `lint`
+
+Type: object
+
+Options for `lint-standards.sh` (the compliance linter).
+
+| Sub-field | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `exclude` | list of strings | `[]` | Project-relative paths the code-quality file-scanning checks (`*/banned-functions`) skip. Each entry is a path prefix (file or directory) or a shell-style glob: `*` matches within a path segment, `**` any run of characters, `**/` zero or more whole segments. **Not applied to `no-secrets`**, which scans every tracked file so the exclude list cannot hide a committed secret. |
+
+```yaml
+lint:
+  exclude:
+    - docs/              # whole directory
+    - skills/smoke.sh    # single file
+    - fixtures/**        # glob
+```
+
+Built-in exclusions (`.git`, `node_modules`, `vendor`, `dist`, `build`,
+`target`, `coverage`, `.worktrees`, `.claude/worktrees`, …) and `.gitignore`
+always apply to untracked content; `lint.exclude` adds to them for the
+`banned-functions` checks. `no-secrets` scans every tracked file regardless.
+See `scripts/lint-checks/README.md` for the full list and matching rules.
+
+---
+
 ## Migration from `.standards-config`
 
 The legacy `.standards-config` file used `KEY=VALUE` format:
