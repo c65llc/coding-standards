@@ -207,6 +207,12 @@ trap 'rm -f "$TMPFILE"' EXIT
         printf '%s — DO NOT EDIT THIS LINE -->\n' "$SENTINEL"
         printf '\n'
         printf '<!-- Add project-specific instructions below this line. This section is preserved across re-assembly. -->\n'
+        printf '\n'
+        printf '## Known Traps\n'
+        printf '\n'
+        printf '| Trap | Why it bites | Issue | Date |\n'
+        printf '|------|--------------|-------|------|\n'
+        printf '| Example: run `make ci` from the repo root, not from a package directory | Sub-make targets resolve paths from the working directory and silently skip suites | #000 | YYYY-MM-DD |\n'
     fi
 
 } > "$TMPFILE"

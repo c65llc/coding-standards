@@ -32,7 +32,7 @@ Reference and strictly follow these documents when making any changes:
    - `standards/languages/lang-13_elixir_standards.md` - Elixir (mix, mix format, credo, ExUnit)
 
 3. **Process Standards:**
-   - `standards/process/proc-01_documentation_standards.md` - ADR, code docs, changelog, user docs
+   - `standards/process/proc-01_documentation_standards.md` - ADR (bullet metadata), spec/plan/design-pass/verification docs, changelog, user docs
    - `standards/process/proc-02_git_version_control_standards.md` - Git workflow, commits, branching
    - `standards/process/proc-03_code_review_expectations.md` - Code review process and expectations
    - `standards/process/proc-04_agent_workflow_standards.md` - Agent worktree/PR workflow
@@ -75,7 +75,7 @@ These mandates apply to ALL code changes, regardless of scope or urgency:
 
 4. **Documentation requirements:**
    - Update code documentation for public APIs
-   - Create ADRs for architectural decisions
+   - Create ADRs for architectural decisions (templates for ADR, spec, plan, design pass and verification docs: `templates/docs/`)
    - Update CHANGELOG.md for user-facing changes
    - Follow documentation format from `standards/process/proc-01_documentation_standards.md`
 

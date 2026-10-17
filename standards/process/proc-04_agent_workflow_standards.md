@@ -8,6 +8,8 @@ Every discrete piece of agent work follows the same end-to-end lifecycle: isolat
 
 ### The Complete Lifecycle
 
+Non-trivial work (a new feature, a change crossing architectural layers, a migration) starts **before step 1** with a design spec and an implementation plan — see [proc-01 §11](./proc-01_documentation_standards.md#11-spec-plan-design-pass-and-verification-documents) and the templates in `templates/docs/`. UI work adds a design pass (§7). Trivial fixes go straight to the worktree.
+
 Every agent task MUST follow these steps in order:
 
 1. **Create worktree + branch.**
@@ -247,6 +249,10 @@ Agents MUST create GitHub Issues (or the project's configured tracker) when they
 ## 7. UI Change Validation
 
 For projects with a graphical interface, agents that modify UI files MUST validate the rendered output against a reference design before claiming the change is complete. This complements the [Devloop Pattern](#4-devloop-pattern-ui-projects) — devloop enables agents to *iterate*; UI Change Validation enforces that the iteration converges on design intent.
+
+### Design pass before code
+
+A new or reshaped surface gets a **design pass** before its first UI commit: copy [`templates/docs/design-pass.md`](https://github.com/c65llc/coding-standards/blob/main/templates/docs/design-pass.md) to `docs/design/YYYY-MM-DD-<surface>.md` and fill the identity prompts, hard constraints, deliverables table and state inventory (empty / loading / error / streaming / sync paused / runner unavailable / pending write). The reference designs in `assets/designs/` are a deliverable of that pass; the validation below compares the build against them. No design pass means no reference, which means the PR needs human visual sign-off (see "UI PRs are not auto-mergeable" below). See [proc-01 §11](./proc-01_documentation_standards.md#11-spec-plan-design-pass-and-verification-documents).
 
 ### When the protocol triggers
 

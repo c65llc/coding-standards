@@ -115,6 +115,7 @@ When working with this repository, agents must follow the A-P-E (Analyze, Plan, 
 - **Language Standards:** `standards/languages/lang-01_python_standards.md` through `lang-13_elixir_standards.md`
 - **Process Standards:** `standards/process/proc-01_documentation_standards.md` through `proc-05_test_governance.md`
 - **Security Standards:** `standards/security/sec-01_security_standards.md` - P0-P2 security guidelines
+- **Document Templates:** `templates/docs/` - ADR, spec, plan, design-pass, verification (proc-01 §1 and §11)
 
 ## 🔗 Integration Points
 

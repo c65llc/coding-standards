@@ -649,4 +649,4 @@ Potential improvements:
 
 **For detailed command usage, see**: [GH_TASK_GUIDE.md](./GH_TASK_GUIDE.md)
 
-**For AI agent-specific examples, see**: [GEMINI.md](./GEMINI.md) (if available in your project)
+**For AI agent-specific examples, see**: [GEMINI.md](../.gemini/GEMINI.md) (if available in your project)

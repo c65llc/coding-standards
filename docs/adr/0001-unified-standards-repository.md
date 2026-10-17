@@ -1,12 +1,10 @@
 # ADR 0001: Unified Standards Repository
 
-## Status
-
-Accepted
-
-## Date
-
-2025-12-22
+- **Status:** Accepted
+- **Date:** 2025-12-22
+- **Related:** —
+- **Supersedes:** —
+- **Extends:** —
 
 ## Context
 

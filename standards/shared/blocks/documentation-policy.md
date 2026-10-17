@@ -1,6 +1,7 @@
 Document all public APIs with language-standard formats (JSDoc, docstrings, rustdoc, JavaDoc, YARD). Include parameters, return values, errors, and examples.
 Comments explain "why", never "what". Self-documenting code preferred.
 Every package and app must have a README: purpose, installation, usage, configuration, development.
-Create an ADR in `docs/adr/` for decisions affecting structure, dependencies, or significant technical choices.
+Create an ADR in `docs/adr/` for decisions affecting structure, dependencies, or significant technical choices. ADRs open with bullet metadata (`- **Status:**`, `- **Date:**`, `- **Related:**`, `- **Supersedes:**`/`- **Extends:**`) and have Context, Decision and Consequences sections.
+Non-trivial work gets a spec (`docs/specs/`) before a plan (`docs/plans/`) before code; UI work gets a design pass first; every feature PR ships a verification doc that names what was NOT verified. Templates: `.standards/templates/docs/`. Keep the docs index's live/historical status column current.
 Maintain `CHANGELOG.md` (Keep a Changelog format); update it for every user-facing change in a PR — UNLESS the project uses release automation (semantic-release, release-please, Changesets). With automation, release notes are generated (from Conventional Commits for commit-driven tools, or from per-PR changeset fragments for Changesets): do NOT hand-edit a shared `## [Unreleased]` block per PR (it causes merge conflicts under parallel work); rely on the generated notes or changeset fragments.
 Track all work as GitHub Issues. Every `TODO`/`FIXME` must reference an issue: `# TODO(#42): description`.
