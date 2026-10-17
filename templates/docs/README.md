@@ -23,9 +23,15 @@ template content is identical.
 - **Bullet metadata at the top** (`- **Status:**`, `- **Date:**`,
   `- **Related:**`) so `lint-standards` and humans can find the fields without
   parsing headings. ADRs additionally carry `Supersedes` / `Extends`.
-- **Placeholders are square brackets** — `[like this]` — and must not survive
-  into a committed document. `grep -n '\[[A-Z]' docs/your-file.md` is a quick
-  check.
+- **Placeholders are square brackets** — `[like this]`, `[topic]`, `[N]` — and
+  must not survive into a committed document. A quick check that covers both
+  the capitalised prompts and the lowercase slot names, while skipping
+  `[text](link)`, `[label]: url` and ticked `[x]` checkboxes:
+
+  ```bash
+  grep -nE '\[[A-Za-z][^]]*\]($|[^(:])' docs/your-file.md | grep -v '\- \[x\]'
+  ```
+
 - **No "Alternatives considered" section by default.** State the rejected
   option inline in the Decision when it matters.
 - **Every doc appears in the docs index** with a `live` or `historical`

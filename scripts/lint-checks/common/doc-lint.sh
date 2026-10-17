@@ -5,10 +5,11 @@
 # Outputs: PASS|WARN|FAIL <check-name> <message>
 # Exit:    0=PASS, 1=FAIL, 2=WARN
 #
-# Scope: every tracked or untracked-but-not-ignored *.md in the project (via
-# `git ls-files`), falling back to `find` with a fixed exclusion list outside a
-# git checkout. The vendored standards checkout (.standards/) and the
-# .standards-pending/ staging dir are always skipped.
+# Scope: every tracked or untracked-but-not-ignored Markdown file (any case of
+# the .md extension) in the project (via `git ls-files`), falling back to
+# `find` with a fixed exclusion list outside a git checkout. The vendored
+# standards checkout (.standards/) and the .standards-pending/ staging dir are
+# always skipped.
 #
 # ADR rules — files under docs/adr/, docs/adrs/, docs/decisions/ or
 # docs/architecture/decisions/. README.md, index.md and the template file
@@ -20,19 +21,23 @@
 #               Deprecated or Superseded (proc-01 §1 vocabulary)
 #   * Date    — `- **Date:** <value>`, a `## Date` heading, or a `Date:` line;
 #               the value must start with an ISO date (YYYY-MM-DD)
-#   * Headings named Context, Decision and Consequences (any level)
+#   * Headings named Context, Decision and Consequences (any level; up to three
+#     leading spaces as CommonMark allows)
 #   For the heading form the value is the first non-blank line under the
 #   heading, so an empty `## Status` section counts as missing.
 #
 # Link rules — inline `[text](target)`, `![alt](target)` and reference
 # definitions `[label]: target` whose target is relative (no URL scheme, no
 # leading `/`, not a bare `#anchor`) must resolve from the linking file's
-# directory. Destinations follow CommonMark: `<...>` may contain spaces,
-# otherwise balanced parentheses are part of the target and the destination
-# ends at whitespace (title) or the unbalanced `)`. Fragments, query strings
-# and titles are stripped; fenced code blocks (matched by delimiter character
-# and length, so a shorter fence inside a longer one is content) and inline
-# code spans are ignored.
+# directory. Destinations follow CommonMark: optional whitespace after `(`,
+# `<...>` may contain spaces, otherwise balanced parentheses are part of the
+# target and the destination ends at whitespace (title) or the unbalanced `)`;
+# backslash escapes are decoded. An escaped `\[` or `\]` does not form a link,
+# and footnote definitions (`[^1]: …`) are not reference links. Fragments,
+# query strings and titles are stripped. Fenced code blocks (opener indented at
+# most three spaces, matched by delimiter character and length so a shorter
+# fence inside a longer one is content) and inline code spans (any backtick
+# run length) are ignored.
 #
 # See standards/process/proc-01_documentation_standards.md §1 and §10.
 
@@ -51,11 +56,11 @@ list_markdown_files() {
     if git -C "$PROJECT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         # core.quotePath=false: emit non-ASCII names verbatim instead of the
         # C-escaped, double-quoted form ("docs/\346\227\245.md") that would
-        # never match a real file.
+        # never match a real file. :(icase) matches .md, .MD, .Md and .mD.
         git -C "$PROJECT_ROOT" -c core.quotePath=false ls-files \
-            --cached --others --exclude-standard -- '*.md' '*.MD' 2>/dev/null
+            --cached --others --exclude-standard -- ':(icase)*.md' 2>/dev/null
     else
-        ( cd "$PROJECT_ROOT" && find . -type f \( -name '*.md' -o -name '*.MD' \) \
+        ( cd "$PROJECT_ROOT" && find . -type f -iname '*.md' \
             -not -path '*/.git/*' -not -path '*/node_modules/*' \
             -not -path '*/vendor/*' -not -path '*/dist/*' -not -path '*/build/*' \
             -not -path '*/target/*' -not -path '*/.venv/*' -not -path '*/venv/*' \
@@ -89,6 +94,7 @@ is_adr_path() {
 # when the field is absent or empty. Accepts:
 #   - **Field:** value   |   **Field**: value   |   Field: value
 #   ## Field            (value = first non-blank line below, unless a heading)
+# LC_ALL=C: see extract_relative_links.
 adr_field_value() {
     local file="$1" field="$2"
     LC_ALL=C awk -v field="$field" '
@@ -99,7 +105,7 @@ adr_field_value() {
                 v = substr($0, RSTART + RLENGTH)
                 print trim(v); exit
             }
-            if (match(low, "^#+[[:space:]]+" field "([[:space:]]|$)")) { want = 1; next }
+            if (match(low, "^ ? ? ?#+[[:space:]]+" field "([[:space:]]|$)")) { want = 1; next }
             if (want) {
                 if ($0 ~ /^[[:space:]]*$/) next
                 if ($0 ~ /^[[:space:]]*#/) exit            # empty section
@@ -123,7 +129,7 @@ adr_missing_fields() {
         missing="$missing Date"
     fi
     for section in Context Decision Consequences; do
-        if ! grep -qiE "^#{1,6}[[:space:]]+${section}([[:space:]]|$)" "$file"; then
+        if ! grep -qiE "^ {0,3}#{1,6}[[:space:]]+${section}([[:space:]]|$)" "$file"; then
             missing="$missing $section"
         fi
     done
@@ -134,27 +140,91 @@ adr_missing_fields() {
 # Relative link extraction
 # ---------------------------------------------------------------------------
 # Prints the relative link targets in a Markdown file, one per line.
-# LC_ALL=C: the destination parser walks the line one position at a time, and
-# in a UTF-8 locale macOS awk aborts ("multibyte conversion failure") when a
-# single byte of a multibyte character is tested against a regex. Byte
-# semantics are safe here because every cut point is an ASCII delimiter.
+# LC_ALL=C: the parsers walk the line one position at a time, and in a UTF-8
+# locale macOS awk aborts ("multibyte conversion failure") when a single byte
+# of a multibyte character is tested against a regex. Byte semantics are safe
+# here because every cut point is an ASCII delimiter.
 extract_relative_links() {
     LC_ALL=C awk '
+        # Remove the first unescaped "#" or "?" and everything after it,
+        # honouring backslash escapes (a "\#" is part of the path).
+        function strip_fragment(t,    i, L, c) {
+            L = length(t); i = 1
+            while (i <= L) {
+                c = substr(t, i, 1)
+                if (c == "\\") { i += 2; continue }
+                if (c == "#" || c == "?") return substr(t, 1, i - 1)
+                i++
+            }
+            return t
+        }
+        # Decode CommonMark backslash escapes: "\" before ASCII punctuation
+        # yields the punctuation character; any other "\" is literal.
+        function unescape(t,    out, i, L, c, d) {
+            out = ""; L = length(t); i = 1
+            while (i <= L) {
+                c = substr(t, i, 1)
+                if (c == "\\" && i < L) {
+                    d = substr(t, i + 1, 1)
+                    if (d ~ /[!-\/:-@\[-`{-~]/) { out = out d; i += 2; continue }
+                }
+                out = out c; i++
+            }
+            return out
+        }
         # angle=1: the destination came from <...> and may contain spaces.
         function emit(target, angle) {
             if (!angle) sub(/[[:space:]].*$/, "", target)   # drop link title
-            sub(/[#?].*$/, "", target)                      # drop fragment / query
+            target = unescape(strip_fragment(target))       # drop fragment / query
             if (target == "") return
             if (target ~ /^[A-Za-z][A-Za-z0-9+.-]*:/) return   # URL scheme
             if (target ~ /^\//) return                         # site-absolute
             if (target ~ /\{\{/) return                        # template var
             print target
         }
-        # Parse one destination starting at the first character of rest.
-        # Sets DEST and DEST_ANGLE; returns the number of characters consumed
-        # up to and including the closing ")" of the link, or 0 if the link
-        # does not close on this line.
-        function parse_dest(rest,    n, j, k, c, depth) {
+        # Drop inline code spans. A span opens with a run of N backticks and
+        # closes at the next run of exactly N; an unmatched run is literal
+        # text. "\`" outside a span is a literal backtick.
+        function strip_code_spans(s,    out, i, L, c, n, j, m, found) {
+            out = ""; L = length(s); i = 1
+            while (i <= L) {
+                c = substr(s, i, 1)
+                if (c == "\\" && i < L) { out = out substr(s, i, 2); i += 2; continue }
+                if (c != "`") { out = out c; i++; continue }
+                n = 0; while (substr(s, i + n, 1) == "`") n++
+                j = i + n; found = 0
+                while (j <= L) {
+                    if (substr(s, j, 1) == "`") {
+                        m = 0; while (substr(s, j + m, 1) == "`") m++
+                        if (m == n) { found = 1; break }
+                        j += m
+                    } else j++
+                }
+                if (found) i = j + n
+                else { out = out substr(s, i, n); i += n }
+            }
+            return out
+        }
+        # Index of the unescaped "[" that opens the link whose "]" is at b,
+        # or 0 when there is none (a bare or escaped "](" is not a link).
+        function find_opener(s, b,    k, depth, c) {
+            depth = 0
+            for (k = b - 1; k >= 1; k--) {
+                c = substr(s, k, 1)
+                if (k > 1 && substr(s, k - 1, 1) == "\\") { k--; continue }
+                if (c == "]") depth++
+                else if (c == "[") { if (depth == 0) return k; depth-- }
+            }
+            return 0
+        }
+        # Parse one destination starting right after "](". Sets DEST and
+        # DEST_ANGLE; returns the number of characters consumed up to and
+        # including the closing ")" of the link, or 0 if the link does not
+        # close on this line.
+        function parse_dest(rest,    lead, n, j, k, c, depth) {
+            lead = 0
+            while (substr(rest, lead + 1, 1) == " " || substr(rest, lead + 1, 1) == "\t") lead++
+            if (lead) rest = substr(rest, lead + 1)
             n = length(rest)
             if (substr(rest, 1, 1) == "<") {
                 j = index(rest, ">")
@@ -162,7 +232,7 @@ extract_relative_links() {
                 DEST = substr(rest, 2, j - 2); DEST_ANGLE = 1
                 k = index(substr(rest, j + 1), ")")
                 if (k == 0) return 0
-                return j + k
+                return lead + j + k
             }
             depth = 0; j = 1
             while (j <= n) {
@@ -175,28 +245,31 @@ extract_relative_links() {
             }
             if (j > n) return 0
             DEST = substr(rest, 1, j - 1); DEST_ANGLE = 0
-            if (c == ")") return j
+            if (c == ")") return lead + j
             k = index(substr(rest, j), ")")
             if (k == 0) return 0
-            return j + k - 1
+            return lead + j + k - 1
         }
-        # Fenced code: remember the opening delimiter character and run length;
-        # only a fence of the same character and at least that length closes it.
-        /^[[:space:]]*(```|~~~)/ {
-            match($0, /^[[:space:]]*/); rest = substr($0, RLENGTH + 1)
-            ch = substr(rest, 1, 1); n = 0
-            while (substr(rest, n + 1, 1) == ch) n++
-            if (!in_fence) { in_fence = 1; fence_ch = ch; fence_len = n; next }
-            if (ch == fence_ch && n >= fence_len && substr(rest, n + 1) ~ /^[[:space:]]*$/) {
-                in_fence = 0; next
+        # Fenced code: an opener may be indented at most three spaces (four
+        # make it indented code). Remember the delimiter character and run
+        # length; only a fence of the same character and at least that length,
+        # with nothing but whitespace after it, closes the block.
+        /^[ \t]*(```|~~~)/ {
+            match($0, /^[ \t]*/); ind = substr($0, 1, RLENGTH); rest = substr($0, RLENGTH + 1)
+            if (length(ind) <= 3 && index(ind, "\t") == 0) {
+                ch = substr(rest, 1, 1); n = 0
+                while (substr(rest, n + 1, 1) == ch) n++
+                if (!in_fence) { in_fence = 1; fence_ch = ch; fence_len = n; next }
+                if (ch == fence_ch && n >= fence_len && substr(rest, n + 1) ~ /^[[:space:]]*$/) {
+                    in_fence = 0; next
+                }
             }
         }
         in_fence { next }
         {
-            line = $0
-            gsub(/`[^`]*`/, "", line)             # drop inline code spans
-            # Reference-style definition: [label]: target
-            if (match(line, /^[[:space:]]*\[[^]]+\]:[[:space:]]*/)) {
+            line = strip_code_spans($0)
+            # Reference-style definition: [label]: target  (not footnotes [^1]:)
+            if (match(line, /^[[:space:]]*\[[^]^][^]]*\]:[[:space:]]*/)) {
                 rest = substr(line, RLENGTH + 1)
                 if (substr(rest, 1, 1) == "<") {
                     j = index(rest, ">")
@@ -206,10 +279,13 @@ extract_relative_links() {
                 }
                 next
             }
-            # Inline links and images: ](destination "title")
+            # Inline links and images: [text](destination "title")
             pos = 1
             while ((i = index(substr(line, pos), "](")) > 0) {
-                start = pos + i + 1                       # first char after "]("
+                b = pos + i - 1                           # index of "]"
+                start = b + 2                             # first char after "]("
+                if (b > 1 && substr(line, b - 1, 1) == "\\") { pos = start; continue }   # escaped "]"
+                if (!find_opener(line, b)) { pos = start; continue }                    # no unescaped "["
                 used = parse_dest(substr(line, start))
                 if (used == 0) { pos = start; continue }  # unterminated; keep scanning
                 emit(DEST, DEST_ANGLE)

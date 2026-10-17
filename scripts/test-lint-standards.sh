@@ -363,10 +363,10 @@ if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'invalid minimum'; the
 
 DOC_LINT="$CHECKS/common/doc-lint.sh"
 
-echo -n "Test 12: doc-lint module exists and is executable... "
+echo -n "Test 25: doc-lint module exists and is executable... "
 if [ -x "$DOC_LINT" ]; then pass; else fail "$DOC_LINT missing or not executable"; fi
 
-echo -n "Test 13: doc-lint PASSes an ADR with bullet metadata and required sections... "
+echo -n "Test 26: doc-lint PASSes an ADR with bullet metadata and required sections... "
 adr_ok=$(make_project "adr-ok")
 mkdir -p "$adr_ok/docs/adr"
 cat > "$adr_ok/docs/adr/0001-use-sqlite.md" <<'EOF'
@@ -391,7 +391,7 @@ EOF
 out=$(bash "$DOC_LINT" "$adr_ok" 2>/dev/null || true)
 if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
 
-echo -n "Test 14: doc-lint FAILs an ADR missing Date and Consequences... "
+echo -n "Test 27: doc-lint FAILs an ADR missing Date and Consequences... "
 adr_bad=$(make_project "adr-bad")
 mkdir -p "$adr_bad/docs/adr"
 cat > "$adr_bad/docs/adr/0002-incomplete.md" <<'EOF'
@@ -412,7 +412,7 @@ if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q '0002-incomplete.md' \
    && echo "$out" | grep -qi 'date' && echo "$out" | grep -qi 'consequences'; then pass; else
     fail "expected FAIL naming the ADR and the missing fields, got: $out"; fi
 
-echo -n "Test 15: doc-lint accepts the legacy heading-style ADR (## Status / ## Date)... "
+echo -n "Test 28: doc-lint accepts the legacy heading-style ADR (## Status / ## Date)... "
 adr_legacy=$(make_project "adr-legacy")
 mkdir -p "$adr_legacy/docs/adr"
 cat > "$adr_legacy/docs/adr/0001-legacy.md" <<'EOF'
@@ -441,7 +441,7 @@ EOF
 out=$(bash "$DOC_LINT" "$adr_legacy" 2>/dev/null || true)
 if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
 
-echo -n "Test 16: doc-lint FAILs a broken relative Markdown link... "
+echo -n "Test 29: doc-lint FAILs a broken relative Markdown link... "
 link_bad=$(make_project "link-bad")
 mkdir -p "$link_bad/docs/guides"
 printf '# Guide\n\nSee [the spec](../specs/missing-spec.md) and [home](../../README.md).\n' \
@@ -451,7 +451,7 @@ out=$(bash "$DOC_LINT" "$link_bad" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'missing-spec.md'; then pass; else
     fail "expected FAIL naming missing-spec.md, got: $out"; fi
 
-echo -n "Test 17: doc-lint resolves good relative links; ignores URLs, anchors, and code... "
+echo -n "Test 30: doc-lint resolves good relative links; ignores URLs, anchors, and code... "
 link_ok=$(make_project "link-ok")
 mkdir -p "$link_ok/docs/specs" "$link_ok/docs/guides"
 echo "# Spec" > "$link_ok/docs/specs/2026-10-17-topic-design.md"
@@ -474,19 +474,178 @@ echo "# Project" > "$link_ok/README.md"
 out=$(bash "$DOC_LINT" "$link_ok" 2>/dev/null || true)
 if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
 
-echo -n "Test 18: doc-lint emits a status line on a project with no Markdown at all... "
+echo -n "Test 31: doc-lint parses destinations with balanced parens and <angle> spaces... "
+link_cm=$(make_project "link-commonmark")
+mkdir -p "$link_cm/docs"
+echo "# API v2" > "$link_cm/docs/API_(v2).md"
+echo "# Guide" > "$link_cm/docs/my file.md"
+cat > "$link_cm/docs/index.md" <<'EOF'
+# Index
+
+See [api](API_(v2).md), [guide](<my file.md>), [titled](<my file.md> "Guide title")
+and [both](API_(v2).md "API title") plus ![img](<my file.md>).
+
+[ref-angle]: <my file.md>
+[ref-paren]: API_(v2).md
+EOF
+out=$(bash "$DOC_LINT" "$link_cm" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 32: doc-lint tracks fence delimiter/length so a nested shorter fence is content... "
+link_fence=$(make_project "link-fence")
+mkdir -p "$link_fence/docs"
+cat > "$link_fence/docs/fences.md" <<'EOF'
+# Fences
+
+````markdown
+```md
+[placeholder](../does-not-exist.md)
+```
+[still inside the outer fence](./nope.md)
+````
+
+~~~
+[tilde fence](./also-nope.md)
+```
+[backticks inside tildes do not close it](./nope-again.md)
+~~~
+
+Back to prose: [real](./fences.md).
+EOF
+out=$(bash "$DOC_LINT" "$link_fence" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 33: doc-lint FAILs an ADR whose Status/Date bullets are empty or not ISO... "
+adr_empty=$(make_project "adr-empty")
+mkdir -p "$adr_empty/docs/adr"
+cat > "$adr_empty/docs/adr/0003-empty-meta.md" <<'EOF'
+# ADR 0003: Empty metadata
+
+- **Status:**
+- **Date:** TBD
+
+## Context
+
+Text.
+
+## Decision
+
+Text.
+
+## Consequences
+
+Text.
+EOF
+out=$(bash "$DOC_LINT" "$adr_empty" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q '0003-empty-meta.md' \
+   && echo "$out" | grep -q 'Status' && echo "$out" | grep -q 'Date'; then pass; else
+    fail "expected FAIL naming Status and Date, got: $out"; fi
+
+echo -n "Test 34: doc-lint exempts only the ADR template file, not a decision about templates... "
+adr_tpl=$(make_project "adr-template")
+mkdir -p "$adr_tpl/docs/adr"
+printf '# ADR NNNN: Title\n\n- **Status:** Proposed\n- **Date:** YYYY-MM-DD\n' > "$adr_tpl/docs/adr/template.md"
+printf '# ADR 0000: Template\n' > "$adr_tpl/docs/adr/0000-template.md"
+printf '# ADR 0007: Select template engine\n\nNo metadata, no sections.\n' \
+    > "$adr_tpl/docs/adr/0007-select-template-engine.md"
+out=$(bash "$DOC_LINT" "$adr_tpl" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q '0007-select-template-engine.md' \
+   && ! echo "$out" | grep -q 'template.md (' && echo "$out" | grep -q '^FAIL doc-lint 1 ADR'; then pass; else
+    fail "expected exactly one FAIL for 0007-select-template-engine.md, got: $out"; fi
+
+echo -n "Test 35: doc-lint checks Markdown files with non-ASCII names (core.quotePath)... "
+link_utf=$(make_project "link-utf8")
+mkdir -p "$link_utf/docs"
+printf '# 日本語\n\nSee [missing](./missing-ü.md).\n' > "$link_utf/docs/日本語.md"
+out=$(bash "$DOC_LINT" "$link_utf" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q '日本語.md'; then pass; else
+    fail "expected FAIL naming 日本語.md, got: $out"; fi
+
+echo -n "Test 36: doc-lint honours CommonMark escapes, code spans, footnotes and 3-space fences... "
+link_cm2=$(make_project "link-commonmark2")
+mkdir -p "$link_cm2/docs"
+echo "# API v2" > "$link_cm2/docs/API_(v2).md"
+echo "# Hash" > "$link_cm2/docs/a#b.md"
+cat > "$link_cm2/docs/index.md" <<'EOF'
+# Index
+
+Escaped destination [api](API_\(v2\).md) and escaped fragment [hash](a\#b.md).
+Escaped opener \[label](not-a-link.md) renders literally, as does \[x\](nope.md).
+Multi-backtick span ``[example](missing.md)`` and ``` `` [nested](also-missing.md) `` ``` are code.
+Literal backtick \` then [real](index.md) still parsed.
+
+   ```md
+   [inside a 3-space-indented fence](fenced-nope.md)
+   ```
+
+[^1]: A footnote definition is not a reference link.
+[ref]: API_\(v2\).md
+EOF
+out=$(bash "$DOC_LINT" "$link_cm2" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 37: doc-lint FAILs a space-prefixed destination and sees past 4-space-indented backticks... "
+link_cm3=$(make_project "link-commonmark3")
+mkdir -p "$link_cm3/docs"
+cat > "$link_cm3/docs/index.md" <<'EOF'
+# Index
+
+A link with [space before the target]( missing.md) must still be checked.
+
+    ```
+Four spaces of indentation is indented code, not a fence opener, so this
+[prose link after it](after-indent.md) is still linted.
+EOF
+out=$(bash "$DOC_LINT" "$link_cm3" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'missing.md' \
+   && echo "$out" | grep -q 'after-indent.md' && echo "$out" | grep -q '2 broken'; then pass; else
+    fail "expected FAIL naming missing.md and after-indent.md (2 broken), got: $out"; fi
+
+echo -n "Test 38: doc-lint accepts ADR headings indented up to three spaces... "
+adr_ind=$(make_project "adr-indented")
+mkdir -p "$adr_ind/docs/adr"
+cat > "$adr_ind/docs/adr/0004-indented.md" <<'EOF'
+# ADR 0004: Indented headings
+
+- **Status:** Rejected
+- **Date:** 2026-10-17
+
+  ## Context
+
+Text.
+
+   ## Decision
+
+Text.
+
+ ## Consequences
+
+Text.
+EOF
+out=$(bash "$DOC_LINT" "$adr_ind" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 39: doc-lint lints mixed-case .Md files too... "
+link_case=$(make_project "link-mixed-case")
+mkdir -p "$link_case/docs"
+printf '# Guide\n\nSee [missing](./nowhere.md).\n' > "$link_case/docs/GUIDE.Md"
+out=$(bash "$DOC_LINT" "$link_case" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'GUIDE.Md'; then pass; else
+    fail "expected FAIL naming GUIDE.Md, got: $out"; fi
+
+echo -n "Test 40: doc-lint emits a status line on a project with no Markdown at all... "
 out=$(bash "$DOC_LINT" "$proj" 2>/dev/null || true)
 if echo "$out" | grep -qE '^(PASS|WARN)'; then pass; else fail "expected PASS/WARN, got: $out"; fi
 
 # --- Sibling scripts smoke --------------------------------------------------
 
-echo -n "Test 25: diff-standards.sh runs on a project without .standards.yml... "
+echo -n "Test 41: diff-standards.sh runs on a project without .standards.yml... "
 if bash "$REPO_ROOT/scripts/diff-standards.sh" "$proj" >/dev/null 2>&1; then pass; else
     # diff-standards may exit non-zero; accept as long as it doesn't crash hard (>1)
     rc=$?; if [ "$rc" -le 1 ]; then pass; else fail "diff-standards crashed (exit $rc)"; fi
 fi
 
-echo -n "Test 26: doctor.sh runs without a hard crash... "
+echo -n "Test 42: doctor.sh runs without a hard crash... "
 ( cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -le 1 ]; then pass; else fail "doctor.sh crashed (exit $rc)"; fi
 

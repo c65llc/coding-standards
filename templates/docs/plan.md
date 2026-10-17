@@ -6,7 +6,8 @@
 - **Related:** #[issue]
 
 A plan turns an agreed spec into ordered, checkable work. It is a *historical*
-document once the work ships: tick the boxes, do not rewrite the history.
+document from its first commit (proc-01 §9): tick the boxes as work lands, do
+not rewrite the history.
 
 ## Goal
 
@@ -85,7 +86,9 @@ know what is intentionally missing from an early PR.]
 progress is reported, and what triggers a re-plan.]
 
 - **Executor:** [person / agent / "subagent per phase"]
-- **Workspace:** `git worktree add .claude/worktrees/[branch] -b [branch]`
+- **Workspace:** `git worktree add [agent-dir]/worktrees/[branch] -b [branch]`
+  where `[agent-dir]` is the agent's directory per proc-04 (`.claude` for Claude
+  Code, `.cursor` for Cursor, or the equivalent)
 - **Progress:** tick tasks in this file in the same commit as the work; post a
   one-line status on the issue at each phase boundary.
 - **Re-plan trigger:** any task that needs a change to the spec's Architecture or

@@ -42,7 +42,7 @@ Copy [`templates/docs/adr.md`](https://github.com/c65llc/coding-standards/blob/m
 
 | Field | Form | Values |
 |-------|------|--------|
-| Status | `- **Status:**` | `Proposed`, `Accepted`, `Deprecated`, `Superseded by ADR NNNN` |
+| Status | `- **Status:**` | `Proposed`, `Accepted`, `Rejected`, `Deprecated`, `Superseded by ADR NNNN` |
 | Date | `- **Date:**` | ISO `YYYY-MM-DD` — the date the status last changed |
 | Related | `- **Related:**` | Issues, PRs, specs, review-finding ids (`R17`, `M-3`) |
 | Supersedes / Extends | `- **Supersedes:**`, `- **Extends:**` | ADR numbers or `—`. *Supersedes* retires the older ADR (set its status to `Superseded by ADR NNNN`); *Extends* refines it and leaves it Accepted |
