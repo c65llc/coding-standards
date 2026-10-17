@@ -108,10 +108,19 @@ member_escape_reason() {
     root_real=$(cd "$root" 2>/dev/null && pwd -P) || return 1
     m_real=$(cd "$root/$rel" 2>/dev/null && pwd -P) || return 1
     case "$m_real" in
-        "$root_real"|"$root_real"/*) return 1 ;;
+        "$root_real"|"$root_real"/*) ;;
+        *)
+            printf "declared member '%s' rejected: resolves to '%s', outside the project root\n" "$rel" "$m_real"
+            return 0 ;;
     esac
-    printf "declared member '%s' rejected: resolves to '%s', outside the project root\n" "$rel" "$m_real"
-    return 0
+    # The member's config file is read by every script and written by setup's
+    # bootstrap when absent; a symlink there (dangling or not) would make them
+    # read from, or create, a file outside the checkout.
+    if [ -L "$root/$rel/.standards.yml" ]; then
+        printf "declared member '%s' rejected: its .standards.yml is a symlink (the member config must be a regular file)\n" "$rel"
+        return 0
+    fi
+    return 1
 }
 
 # member__each_declared <root> <callback>
@@ -196,6 +205,7 @@ discover_members() {
         d="${d%/}"
         [ -d "$d" ] || continue
         [ -L "$d" ] && continue
+        [ -L "$d/.standards.yml" ] && continue
         [ -f "$d/.standards.yml" ] || continue
         rel="${d#"$root/"}"
         case "$rel" in

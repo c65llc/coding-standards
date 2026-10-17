@@ -275,7 +275,7 @@ in_list() {
     esac
 }
 
-# check_languages_for <dir> <label> <skip-dirs>
+# check_languages_for <dir> <label> <skip-dirs> [--root-only]
 #
 # Compares the languages detected under <dir> with the ones its .standards.yml
 # declares. Three findings:
@@ -285,9 +285,13 @@ in_list() {
 #   - nothing declared although languages were detected
 # Detection skips <skip-dirs> (the members, when checking the root) so a
 # member's languages are judged by its own config, not demanded of the root.
+# With --root-only (used for the root) only the directory's own manifests
+# count: a tsconfig.json under apps/web must not be demanded of the root
+# config, where it would make lint-standards look for a root tsconfig.json.
 check_languages_for() {
-    local dir="$1" label="$2" skip_dirs="$3"
+    local dir="$1" label="$2" skip_dirs="$3" root_only="${4:-}"
     local detect_args=() s
+    [ "$root_only" = "--root-only" ] && detect_args+=(--root-only)
     for s in $skip_dirs; do
         detect_args+=(--skip "$s")
     done
@@ -356,7 +360,7 @@ check_languages() {
         return
     fi
 
-    check_languages_for "$PROJECT_ROOT" "Languages" "$MEMBERS"
+    check_languages_for "$PROJECT_ROOT" "Languages" "$MEMBERS" --root-only
 
     local m
     for m in $MEMBERS; do

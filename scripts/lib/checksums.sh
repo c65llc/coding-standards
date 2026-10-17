@@ -214,12 +214,15 @@ yaml_list() {
     else
         # Block format:
         #   - python
-        #   - typescript   # a trailing comment is dropped (unless the value is quoted,
-        #                  # where "#" may be part of it; the caller unquotes)
+        #   - typescript   # a trailing comment is dropped; a quoted value keeps
+        #   - "gen#tmp"    # its "#" and loses anything after the closing quote
+        #                  # (the caller unquotes)
         awk "/^${key}:/{found=1;next}
              found && /^[[:space:]]*-/{
                  gsub(/^[[:space:]]*-[[:space:]]*/,\"\");
-                 if (\$0 !~ /^[\\\"']/) { sub(/^#.*$/, \"\"); sub(/[[:space:]]+#.*$/, \"\") }
+                 if (\$0 ~ /^\\\"/)      { if (match(\$0, /^\\\"[^\\\"]*\\\"/)) \$0 = substr(\$0, 1, RLENGTH) }
+                 else if (\$0 ~ /^'/)   { if (match(\$0, /^'[^']*'/)) \$0 = substr(\$0, 1, RLENGTH) }
+                 else                    { sub(/^#.*$/, \"\"); sub(/[[:space:]]+#.*$/, \"\") }
                  sub(/[[:space:]]+$/, \"\");
                  if (length(\$0) > 0) print;
                  next

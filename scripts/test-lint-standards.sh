@@ -2512,6 +2512,59 @@ if [ "$root_py" = "PASS" ] && [ "$server_py" = "PASS" ] && ! echo "$root_msg" | 
    && echo "$secrets_msg" | grep -q 'server/src/cfg.py'; then pass; else
     fail "root=$root_py server=$server_py root_msg=$root_msg secrets=$secrets_msg"; fi
 
+echo -n "Test 171: an auto-discovered parent member does not re-scan the files of a member nested below it... "
+nest=$(make_project "members-nested")
+mkdir -p "$nest/packages/src" "$nest/packages/tests" "$nest/packages/web/src" "$nest/packages/web/tests"
+printf 'version: 1\nlanguages: []\n' > "$nest/.standards.yml"
+printf 'version: 1\nlanguages:\n  - python\n' > "$nest/packages/.standards.yml"
+echo 'print("parent ok")' > "$nest/packages/src/lib.py"
+echo 'def test_lib(): pass' > "$nest/packages/tests/test_lib.py"
+printf 'version: 1\nlanguages:\n  - python\nlint:\n  exclude:\n    - src/bad.py\n' > "$nest/packages/web/.standards.yml"
+echo 'eval("1")' > "$nest/packages/web/src/bad.py"   # the child's own lint.exclude hides it
+echo 'def test_web(): pass' > "$nest/packages/web/tests/test_web.py"
+git_commit_all "$nest" "feat: nested members"
+out=$("$LINT" --format json "$nest" 2>/dev/null || true)
+printf '%s\n' "$out" > "$TMP_BASE/nested.json"
+parent_py=$(json_member_status 'packages' python/banned-functions < "$TMP_BASE/nested.json")
+child_py=$(json_member_status 'packages/web' python/banned-functions < "$TMP_BASE/nested.json")
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"packages" *, *"packages/web" *\]' \
+   && [ "$parent_py" = "PASS" ] && [ "$child_py" = "PASS" ]; then pass; else
+    fail "members=$(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') parent=$parent_py child=$child_py"; fi
+
+echo -n "Test 172: a trailing comment after a quoted members: entry is dropped too... "
+mono12=$(make_monorepo "members-quoted-comment" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - "server" # backend service\n  - '"'"'web'"'"'   # front end\n')")
+out=$("$LINT" --format json "$mono12" 2>/dev/null || true)
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *, *"web" *\]' && ! echo "$out" | grep -q 'not found (no such directory)'; then pass; else
+    fail "members: $(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') $(grep -o '"message": "[^"]*not found[^"]*"' <<<"$out")"; fi
+
+echo -n "Test 173: a member whose .standards.yml is a symlink is rejected when declared and skipped by discovery... "
+cfg_outside=$(mktemp -d "$TMP_BASE/cfg-outside.XXXXXX")
+printf 'version: 1\nlanguages:\n  - python\n' > "$cfg_outside/standards.yml"
+mono13=$(make_monorepo "members-config-symlink")
+rm -f "$mono13/server/.standards.yml"
+ln -s "$cfg_outside/standards.yml" "$mono13/server/.standards.yml"
+out=$("$LINT" --format json "$mono13" 2>/dev/null || true)
+printf '%s\n' "$out" > "$TMP_BASE/config-symlink.json"
+mono14=$(make_monorepo "members-config-symlink-discovery" "$(printf 'version: 1\nlanguages: []\n')")
+rm -f "$mono14/web/.standards.yml"
+ln -s "$cfg_outside/standards.yml" "$mono14/web/.standards.yml"
+out2=$("$LINT" --format json "$mono14" 2>/dev/null || true)
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"web" *\]' \
+   && grep -q "declared member 'server' rejected: its .standards.yml is a symlink" "$TMP_BASE/config-symlink.json" \
+   && echo "$out2" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *\]'; then pass; else
+    fail "declared: $(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') discovered: $(echo "$out2" | tr -d '\n' | grep -o '"members": *\[[^]]*\]')"; fi
+
+echo -n "Test 174: doctor.sh judges the root by its own manifests, not by a tsconfig.json under apps/web... "
+zc=$(make_project "doctor-root-only")
+mkdir -p "$zc/apps/web"
+printf 'version: 1\nlanguages:\n  - python\n' > "$zc/.standards.yml"
+printf '[project]\nname = "root"\n' > "$zc/pyproject.toml"
+printf '{"compilerOptions":{"strict":true}}\n' > "$zc/apps/web/tsconfig.json"
+printf '{"name":"web"}\n' > "$zc/apps/web/package.json"
+out=$(cd "$zc" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep -q 'Languages' && ! echo "$out" | grep 'Languages' | grep -q 'typescript'; then pass; else
+    fail "root nagged about a sub-root language: $(echo "$out" | grep 'Languages')"; fi
+
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

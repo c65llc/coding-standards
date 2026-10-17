@@ -291,18 +291,38 @@ setup_ai_agents() {
     # pure aggregator fail its members' checks (no tsconfig.json at the root).
     local DETECTED_LANGS="" ROOT_LANGS=""
     local DETECT_SCRIPT="$SCRIPT_DIR/detect-languages.sh"
+    #
+    # The root's own languages come from the root's own manifests only
+    # (--root-only): a tsconfig.json under apps/web says nothing about the
+    # root, and listing typescript at the root would make lint-standards look
+    # for a tsconfig.json there. The conventional sub-root walk still feeds
+    # the agent configs, and a sub-root that is not a member is pointed out.
+    local SUBROOT_LANGS=""
     if [ -n "$LANGUAGES_OVERRIDE" ]; then
         # --languages names the root's own languages; the members still
         # contribute theirs to the agent configs.
         ROOT_LANGS=$(echo "$LANGUAGES_OVERRIDE" | tr ',' ' ')
     elif [ -x "$DETECT_SCRIPT" ]; then
         local detect_args=() m
+        ROOT_LANGS=$("$DETECT_SCRIPT" --root-only "$PROJECT_ROOT")
         for m in $MEMBERS; do detect_args+=(--skip "$m"); done
-        ROOT_LANGS=$("$DETECT_SCRIPT" ${detect_args[@]+"${detect_args[@]}"} "$PROJECT_ROOT")
+        SUBROOT_LANGS=$("$DETECT_SCRIPT" ${detect_args[@]+"${detect_args[@]}"} "$PROJECT_ROOT")
     fi
-    DETECTED_LANGS="$ROOT_LANGS"
+    DETECTED_LANGS=$(dedupe_words "$ROOT_LANGS" "$SUBROOT_LANGS")
     if [ -n "$MEMBERS" ]; then
-        DETECTED_LANGS=$(aggregate_member_languages "$PROJECT_ROOT" "$ROOT_LANGS" "$MEMBERS" "$DETECT_SCRIPT")
+        DETECTED_LANGS=$(aggregate_member_languages "$PROJECT_ROOT" "$DETECTED_LANGS" "$MEMBERS" "$DETECT_SCRIPT")
+    fi
+    local extra_langs="" l
+    for l in $SUBROOT_LANGS; do
+        case " $ROOT_LANGS " in
+            *" $l "*) ;;
+            *) extra_langs="${extra_langs:+$extra_langs }$l" ;;
+        esac
+    done
+    if [ -n "$extra_langs" ]; then
+        echo "💡 Languages found in sub-roots (apps/*, packages/*, crates/*, …) but not at the root: ${extra_langs// /, }"
+        echo "   They are assembled into the agent configs. Give each such sub-root its own .standards.yml and"
+        echo "   declare it under members: in .standards.yml so lint-standards checks it under its own config."
     fi
 
     # Build block arguments: language blocks + role block
@@ -608,6 +628,12 @@ setup_ai_agents() {
             member_langs=$(member_languages "$PROJECT_ROOT" "$m" "$DETECT_SCRIPT")
             if [ -f "$member_dir/.standards.yml" ]; then
                 echo "   - $m: .standards.yml present (languages: ${member_langs:-none})"
+                continue
+            fi
+            # resolve_members already drops a member whose config is a symlink;
+            # never write through one regardless (a dangling link fails -f).
+            if [ -L "$member_dir/.standards.yml" ]; then
+                echo "   ⚠️  $m: .standards.yml is a symlink; not writing through it"
                 continue
             fi
             {

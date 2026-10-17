@@ -375,19 +375,29 @@ run_member() {
     local member="$1" member_dir member_langs="" check base saved_list="" member_exclude=""
     member_dir=$(member_root "$PROJECT_ROOT" "$member")
 
-    if [ "$member" = "." ]; then
-        member_langs="$LANGUAGES"
-        # The root's own project/language checks must not re-scan the members'
-        # files: each member is checked under its own config and lint.exclude,
-        # and a second pass under the root's config would double-report (or
-        # fail on a file the member deliberately excludes). Repo-wide checks
-        # keep the whole tree (the variable is unset for them below).
-        local m
-        for m in "${MEMBERS[@]}"; do
-            [ "$m" = "." ] && continue
+    # A member's project/language checks must not re-scan the files of the
+    # members nested below it (every member, for the root; `packages/web` for
+    # a `packages` member): each member is checked under its own config and
+    # lint.exclude, and a second pass under an ancestor's config would
+    # double-report (or fail on a file the member deliberately excludes).
+    # Descendants are listed relative to this member's root. Repo-wide checks
+    # keep the whole tree (the variable is unset for them below).
+    local m
+    for m in "${MEMBERS[@]}"; do
+        [ "$m" = "." ] && continue
+        if [ "$member" = "." ]; then
             member_exclude="${member_exclude:+$member_exclude
 }$m"
-        done
+        else
+            case "$m" in
+                "$member"/*) member_exclude="${member_exclude:+$member_exclude
+}${m#"$member/"}" ;;
+            esac
+        fi
+    done
+
+    if [ "$member" = "." ]; then
+        member_langs="$LANGUAGES"
     else
         [ -d "$member_dir" ] || return 0
         if [ -f "$member_dir/.standards.yml" ] && declare -f read_standards_config >/dev/null 2>&1; then

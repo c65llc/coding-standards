@@ -35,7 +35,7 @@ make setup
    - `.gemini/GEMINI.md` and `.gemini/settings.json` (Gemini CLI)
    - `AGENTS.md` (OpenAI Codex)
    - `.aider-instructions.md` and `.aiderrc` (Aider)
-4. Writes `.standards.yml` (declared languages, agents, role; a declared `members:` list is preserved) and `.standards-checksums`. In a monorepo the root `.standards.yml` keeps only the root's own languages (a non-empty list makes `lint-standards.sh` run language checks against the root), while the root agent configs are assembled from the union of the root's and every member's (see [Monorepos: Members](../guides/customization.md#monorepos-members)); a declared member without a `.standards.yml` gets one bootstrapped with the languages detected in it.
+4. Writes `.standards.yml` (declared languages, agents, role; a declared `members:` list is preserved) and `.standards-checksums`. In a monorepo the root `.standards.yml` keeps only the root's own languages, detected from the root's own manifests (a non-empty list makes `lint-standards.sh` run language checks against the root; a sub-root that carries other languages is pointed out so it can become a member), while the root agent configs are assembled from the union of the root's and every member's (see [Monorepos: Members](../guides/customization.md#monorepos-members)); a declared member without a `.standards.yml` gets one bootstrapped with the languages detected in it.
 5. In detect mode only: installs a `post-merge` git hook that checks for standards updates and runs `setup-git-aliases.sh` to configure global git aliases.
 6. Adds `.cursorrules.backup`, `.standards_tmp/` and `.standards-pending/` to `.gitignore`.
 

@@ -672,6 +672,35 @@ grep -q '^  - typescript$' "$proj/.standards.yml"                 && errs="$errs
 [ -f "$proj/AGENTS.md" ] && grep -qi 'ruff' "$proj/AGENTS.md"     || errs="$errs python-block-missing"
 if [ -z "$errs" ]; then pass; else fail "$errs"; fi
 
+echo -n "Test 51: zero-config bootstrap: a tsconfig.json under apps/web feeds the agent config but not the root languages list... "
+proj=$(make_project "setup-zero-config-monorepo")
+fake_standards "$proj"
+mkdir -p "$proj/apps/web"
+printf '{"name":"web"}\n' > "$proj/apps/web/package.json"
+printf '{"compilerOptions":{"strict":true}}\n' > "$proj/apps/web/tsconfig.json"
+setup_out=$(cd "$proj" && "$SETUP" --agents codex 2>&1) || true
+errs=""
+grep -q '^languages: \[\]$' "$proj/.standards.yml"                || errs="$errs root-languages-not-empty"
+grep -q '^  - typescript$' "$proj/.standards.yml"                 && errs="$errs typescript-leaked-into-root-languages"
+[ -f "$proj/AGENTS.md" ] && grep -q 'tsc -b' "$proj/AGENTS.md"    || errs="$errs typescript-block-missing"
+echo "$setup_out" | grep -q 'sub-roots.*typescript'               || errs="$errs sub-root-hint-missing"
+lint_json=$(bash "$REPO_ROOT/scripts/lint-standards.sh" --format json "$proj" 2>/dev/null || true)
+printf '%s' "$lint_json" | tr -d '\n' | grep -q '"check": "typescript/strict-tsconfig",[[:space:]]*"member": "\."' && errs="$errs root-ts-check-ran"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$setup_out" | grep -i 'sub-roots' | head -2)"; fi
+
+echo -n "Test 52: setup.sh never writes a member config through a symlink (dangling link to a path outside the checkout)... "
+proj=$(make_monorepo "setup-member-config-symlink")
+link_target_dir=$(mktemp -d "${TMPDIR:-/tmp}/setup-safe-outside.XXXXXX")
+link_target="$link_target_dir/standards.yml"
+ln -s "$link_target" "$proj/server/.standards.yml"
+setup_out=$(cd "$proj" && "$SETUP" --agents codex 2>&1) || true
+errs=""
+[ -e "$link_target" ]                                             && errs="$errs wrote-through-symlink"
+[ -L "$proj/server/.standards.yml" ]                              || errs="$errs symlink-replaced"
+echo "$setup_out" | grep -q "server' rejected: its .standards.yml is a symlink" || errs="$errs no-rejection-message"
+rm -rf "$link_target_dir"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$setup_out" | grep -i 'symlink\|members' | head -3)"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"
