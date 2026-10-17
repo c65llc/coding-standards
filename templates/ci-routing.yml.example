@@ -1,0 +1,48 @@
+# .github/ci/routing.yml — changed paths → CI lanes (arch-08 §3).
+#
+# Copy to .github/ci/routing.yml and edit the lanes to match your repo.
+#
+# This file is the ONE place that answers "which checks does this change
+# need?". It is consumed by both:
+#
+#   * the workflow — the `changes` job in ci-gate.yml.example feeds it to
+#     dorny/paths-filter (`filters: .github/ci/routing.yml`); each lane job
+#     runs only when its filter matched, and an always-run gate job makes the
+#     required check resolve when a lane is skipped.
+#   * agents and humans — before pushing, run the make target for every lane
+#     the diff touches. Agent configs (CLAUDE.md, AGENTS.md, .cursorrules)
+#     should point here instead of carrying a hand-maintained copy.
+#
+# Format: dorny/paths-filter syntax — `<lane>: [globs]`. Convention: lane
+# `<name>` is verified locally with `make ci-<name>`; `make ci` runs every
+# lane with the same parallelism caps the runners use (arch-08 §1, §6).
+# Keep each lane's rationale next to it. Anything under `shared` runs every
+# lane, and so does editing this file.
+
+shared: # make ci — changes how every lane runs
+  - "Makefile"
+  - ".github/ci/routing.yml"
+  - ".github/workflows/ci.yml"
+  - "rust-toolchain.toml"
+  - ".tool-versions"
+
+rust: # make ci-rust — cargo fmt/clippy/test for the workspace
+  - "crates/**"
+  - "Cargo.toml"
+  - "Cargo.lock"
+
+web: # make ci-web — lint, typecheck, unit tests, build for the web app
+  - "apps/web/**"
+  - "packages/**"
+  - "pnpm-lock.yaml"
+  - "turbo.json"
+
+apple: # make ci-apple — xcodebuild test on the self-hosted macOS lane
+  - "apps/ios/**"
+  - "apps/macos/**"
+  - "**/*.swift"
+  - "**/*.xcodeproj/**"
+
+docs: # make ci-docs — markdownlint + link check
+  - "docs/**"
+  - "**/*.md"

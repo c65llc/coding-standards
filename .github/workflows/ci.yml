@@ -13,10 +13,46 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Soft per-PR CI budget (arch-08 §3). `ci-gate` sums the lanes' wall-clock
+  # minutes into the step summary and warns past this; it does not fail.
+  CI_BUDGET_MINUTES: "12"
+
 jobs:
+  # Route changed paths to lanes from the committed routing table so the
+  # workflow and the agents' "what do I run locally" answer cannot drift
+  # (arch-08 §3). On push to main every lane runs.
+  changes:
+    name: Route changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      shell: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.shell == 'true' }}
+      markdown: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.markdown == 'true' }}
+      website: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.website == 'true' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/ci/routing.yml
+          sparse-checkout-cone-mode: false
+
+      - name: Match changed paths against .github/ci/routing.yml
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        with:
+          filters: .github/ci/routing.yml
+
   shellcheck:
     name: ShellCheck
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -42,7 +78,10 @@ jobs:
 
   test-scripts:
     name: Test Scripts
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -67,7 +106,10 @@ jobs:
 
   markdown-lint:
     name: Markdown Lint
+    needs: changes
+    if: needs.changes.outputs.markdown == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -88,7 +130,10 @@ jobs:
 
   build-website:
     name: Build Website
+    needs: changes
+    if: needs.changes.outputs.website == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -118,7 +163,10 @@ jobs:
 
   lint-standards-selfhost:
     name: Lint Standards (dogfood)
+    # Always runs: the common checks (secrets, commit history, CI hygiene)
+    # apply to every change regardless of path, and the job is cheap.
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -143,3 +191,74 @@ jobs:
           set -euo pipefail
           ./scripts/lint-standards.sh --format sarif . > /tmp/lint.sarif || true
           python3 -c "import json,sys; json.load(open('/tmp/lint.sarif')); print('valid SARIF')"
+
+      - name: Assert this repo's workflows pass the CI hygiene checks
+        # These two modules are WARN-level for consumers; for our own
+        # workflows they are enforcing, so the standard we publish is one we
+        # meet (arch-08 §3 and §6).
+        run: |
+          set -euo pipefail
+          ./scripts/lint-checks/common/ci-workflow-hygiene.sh .
+          ./scripts/lint-checks/common/headless-ci.sh .
+
+  # Always-run gate: fails if any lane that ran failed, passes when lanes were
+  # skipped by the routing table, and reports the run's CI-minutes against the
+  # soft budget in the step summary (arch-08 §3).
+  ci-gate:
+    name: CI Gate
+    needs: [changes, shellcheck, test-scripts, markdown-lint, build-website, lint-standards-selfhost]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Fail if any lane failed or was cancelled
+        env:
+          LANE_RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "Lane results: $LANE_RESULTS"
+          case " $LANE_RESULTS " in
+            *" failure "*|*" cancelled "*)
+              echo "::error::A CI lane failed or was cancelled: $LANE_RESULTS"
+              exit 1
+              ;;
+          esac
+          echo "All lanes passed or were skipped by .github/ci/routing.yml"
+
+      - name: Report CI minutes against the per-PR budget
+        # Telemetry only: an Actions API hiccup must never fail the required
+        # gate, so the step is non-blocking and bails with a warning.
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # --paginate emits one JSON object per page; slurp them into a single
+          # array of finished jobs (this gate job is still running and is
+          # excluded, which is the point: it is overhead, not a lane).
+          if ! jobs=$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" \
+            | jq -s '[ .[].jobs[] | select(.started_at != null and .completed_at != null) ]'); then
+            echo "::warning::Could not read job timings from the Actions API; skipping the CI-minutes report."
+            exit 0
+          fi
+          total_s=$(printf '%s' "$jobs" | jq '
+            [ .[] | ((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601)) ] | add // 0')
+          total_m=$(( (total_s + 59) / 60 ))
+          {
+            echo "## CI minutes"
+            echo ""
+            echo "| Job | Result | Minutes |"
+            echo "| --- | --- | --- |"
+            printf '%s' "$jobs" | jq -r '
+              .[] | "| \(.name) | \(.conclusion) | \((((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601)) + 59) / 60 | floor) |"'
+            echo ""
+            echo "**Total: ${total_m} min** (soft budget: ${CI_BUDGET_MINUTES} min)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$total_m" -gt "$CI_BUDGET_MINUTES" ]; then
+            echo "::warning::This run used ${total_m} CI minutes, over the ${CI_BUDGET_MINUTES}-minute per-PR budget (arch-08 §3). Tighten .github/ci/routing.yml or move a heavy lane to nightly."
+          fi

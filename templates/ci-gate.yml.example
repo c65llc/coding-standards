@@ -1,0 +1,157 @@
+# .github/workflows/ci.yml — affected-only PR lane with an always-run gate
+# (arch-08 §3). Copy alongside templates/ci-routing.yml.example
+# (→ .github/ci/routing.yml) and rename the lanes to match it.
+#
+# What this models, and why:
+#   * concurrency + cancel-in-progress — a new push cancels the superseded run.
+#   * timeout-minutes on EVERY job — a hung step cannot burn an hour.
+#   * paths-filter + gate — lanes run only for the paths that need them, read
+#     from the committed routing table so agents and CI cannot drift; `ci-gate`
+#     always runs, so a required check resolves even when every lane skipped.
+#     (A workflow-level `paths:` filter on a required check leaves the PR stuck
+#     "expected" when nothing matched — the gate idiom is what avoids that.)
+#   * PR lane = affected + fast; the full matrix runs on the merge queue or the
+#     nightly schedule, not here.
+#   * CI-minutes budget — the gate writes the run's minutes to the step summary
+#     and warns past a soft threshold.
+#
+# Pin actions to a full SHA (arch-08 §4). The SHAs below are current at the
+# time of writing; Dependabot keeps them fresh.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI_BUDGET_MINUTES: "20" # soft per-PR budget; the gate warns, it does not fail
+
+jobs:
+  changes:
+    name: Route changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      # On anything but a pull_request (push to main, merge queue) run every lane.
+      rust: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.rust == 'true' }}
+      web: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.web == 'true' }}
+      docs: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.docs == 'true' }}
+      apple: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.apple == 'true' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/ci/routing.yml
+          sparse-checkout-cone-mode: false
+      - id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        with:
+          filters: .github/ci/routing.yml
+
+  rust:
+    name: Rust
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make ci-rust # same target a developer runs (arch-08 §1)
+
+  web:
+    name: Web
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make ci-web
+
+  docs:
+    name: Docs
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make ci-docs
+
+  # Self-hosted macOS lane (arch-08 §6): headless, job-scoped keychain, caps
+  # inherited from the runner service. Delete this job, its output above, and
+  # the `apple` lane in routing.yml together if you have no Apple targets.
+  apple:
+    name: Apple
+    needs: changes
+    if: needs.changes.outputs.apple == 'true'
+    runs-on: [self-hosted, macos]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make ci-apple
+
+  # The ONLY job to list as a required status check. It passes when every lane
+  # either passed or was skipped by the routing table, and fails otherwise.
+  ci-gate:
+    name: CI Gate
+    needs: [changes, rust, web, docs, apple]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Fail if any lane failed or was cancelled
+        env:
+          LANE_RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          set -euo pipefail
+          echo "Lane results: $LANE_RESULTS"
+          case " $LANE_RESULTS " in
+            *" failure "*|*" cancelled "*) echo "::error::A CI lane failed: $LANE_RESULTS"; exit 1 ;;
+          esac
+
+      - name: Report CI minutes against the per-PR budget
+        # Telemetry only: an Actions API hiccup must never fail the gate.
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! jobs=$(gh api --paginate \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100" \
+            | jq -s '[ .[].jobs[] | select(.started_at != null and .completed_at != null) ]'); then
+            echo "::warning::Could not read job timings from the Actions API; skipping the CI-minutes report."
+            exit 0
+          fi
+          total_s=$(printf '%s' "$jobs" | jq '
+            [ .[] | ((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601)) ] | add // 0')
+          total_m=$(( (total_s + 59) / 60 ))
+          {
+            echo "## CI minutes"
+            echo ""
+            echo "| Job | Result | Minutes |"
+            echo "| --- | --- | --- |"
+            printf '%s' "$jobs" | jq -r '
+              .[] | "| \(.name) | \(.conclusion) | \((((.completed_at | fromdateiso8601) - (.started_at | fromdateiso8601)) + 59) / 60 | floor) |"'
+            echo ""
+            echo "**Total: ${total_m} min** (soft budget: ${CI_BUDGET_MINUTES} min)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$total_m" -gt "$CI_BUDGET_MINUTES" ]; then
+            echo "::warning::This run used ${total_m} CI minutes, over the ${CI_BUDGET_MINUTES}-minute per-PR budget (arch-08 §3)."
+          fi

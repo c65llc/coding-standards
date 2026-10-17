@@ -5,6 +5,9 @@
 # Note: For PRs from forks, GITHUB_TOKEN is read-only and the comment step
 # will be skipped. Consider using pull_request_target for fork support
 # (with appropriate security precautions).
+#
+# ci-hygiene: paths-exempt — compliance review (commit history, secrets, CI
+# hygiene) applies to every PR regardless of which paths changed.
 name: Standards Review
 
 on:
@@ -14,10 +17,16 @@ permissions:
   contents: read
   pull-requests: write
 
+# A newer push supersedes the previous review run (arch-08 §3).
+concurrency:
+  group: standards-review-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   standards-review:
     name: Standards Review
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4

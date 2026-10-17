@@ -17,6 +17,9 @@ pipeline as something to be measured and optimized, not left to sprawl.
   (or the reverse) means the gate has drifted; fix the drift, don't paper over it.
 * CI SHOULD invoke the same `make` targets a developer runs, so there is one
   definition of "passing" and no CI-only logic to keep in sync.
+* `make ci` runs every lane in the committed routing table (§3.2); `make ci-<lane>`
+  runs one. Both default to the same parallelism caps the runners use (§6.2), so
+  local timings and flakes predict CI's.
 
 ## 2. Consolidate the Required Gate; Build Once
 
@@ -33,17 +36,85 @@ pipeline as something to be measured and optimized, not left to sprawl.
 
 ## 3. Don't Run Everything on Every PR
 
-* **Cancel superseded runs.** Set a concurrency group keyed on
-  workflow + ref with cancel-in-progress, so a new push cancels the previous run
-  instead of paying for both.
-* **Path filters / affected-only.** Only run a member's gate when files in its
-  dependency closure changed. Document each member's filter (and why it is what it
-  is) next to the filter.
-* **Tier the heavy suites.** Expensive matrices — full cross-browser E2E,
-  visual-regression across themes, multi-OS builds — run on a reduced set per PR
-  (e.g. one browser) and the **full** matrix on a nightly schedule plus manual
-  dispatch. State the reduction explicitly; never let "we only test one browser on
-  PRs" be a silent gap.
+The PR lane is **affected + fast**. Everything below is a requirement, not
+advice: a repo with 40 workflows where half have no path filter and half have
+no timeout is paying for CI minutes nobody asked for and waiting on wall-clock
+nobody needs.
+
+### 3.1 Every `pull_request` workflow bounds its cost
+
+Every workflow triggered on `pull_request` (or `pull_request_target`) MUST
+declare all three of:
+
+* **`concurrency` with `cancel-in-progress`** — declared at workflow level (or
+  on every job), with a group keyed on workflow + ref
+  (`${{ github.workflow }}-${{ github.ref }}`), so a new push cancels the
+  superseded run instead of paying for both. On `pull_request_target`,
+  `github.ref` is the *base* branch, so key on the PR instead
+  (`${{ github.event.pull_request.number }}`) or every PR targeting `main` shares
+  one group and a push to one cancels its neighbours. Workflows that write shared
+  state (release drafting, project sync) may set `cancel-in-progress: false`, but
+  they still declare the group.
+* **`timeout-minutes` on every job that runs steps** — a hung step must not burn
+  the runner for the six-hour default. Pick a bound a little above the job's p95;
+  a job that trips it has a problem worth seeing. A job that calls a reusable
+  workflow (job-level `uses:`) cannot declare one; the called workflow's jobs
+  declare theirs.
+* **Path scoping** — one of:
+  * a `paths:` / `paths-ignore:` filter on the trigger, for a workflow that is
+    *not* a required check; or
+  * a **paths-filter + always-run gate job**: a `changes` job classifies the
+    diff (e.g. `dorny/paths-filter`), each lane runs `if:` its filter matched,
+    and a single `ci-gate` job with `needs: [all lanes]` and `if: always()`
+    fails only when a lane that *ran* failed. The gate is the only job listed as a
+    required status check, so the PR resolves even when every lane was skipped. (A
+    workflow-level `paths:` on a required check leaves the PR stuck "expected"
+    when nothing matched — that is why the gate idiom exists.) See
+    `templates/ci-gate.yml.example`; or
+  * an explicit `# ci-hygiene: paths-exempt <reason>` comment, for the few
+    workflows whose work genuinely does not depend on which paths changed
+    (auto-labelers, Dependabot auto-merge, secret scans). The reason is
+    mandatory; the marker is a declaration, not an opt-out.
+
+Document each lane's filter (and why it is what it is) next to the filter. The
+`common/ci-workflow-hygiene` lint check warns on any `pull_request` workflow that
+is missing one of the three.
+
+### 3.2 Commit the routing table
+
+The "which checks does this change need?" mapping MUST be a committed artifact,
+`.github/ci/routing.yml` (see `templates/ci-routing.yml.example`), consumed by
+**both** the workflow (`dorny/paths-filter` reads it as its `filters` file) and
+the agents/humans deciding what to run locally (agent configs point at it; lane
+`<name>` ⇒ `make ci-<name>`). A routing table that lives only in `AGENTS.md`
+prose, next to workflows that filter on their own copies of the globs, drifts the
+first time someone adds a directory. One file, two consumers, no drift.
+
+### 3.3 Tier the heavy suites
+
+* **PR lane = affected + fast.** Expensive matrices — full cross-browser E2E,
+  visual-regression across themes, multi-OS builds, every simulator — run on a
+  reduced set per PR (e.g. one browser, one OS) and the **full** matrix on the
+  **merge queue** and/or a **nightly** schedule plus manual dispatch. State the
+  reduction explicitly; never let "we only test one browser on PRs" be a silent
+  gap.
+* **Build once, reuse.** A PR run builds each artifact once and hands it to
+  downstream jobs as an artifact or via the task-runner cache (§2); lanes do not
+  rebuild shared packages independently.
+* **Remote cache is required for monorepos.** A workspace with a task graph
+  (turbo, nx, bazel, gradle) or a Rust workspace of any size MUST run CI with a
+  remote/task cache (turbo remote cache, `sccache`/`cargo` cache, gradle build
+  cache) so unchanged units of work are restored, not rebuilt. Give it the bounded
+  budget and eviction described in §4.
+
+### 3.4 Budget the minutes
+
+Every PR run reports what it cost. The gate job (or the last job) writes the
+run's **total CI minutes** — the sum of its jobs' wall-clock — to the step
+summary, next to a **soft per-PR budget** declared in the workflow (an `env` such
+as `CI_BUDGET_MINUTES`). Exceeding the budget emits a warning annotation; it does
+not fail the run. The point is that the cost is visible on every PR, so a lane
+that quietly doubled is noticed the week it happens, not at the invoice.
 
 ## 4. Caching
 
@@ -94,6 +165,68 @@ Self-hosted runners trade per-minute cost for operational responsibility. If use
   **queued/waiting** (nothing schedules it). A *collision/misconfig* yields a run
   that **fails at "Set up job" within seconds**. Same-looking red check, opposite
   cause — read which one before touching the code.
+
+### 6.1 Every step passes on a locked, headless, interchangeable runner
+
+Self-hosted runners are remote machines with the screen locked and no human in
+front of them. A job MUST succeed on **any** runner in the pool under exactly
+those conditions. Concretely:
+
+* **No login keychain, no `store-credentials`, no GUI prompts.** On a locked
+  Mac, `security` "cannot write to a locked keychain and has no UI to prompt
+  into", so anything that touches the login keychain — `notarytool
+  store-credentials`, `security unlock-keychain` on `login.keychain-db`,
+  `security import` into it — fails with "User interaction is not allowed" on
+  every runner except the one someone happened to leave unlocked. The same goes
+  for `osascript`/AppleScript, `open -a`, and any tool that pops a dialog.
+* **Secrets go from the secret store to the consuming command.** Pass them
+  straight to the command that needs them (`notarytool submit --apple-id …
+  --team-id … --password "$PW"`, `codesign` against an explicit keychain), or
+  into a **job-scoped ephemeral keychain** created with `security
+  create-keychain` under `$RUNNER_TEMP`, unlocked by path, and deleted on exit.
+  Nothing lands in the runner's login keychain.
+* **Simulators and emulators are booted headless inside the job** (`xcrun
+  simctl boot` / `emulator -no-window`) and shut down after. GUI/UI tests run
+  offscreen, or on a dedicated interactive lane that is **never a required
+  check**.
+* **Runner interchangeability.** Nothing persisted on one machine (a keychain
+  entry, a logged-in simulator, a tool installed by hand) may be required by a
+  later job. If the job cannot be re-run on the other runner in the pool, it is
+  not done.
+* **A `runner-canary` workflow** exercises the lane on a schedule with the
+  screen locked and no user session, so a runner that drifts into needing a
+  desktop is caught by the canary, not by the release.
+
+The `common/headless-ci` lint check warns on workflows that contain
+`store-credentials`, `unlock-keychain … login`, `osascript`, or `open -a`.
+
+### 6.2 Load caps when a runner shares a development machine
+
+A dedicated runner box is the recommendation. When a runner shares a laptop or
+desktop with a developer, a single CI job can pin every core and stall the
+person at the keyboard. Shared boxes MUST apply all of the following and
+document them (e.g. in `docs/ci-releases.md`):
+
+* **Cap parallelism at the runner level, not per workflow.** Set the caps in
+  the runner service's environment so every job inherits them and no workflow
+  can forget: `CARGO_BUILD_JOBS`, `MAKEFLAGS=-j<n>`, turbo `--concurrency` /
+  `TURBO_CONCURRENCY`, `xcodebuild -parallel-testing-worker-count <n>`,
+  `pnpm --workspace-concurrency <n>`, pytest `-n <n>`. Target **at most half
+  the cores** on a shared box.
+* **Run the runner service at reduced priority** — `nice` and
+  `taskpolicy -c background` on macOS, a cgroup CPU weight on Linux — and with
+  an IO class below interactive, so the developer's editor and browser win every
+  contention.
+* **One lane per runner.** Serialize heavy jobs onto a runner with a
+  concurrency group keyed on something known *before* dispatch — the runner
+  label or a matrix value (`group: apple-lane-${{ matrix.target }}`); the
+  `runner` context is not available in job-level `concurrency`, so
+  `runner.name` cannot form the group — or give each heavy lane its own runner
+  label. Heavy matrices go to the merge queue or nightly (§3.3), never fan out
+  across a shared box on every PR.
+* **`make ci` defaults to the same caps** so the local gate and the runner
+  behave alike (§1): a developer who runs `make ci` before pushing sees the same
+  parallelism, the same timings, and the same flakes the runner will.
 
 ## 7. Deploy Channels & Promotion
 

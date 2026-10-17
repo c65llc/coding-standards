@@ -7,6 +7,9 @@ name: Dependabot auto-merge
 # Requires the repo setting "Allow auto-merge" to be enabled and a branch
 # protection rule with required status checks — otherwise `gh pr merge --auto`
 # has nothing to gate on.
+#
+# ci-hygiene: paths-exempt — keyed on the PR author, not on changed paths; the
+# job is a no-op for anything that is not a Dependabot PR.
 
 on: pull_request
 
@@ -14,9 +17,15 @@ permissions:
   contents: write
   pull-requests: write
 
+# One run per PR; a newer push supersedes the previous auto-merge attempt.
+concurrency:
+  group: dependabot-auto-merge-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     # Gate on the PR author, not github.actor, so a maintainer re-running the
     # workflow still passes the guard for a genuine Dependabot PR.
     if: github.event.pull_request.user.login == 'dependabot[bot]'

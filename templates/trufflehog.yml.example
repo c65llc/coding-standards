@@ -6,6 +6,9 @@
 # Noisy *paths* are excluded via the committed .trufflehog-ignore file
 # (--exclude-paths, path regexes). Suppress an individual false positive with an
 # inline `// trufflehog:ignore` comment on the offending line instead.
+#
+# ci-hygiene: paths-exempt — a secret can land in any file, so the scan runs
+# on every PR regardless of which paths changed.
 name: Secret Scan
 
 on:
@@ -24,6 +27,7 @@ jobs:
   trufflehog:
     name: TruffleHog
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -469,6 +469,324 @@ printf 'CFLAGS = -Wall -Werror\n\nbuild:\n\tswift build\n' > "$sw/Makefile"
 out=$(bash "$CHECKS/swift/warnings-as-errors.sh" "$sw" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL swift/warnings-as-errors'; then pass; else fail "expected FAIL, got: $out"; fi
 
+# --- CI hygiene modules (arch-08 §3 / §6) ----------------------------------
+
+# Helper: write a workflow file (from stdin) into a project's .github/workflows/.
+write_workflow() {
+    local proj="$1" name="$2"
+    mkdir -p "$proj/.github/workflows"
+    cat > "$proj/.github/workflows/$name"
+}
+
+echo -n "Test 57: headless-ci PASSes a workflow with no GUI/login-keychain steps... "
+hl_clean=$(make_project "headless-clean")
+write_workflow "$hl_clean" "release.yml" <<'EOF'
+name: Release
+on:
+  push:
+    tags: ['v*']
+jobs:
+  notarize:
+    runs-on: [self-hosted, macOS]
+    steps:
+      - run: xcrun notarytool submit app.zip --apple-id "$ID" --team-id "$TEAM" --password "$PW" --wait
+EOF
+out=$(bash "$CHECKS/common/headless-ci.sh" "$hl_clean" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 58: headless-ci WARNs on notarytool store-credentials... "
+hl_store=$(make_project "headless-store")
+write_workflow "$hl_store" "release.yml" <<'EOF'
+name: Release
+on: push
+jobs:
+  notarize:
+    runs-on: macos-latest
+    steps:
+      - run: xcrun notarytool store-credentials "AC_PASSWORD" --apple-id "$ID" --team-id "$TEAM" --password "$PW"
+EOF
+out=$(bash "$CHECKS/common/headless-ci.sh" "$hl_store" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'store-credentials'; then pass; else fail "expected WARN naming store-credentials, got: $out"; fi
+
+echo -n "Test 59: headless-ci WARNs on osascript, open -a, and login-keychain unlock... "
+hl_gui=$(make_project "headless-gui")
+write_workflow "$hl_gui" "ui.yml" <<'EOF'
+name: UI
+on: push
+jobs:
+  ui:
+    runs-on: macos-latest
+    steps:
+      - run: security unlock-keychain -p "$PW" ~/Library/Keychains/login.keychain-db
+      - run: osascript -e 'tell application "Simulator" to activate'
+      - run: open -a Simulator
+EOF
+out=$(bash "$CHECKS/common/headless-ci.sh" "$hl_gui" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' \
+   && echo "$out" | grep -q 'osascript' \
+   && echo "$out" | grep -q 'open -a' \
+   && echo "$out" | grep -q 'unlock-keychain'; then pass; else fail "expected WARN naming all three, got: $out"; fi
+
+echo -n "Test 60: headless-ci ignores commented-out mentions and job-scoped keychains... "
+hl_comment=$(make_project "headless-comment")
+write_workflow "$hl_comment" "release.yml" <<'EOF'
+name: Release
+on: push
+jobs:
+  sign:
+    runs-on: macos-latest
+    steps:
+      # Never call osascript or store-credentials here: runners are headless.
+      - run: |
+          security create-keychain -p "$PW" "$RUNNER_TEMP/ci.keychain-db"
+          security unlock-keychain -p "$PW" "$RUNNER_TEMP/ci.keychain-db"
+EOF
+out=$(bash "$CHECKS/common/headless-ci.sh" "$hl_comment" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 61: ci-workflow-hygiene PASSes a compliant pull_request workflow... "
+hy_good=$(make_project "hygiene-good")
+write_workflow "$hy_good" "ci.yml" <<'EOF'
+name: CI
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - run: make ci
+EOF
+out=$(bash "$CHECKS/common/ci-workflow-hygiene.sh" "$hy_good" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 62: ci-workflow-hygiene WARNs and names concurrency, timeout, and paths when all are missing... "
+hy_bad=$(make_project "hygiene-bad")
+write_workflow "$hy_bad" "ci.yml" <<'EOF'
+name: CI
+on:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: make ci
+EOF
+out=$(bash "$CHECKS/common/ci-workflow-hygiene.sh" "$hy_bad" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' \
+   && echo "$out" | grep -q 'ci.yml' \
+   && echo "$out" | grep -q 'concurrency' \
+   && echo "$out" | grep -q 'timeout-minutes' \
+   && echo "$out" | grep -q 'path'; then pass; else fail "expected WARN naming all three gaps, got: $out"; fi
+
+echo -n "Test 63: ci-workflow-hygiene ignores workflows that do not run on pull_request... "
+hy_push=$(make_project "hygiene-push")
+write_workflow "$hy_push" "deploy.yml" <<'EOF'
+name: Deploy
+on:
+  push:
+    branches: [main]
+  workflow_call:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: make deploy
+EOF
+out=$(bash "$CHECKS/common/ci-workflow-hygiene.sh" "$hy_push" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 64: ci-workflow-hygiene accepts paths-filter + gate and an explicit paths-exempt marker... "
+hy_alt=$(make_project "hygiene-alt")
+write_workflow "$hy_alt" "ci.yml" <<'EOF'
+name: CI
+on: [push, pull_request]
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          filters: .github/ci/routing.yml
+  web:
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: make ci-web
+  ci-gate:
+    needs: [changes, web]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: test "${{ needs.web.result }}" != "failure"
+EOF
+write_workflow "$hy_alt" "labeler.yml" <<'EOF'
+name: Labeler
+# ci-hygiene: paths-exempt — labels every PR from its title, independent of changed paths
+on: pull_request
+concurrency:
+  group: labeler-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: echo label
+  reusable:
+    uses: org/repo/.github/workflows/shared.yml@main
+EOF
+out=$(bash "$CHECKS/common/ci-workflow-hygiene.sh" "$hy_alt" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 65: ci-workflow-hygiene flags a job that lacks timeout-minutes when a sibling has one... "
+hy_partial=$(make_project "hygiene-partial")
+write_workflow "$hy_partial" "ci.yml" <<'EOF'
+name: CI
+on:
+  pull_request:
+    paths: ['src/**']
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: make lint
+  slow:
+    runs-on: ubuntu-latest
+    steps:
+      - run: make test
+EOF
+out=$(bash "$CHECKS/common/ci-workflow-hygiene.sh" "$hy_partial" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'timeout-minutes' \
+   && ! echo "$out" | grep -q 'concurrency'; then pass; else fail "expected WARN about timeout only, got: $out"; fi
+
+echo -n "Test 66: ci-workflow-hygiene ignores a nested paths: key that is not on the PR trigger... "
+hy_nested=$(make_project "hygiene-nested")
+write_workflow "$hy_nested" "ci.yml" <<'EOF'
+name: CI
+on:
+  push:
+    paths: ['src/**']
+  pull_request:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: org/some-scanner@v1
+        with:
+          paths:
+            - 'src/**'
+EOF
+out=$(bash "$CHECKS/common/ci-workflow-hygiene.sh" "$hy_nested" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'path scoping'; then pass; else fail "expected WARN about path scoping, got: $out"; fi
+
+echo -n "Test 67: ci-workflow-hygiene flags job-level concurrency that covers only some jobs... "
+hy_jobconc=$(make_project "hygiene-jobconc")
+write_workflow "$hy_jobconc" "ci.yml" <<'EOF'
+name: CI
+on:
+  pull_request:
+    paths: ['src/**']
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: lint-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - run: make lint
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: make test
+EOF
+out=$(bash "$CHECKS/common/ci-workflow-hygiene.sh" "$hy_jobconc" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q '1/2 job(s) lack concurrency' \
+   && ! echo "$out" | grep -q 'timeout-minutes'; then pass; else fail "expected WARN about partial concurrency only, got: $out"; fi
+
+echo -n "Test 68: ci-workflow-hygiene accepts job-level concurrency when every job declares it... "
+hy_alljobs=$(make_project "hygiene-alljobs")
+write_workflow "$hy_alljobs" "ci.yml" <<'EOF'
+name: CI
+on:
+  pull_request:
+    paths-ignore: ['docs/**']
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: lint-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - run: make lint
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: test-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - run: make test
+EOF
+out=$(bash "$CHECKS/common/ci-workflow-hygiene.sh" "$hy_alljobs" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 69: headless-ci catches an absolute-path open -a but not --open -a or xdg-open -a... "
+hl_abs=$(make_project "headless-abs")
+write_workflow "$hl_abs" "ui.yml" <<'EOF'
+name: UI
+on: push
+jobs:
+  ui:
+    runs-on: macos-latest
+    steps:
+      - run: /usr/bin/open -a Simulator
+EOF
+write_workflow "$hl_abs" "docs.yml" <<'EOF'
+name: Docs
+on: push
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - run: mdbook serve --open -a 127.0.0.1
+      - run: xdg-open -a something
+EOF
+out=$(bash "$CHECKS/common/headless-ci.sh" "$hl_abs" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'ui.yml: open -a' \
+   && ! echo "$out" | grep -q 'docs.yml'; then pass; else fail "expected WARN naming ui.yml only, got: $out"; fi
+
+echo -n "Test 70: this repo's own workflows pass headless-ci and ci-workflow-hygiene (dogfood)... "
+out_h=$(bash "$CHECKS/common/headless-ci.sh" "$REPO_ROOT" 2>/dev/null || true)
+out_c=$(bash "$CHECKS/common/ci-workflow-hygiene.sh" "$REPO_ROOT" 2>/dev/null || true)
+if echo "$out_h" | grep -q '^PASS' && echo "$out_c" | grep -q '^PASS'; then pass; else fail "dogfood failed: $out_h / $out_c"; fi
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"
