@@ -126,6 +126,58 @@ echo -n "Test 13: doctor.sh runs without a hard crash... "
 ( cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -le 1 ]; then pass; else fail "doctor.sh crashed (exit $rc)"; fi
 
+# --- #182: diff-standards.sh contract ---------------------------------------
+
+fake_standards() {
+    local proj="$1"
+    mkdir -p "$proj/.standards"
+    ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+    ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+}
+
+echo -n "Test 14: diff-standards.sh exits 0 without --exit-code even when changes are pending... "
+proj=$(make_project "diff-pending")
+fake_standards "$proj"
+printf 'version: 1\nlanguages:\n  - typescript\nagents:\n  - codex\nrole: service\n' > "$proj/.standards.yml"
+( cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 0 ]; then pass; else fail "expected 0, got $rc"; fi
+
+echo -n "Test 15: diff-standards.sh --exit-code exits 1 when a config would be created... "
+( cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 1 ]; then pass; else fail "expected 1, got $rc"; fi
+
+echo -n "Test 16: diff-standards.sh prints the sync script path (not a Make target) with no literal escapes... "
+out=$( cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" 2>&1 ) || true
+if echo "$out" | grep -q "./.standards/scripts/sync-standards.sh" \
+   && ! echo "$out" | grep -q "make sync-standards" \
+   && ! echo "$out" | grep -qF '\033'; then
+    pass
+else
+    fail "hint/escape problem in output: $out"
+fi
+
+echo -n "Test 17: diff-standards.sh --exit-code exits 0 once configs are up to date... "
+( cd "$proj" && bash "$REPO_ROOT/scripts/setup.sh" --agents codex --languages typescript >/dev/null 2>&1 ) || true
+( cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 0 ]; then pass; else fail "expected 0 after setup, got $rc"; fi
+
+echo -n "Test 18: diff-standards.sh --exit-code exits 1 after a config drifts... "
+echo "# local drift" >> "$proj/AGENTS.md"
+( cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 1 ]; then pass; else fail "expected 1 after drift, got $rc"; fi
+
+echo -n "Test 19: diff-standards.sh refuses to run from inside .standards/... "
+inside=$(make_project "diff-inside")
+mkdir -p "$inside/.standards"
+( cd "$inside/.standards" && git init -q \
+    && git -c user.email="t@t.local" -c user.name="T" commit -q --allow-empty -m "chore: init" )
+out=$( cd "$inside/.standards" && bash "$REPO_ROOT/scripts/diff-standards.sh" 2>&1 ); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q "inside"; then pass; else fail "expected refusal (rc=$rc): $out"; fi
+
+echo -n "Test 20: diff-standards.sh rejects an unknown option with exit 2... "
+( cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --bogus >/dev/null 2>&1 ); rc=$?
+if [ "$rc" -eq 2 ]; then pass; else fail "expected 2, got $rc"; fi
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"
