@@ -122,11 +122,14 @@ candidate_files() {
         git -C "$ROOT" ls-files --cached --others --exclude-standard -z -- . 2>/dev/null \
             | tr '\0' '\n'
     else
+        # Strip the prefix with parameter expansion: ROOT may contain
+        # characters that sed would interpret (e.g. /tmp/repo[1]).
+        local f
         find "$ROOT" \( -name .git -o -name node_modules -o -name website \
                 -o -name .standards_tmp -o -name .standards-pending \
                 -o -name .worktrees -o -name .claude \) -prune \
              -o -type f -print 2>/dev/null \
-            | sed "s|^$ROOT/||"
+            | while IFS= read -r f; do printf '%s\n' "${f#"$ROOT"/}"; done
     fi
 }
 
@@ -211,6 +214,14 @@ required_region_files() {
     done
 }
 
+# render_path <relpath> — where <relpath>'s rendered copy lives in TMP_DIR.
+# Mirrors the target hierarchy so a/b_c.md and a_b/c.md cannot collide.
+render_path() {
+    local out="$TMP_DIR/render/$1"
+    mkdir -p "$(dirname "$out")"
+    printf '%s\n' "$out"
+}
+
 # replace_file <src> <dest> — atomically replace <dest> with the contents of
 # <src>, preserving <dest>'s mode. Stages the new content in TMP_DIR (under
 # ROOT/.standards_tmp, same filesystem) and renames it into place, so a failed
@@ -272,7 +283,7 @@ EOF
     targets=$(discover_targets)
     while IFS= read -r target; do
         [ -n "$target" ] || continue
-        out="$TMP_DIR/$(echo "$target" | tr '/' '_')"
+        out=$(render_path "$target")
         if ! splice_generated_regions "$ROOT/$target" "$out" "$STANDARDS_DIR" "$PATH_PREFIX"; then
             echo "ERROR: cannot regenerate $target" >&2
             rc=1
@@ -288,7 +299,7 @@ EOF
     # Phase 2: replace the targets whose content changed.
     while IFS= read -r target; do
         [ -n "$target" ] || continue
-        out="$TMP_DIR/$(echo "$target" | tr '/' '_')"
+        out=$(render_path "$target")
         if cmp -s "$ROOT/$target" "$out"; then
             [ "$QUIET" = true ] || echo "unchanged: $target"
         elif replace_file "$out" "$ROOT/$target"; then
@@ -318,7 +329,7 @@ check_drift() {
     while IFS= read -r target; do
         [ -n "$target" ] || continue
         found=$((found + 1))
-        out="$TMP_DIR/check_$(echo "$target" | tr '/' '_')"
+        out=$(render_path "$target")
         if ! splice_generated_regions "$ROOT/$target" "$out" "$STANDARDS_DIR" "$PATH_PREFIX" 2>"$TMP_DIR/err"; then
             report_fail "generated-region" "$target cannot be regenerated: $(tr '\n' ' ' < "$TMP_DIR/err")"
         elif cmp -s "$ROOT/$target" "$out"; then

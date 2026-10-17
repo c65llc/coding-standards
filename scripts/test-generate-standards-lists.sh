@@ -521,7 +521,31 @@ else
 $out"
 fi
 
-echo -n "Test 39: temporaries live under .standards_tmp and are cleaned up... "
+echo -n "Test 39: targets whose paths flatten to the same name are regenerated independently... "
+coll=$(make_fixture "collide")
+mkdir -p "$coll/a" "$coll/a_b"
+printf 'FIRST intro\n%s\nold\n%s\n' "$BEGIN_LIST" "$END_LIST" > "$coll/a/b_c.md"
+printf 'SECOND intro\n%s\nold\n%s\n' "$BEGIN_LIST" "$END_LIST" > "$coll/a_b/c.md"
+"$GEN" --root "$coll" >/dev/null 2>&1; rc=$?
+if [ "$rc" -eq 0 ] && grep -q '^FIRST intro' "$coll/a/b_c.md" && grep -q '^SECOND intro' "$coll/a_b/c.md" \
+   && grep -qF 'lang-01_python_standards.md' "$coll/a/b_c.md" && grep -qF 'lang-01_python_standards.md' "$coll/a_b/c.md"; then
+    pass
+else
+    fail "colliding render paths corrupted a target (rc=$rc):
+$(head -1 "$coll/a/b_c.md"; head -1 "$coll/a_b/c.md")"
+fi
+
+echo -n "Test 40: a non-git --root containing regex characters is still discovered... "
+rx=$(make_fixture "regex[1]")
+"$GEN" --root "$rx" >/dev/null 2>&1; rc=$?
+if [ "$rc" -eq 0 ] && grep -qF 'lang-02_rails_standards.md' "$rx/.cursorrules" \
+   && ! grep -qF 'stale content that must be replaced' "$rx/.cursorrules"; then
+    pass
+else
+    fail "fixture under a regex-character path was not regenerated (rc=$rc)"
+fi
+
+echo -n "Test 41: temporaries live under .standards_tmp and are cleaned up... "
 tmpfx=$(make_fixture "tmpdir")
 "$GEN" --root "$tmpfx" >/dev/null 2>&1
 if [ -d "$tmpfx/.standards_tmp" ] && [ -z "$(ls -A "$tmpfx/.standards_tmp")" ] \
@@ -533,19 +557,19 @@ fi
 
 # --- Dogfood: the real repository ----------------------------------------------
 
-echo -n "Test 40: the repo's own agent configs pass --check (no drift)... "
+echo -n "Test 42: the repo's own agent configs pass --check (no drift)... "
 out=$("$GEN" --root "$REPO_ROOT" --check 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass; else fail "repo is out of sync — run make generate-standards-lists:
 $out"; fi
 
-echo -n "Test 41: every real agent config carries a generated standards-list region... "
+echo -n "Test 43: every real agent config carries a generated standards-list region... "
 missing=""
 for f in .cursorrules .github/copilot-instructions.md .gemini/GEMINI.md AGENTS.md CLAUDE.md standards/README.md; do
     grep -qF -- "$BEGIN_LIST" "$REPO_ROOT/$f" || missing="$missing $f"
 done
 if [ -z "$missing" ]; then pass; else fail "no standards-list region in:$missing"; fi
 
-echo -n "Test 42: every real language standard has catalog triggers (no name fallback in detection maps)... "
+echo -n "Test 44: every real language standard has catalog triggers (no name fallback in detection maps)... "
 if grep -q 'source files →' "$REPO_ROOT/.cursorrules"; then
     fail "a language is missing its triggers column in standards/catalog.tsv"
 else
