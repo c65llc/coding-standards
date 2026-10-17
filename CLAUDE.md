@@ -39,7 +39,7 @@ There are no build steps, no test suites, and no application to run. The primary
 
 Markdown files organized by category with prefix-based naming:
 
-- `architecture/` (arch-01, arch-02, arch-04–arch-08): Core architecture, automation, data versioning/migration, resilient patterns, monorepo/workspace, cross-platform shared-core, CI/CD pipeline
+- `architecture/` (arch-01, arch-02, arch-04–arch-09): Core architecture, automation, data versioning/migration, resilient patterns, monorepo/workspace, cross-platform shared-core, CI/CD pipeline, containerized agent-dev environment
 - `languages/` (lang-01 through lang-13): Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby on Rails, Go, Elixir
 - `process/` (proc-01 through proc-04): Documentation, git/version control, code review, agent workflow
 - `security/` (sec-01): Security guidelines with P0-P2 severity model
