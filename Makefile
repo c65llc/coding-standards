@@ -1,4 +1,4 @@
-.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor merge-standards lint-standards website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-website-csp
+.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor merge-standards lint-standards generate-standards-lists check-agent-configs website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-website-csp
 
 help: ## Show this help message
 	@echo "Standards Repository Management"
@@ -81,10 +81,13 @@ test-setup-safe: ## Run functional tests on safe-setup behavior (1.2)
 test-lint-standards: ## Run functional tests on lint-standards.sh and lint-checks modules
 	@./scripts/test-lint-standards.sh
 
+test-generate-standards-lists: ## Run functional tests on generate-standards-lists.sh (agent config generator)
+	@./scripts/test-generate-standards-lists.sh
+
 test-website-csp: ## Run functional tests on the website CSP post-build step (needs node)
 	@./website/scripts/test-csp-postbuild.sh
 
-test: test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-website-csp ## Run all tests
+test: test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-website-csp ## Run all tests
 
 setup-agents: ## Setup AI agent configurations (Copilot, Aider, Codex)
 	@if [ -d ".standards" ]; then \
@@ -118,6 +121,12 @@ merge-standards: ## Print the pending merge plan for manual / CLI review
 
 lint-standards: ## Run standards compliance linter
 	@./scripts/lint-standards.sh
+
+generate-standards-lists: ## Regenerate the standards lists inside agent configs from the standards/ tree
+	@./scripts/generate-standards-lists.sh
+
+check-agent-configs: ## Fail if any agent config is stale, cites a missing standard, or omits an existing one
+	@./scripts/generate-standards-lists.sh --check
 
 website-dev: ## Start the website dev server
 	@cd website && npm run dev
