@@ -1,0 +1,36 @@
+# Optional enrichment for the standards lists that scripts/generate-standards-lists.sh
+# renders into agent configs. The standards/ tree is the manifest: a file appears in
+# every generated list whether or not it has a row here. A row only supplies a better
+# description than the document's H1 title and, for language standards, the file
+# triggers shown in "Language Detection" maps.
+#
+# Tab-separated. Columns: path (relative to standards/)	description	triggers
+# `make check-agent-configs` fails when a row points at a file that does not exist.
+architecture/arch-01_project_standards_and_architecture.md	Core architecture, SOLID principles, naming conventions
+architecture/arch-02_automation_standards.md	Makefile targets and automation requirements
+architecture/arch-04_data_versioning_and_migration_standards.md	Data versioning and migration
+architecture/arch-05_resilient_architecture_patterns.md	Resilient architecture patterns
+architecture/arch-06_monorepo_workspace_standards.md	Monorepo/workspace structure
+architecture/arch-07_cross_platform_shared_core_standards.md	Cross-platform shared-core
+architecture/arch-08_ci_cd_pipeline_standards.md	CI/CD pipeline
+architecture/arch-10_agent_tools_and_mcp_server_standards.md	Agent tools and MCP servers (schemas, write gating, untrusted-data fencing)
+languages/lang-01_python_standards.md	Python (uv, ruff, mypy, pytest)	`.py` files
+languages/lang-02_java_standards.md	Java (Gradle/Maven, Java 17+, JUnit 5)	`.java` files
+languages/lang-03_kotlin_standards.md	Kotlin (Gradle, ktlint, detekt, MockK)	`.kt`, `.kts` files
+languages/lang-04_swift_standards.md	Swift (SwiftPM, Swift 6 strict concurrency, swift-format, XCTest/Swift Testing)	`.swift` files
+languages/lang-05_dart_standards.md	Dart (pub, dart format, test package)	`.dart` files
+languages/lang-06_typescript_standards.md	TypeScript (pnpm, prettier, eslint, vitest, strict mode)	`.ts`, `.tsx` files
+languages/lang-07_javascript_standards.md	JavaScript (pnpm, prettier, eslint, vitest)	`.js`, `.jsx` files
+languages/lang-08_rust_standards.md	Rust (cargo, rustfmt, clippy -D warnings in CI, cargo-deny, Result<T, E>)	`.rs` files
+languages/lang-09_zig_standards.md	Zig (zig build, zig fmt, manual memory management)	`.zig` files
+languages/lang-10_ruby_standards.md	Ruby (bundler, rubocop, sorbet, rspec)	`.rb` files
+languages/lang-11_ruby_on_rails_standards.md	Ruby on Rails (Rails 7.2+, rubocop-rails)	`.erb` files, `Gemfile`, `Rakefile`
+languages/lang-12_go_standards.md	Go (go modules, gofmt, go vet, golangci-lint, table-driven tests)	`.go` files, `go.mod`
+languages/lang-13_elixir_standards.md	Elixir (mix, mix format, credo, ExUnit)	`.ex`, `.exs` files, `mix.exs`
+process/proc-01_documentation_standards.md	ADR (bullet metadata), spec/plan/design-pass/verification docs, changelog, user docs
+process/proc-02_git_version_control_standards.md	Git workflow, commits, branching
+process/proc-03_code_review_expectations.md	Code review process and expectations
+process/proc-04_agent_workflow_standards.md	Agent worktree/PR workflow
+process/proc-05_test_governance.md	Test governance: quarantine registry, flake report, fast/slow tiers, routing table, scoped coverage, gates, PR evidence
+security/sec-01_security_standards.md	Security guidelines with P0-P2 severity model
+shared/core-standards.md	Canonical cross-cutting standards (Clean Architecture, SOLID, naming, testing coverage targets) referenced by all agent configs
