@@ -209,8 +209,31 @@ yaml_list() {
     local inline
     inline=$(grep "^${key}:" "$file" 2>/dev/null | sed "s/^${key}:[[:space:]]*//" | sed 's/[[:space:]]*$//')
     if [[ "$inline" == \[* ]]; then
-        # Inline format: [python, typescript]   # a trailing comment is dropped
-        echo "$inline" | sed 's/\].*$/]/' | tr -d '[]' | tr ',' '\n' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr '\n' ' '
+        # Inline format: [python, typescript]   # a trailing comment is dropped.
+        # Commas split entries only outside quotes, so ["api,v2", web] keeps
+        # "api,v2" whole (the caller unquotes), as yaml_nested_list does.
+        awk -v line="$inline" 'BEGIN {
+            sub(/^\[/, "", line)
+            sub(/\].*$/, "", line)
+            len = length(line); cur = ""; q = ""
+            for (i = 1; i <= len; i++) {
+                ch = substr(line, i, 1)
+                if (q != "") {
+                    cur = cur ch
+                    if (ch == q) q = ""
+                } else if (ch == "\"" || ch == "\047") {
+                    q = ch; cur = cur ch
+                } else if (ch == ",") {
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", cur)
+                    if (cur != "") print cur
+                    cur = ""
+                } else {
+                    cur = cur ch
+                }
+            }
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", cur)
+            if (cur != "") print cur
+        }' | tr '\n' ' '
     else
         # Block format:
         #   - python

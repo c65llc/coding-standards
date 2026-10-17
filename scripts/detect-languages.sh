@@ -211,6 +211,14 @@ fi
                 case "$rel" in
                     .*|*/.*) continue ;;   # hidden directories are never project roots
                 esac
+                # A symlinked sub-root (or a symlinked parent such as apps/)
+                # could point outside the checkout; setup, sync and diff build
+                # agent and tool configuration from this detection, so it must
+                # never depend on files that are not the repository's own.
+                [ -L "$dir" ] && continue
+                case "$rel" in
+                    */*) [ -L "$PROJECT_ROOT/${rel%%/*}" ] && continue ;;
+                esac
                 skipped "$rel" && continue
                 detect_in_dir "$dir"
             done

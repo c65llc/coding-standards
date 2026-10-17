@@ -762,6 +762,10 @@ output_sarif() {
         [ "$status" = "PASS" ] && continue
 
         message=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        # The URI is built from the raw path; only the JSON property value is
+        # JSON-escaped (a member a"b is URI a%22b, not a%5C%22b).
+        local member_uri
+        member_uri=$(sarif_uri_path "$member")
         member=$(printf '%s' "$member" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
         if [ "$results_first" = true ]; then
@@ -780,7 +784,7 @@ output_sarif() {
         printf '            {\n'
         printf '              "physicalLocation": {\n'
         printf '                "artifactLocation": {\n'
-        printf '                  "uri": "%s",\n' "$(sarif_uri_path "$member")"
+        printf '                  "uri": "%s",\n' "$member_uri"
         printf '                  "uriBaseId": "%%SRCROOT%%"\n'
         printf '                }\n'
         printf '              }\n'

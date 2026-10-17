@@ -2619,6 +2619,38 @@ if json_valid "$TMP_BASE/svc.sarif" && grep -q '"uri": "%23svc"' "$TMP_BASE/svc.
    && tr -d '\n' < "$TMP_BASE/svc.sarif" | grep -q '"properties": *{ *"member": *"#svc"' && grep -q '"uri": "web"' "$TMP_BASE/svc.sarif"; then pass; else
     fail "uris: $(grep -o '"uri": "[^"]*"' "$TMP_BASE/svc.sarif" | sort -u | tr '\n' ' ')"; fi
 
+echo -n "Test 180: detect-languages.sh never follows a symlinked conventional sub-root (or symlinked parent) outside the checkout... "
+ext=$(mktemp -d "$TMP_BASE/ext-crate.XXXXXX")
+printf '[package]\nname = "ext"\n' > "$ext/Cargo.toml"
+mkdir -p "$ext/pkg"
+printf 'build.zig\n' > "$ext/pkg/build.zig"
+dl=$(make_project "detect-symlinked-subroots")
+mkdir -p "$dl/apps"
+printf '[project]\nname = "root"\n' > "$dl/pyproject.toml"
+ln -s "$ext" "$dl/apps/web"          # symlinked sub-root
+ln -s "$ext" "$dl/packages"          # symlinked parent of packages/*
+out=$("$DETECT" "$dl" 2>/dev/null | tr '\n' ' ')
+if [ "$out" = "python " ]; then pass; else fail "detected: '$out'"; fi
+
+echo -n "Test 181: an inline members: list keeps a quoted comma inside one value... "
+mono16=$(make_monorepo "members-quoted-comma" "$(printf 'version: 1\nlanguages: []\nmembers: ["api,v2", web]\n')")
+mkdir -p "$mono16/api,v2/src" "$mono16/api,v2/tests"
+printf 'version: 1\nlanguages:\n  - python\n' > "$mono16/api,v2/.standards.yml"
+printf '[project]\nname = "api"\n' > "$mono16/api,v2/pyproject.toml"
+git_commit_all "$mono16" "feat: api v2"
+out=$("$LINT" --format json "$mono16" 2>/dev/null || true)
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"api,v2" *, *"web" *\]' && ! echo "$out" | grep -q 'not found (no such directory)'; then pass; else
+    fail "members: $(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]')"; fi
+
+echo -n "Test 182: --format sarif builds the member URI from the raw path, not from its JSON-escaped form... "
+qm=$(make_monorepo "members-sarif-quote" "$(printf "version: 1\nlanguages: []\nmembers:\n  - 'a\"b'\n  - web\n")")
+mv "$qm/server" "$qm/a\"b"
+git_commit_all "$qm" "feat: rename"
+"$LINT" --format sarif "$qm" > "$TMP_BASE/quote.sarif" 2>/dev/null || true
+if json_valid "$TMP_BASE/quote.sarif" && grep -q '"uri": "a%22b"' "$TMP_BASE/quote.sarif" \
+   && tr -d '\n' < "$TMP_BASE/quote.sarif" | grep -q '"properties": *{ *"member": *"a\\"b"'; then pass; else
+    fail "uris: $(grep -o '"uri": "[^"]*"' "$TMP_BASE/quote.sarif" | sort -u | tr '\n' ' ') props: $(grep -o '"member": "[^,}]*' "$TMP_BASE/quote.sarif" | sort -u | tr '\n' ' ')"; fi
+
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
