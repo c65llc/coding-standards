@@ -230,7 +230,7 @@ Example: `feat(domain): add user email validation`
 
 - **API Docs:** Generate from code (JSDoc, docstrings, rustdoc).
 - **README:** Every package/app must have README with setup instructions.
-- **Architecture Decisions:** Document in `docs/adr/` using the ADR template (bullet metadata: Status, Date, Related, Supersedes/Extends; sections Context, Decision, Consequences). Spec, plan, design-pass and verification templates live in `templates/docs/` (`proc-01` §11).
+- **Architecture Decisions:** Document in `docs/adr/` using the ADR template (bullet metadata: Status, Date, Related, Supersedes/Extends; sections Context, Decision, Consequences). Spec, plan, design-pass and verification templates live in `templates/docs/` of the standards repository — `.standards/templates/docs/` in a project that installed it (`proc-01` §11).
 
 ### Inline Documentation
 

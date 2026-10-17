@@ -38,15 +38,17 @@ Copy [`templates/docs/adr.md`](https://github.com/c65llc/coding-standards/blob/m
 [The resulting context: what gets easier, harder, or impossible; follow-ups spawned]
 ```
 
-### Required Fields
+### Metadata Fields
 
-| Field | Form | Values |
-|-------|------|--------|
-| Status | `- **Status:**` | `Proposed`, `Accepted`, `Rejected`, `Deprecated`, `Superseded by ADR NNNN` |
-| Date | `- **Date:**` | ISO `YYYY-MM-DD` — the date the status last changed |
-| Related | `- **Related:**` | Issues, PRs, specs, review-finding ids (`R17`, `M-3`) |
-| Supersedes / Extends | `- **Supersedes:**`, `- **Extends:**` | ADR numbers or `—`. *Supersedes* retires the older ADR (set its status to `Superseded by ADR NNNN`); *Extends* refines it and leaves it Accepted |
-| Context, Decision, Consequences | `##` headings | Required sections. An `Alternatives Considered` section is optional — prefer one inline sentence in Decision |
+| Field | Form | Values | `doc-lint` |
+|-------|------|--------|------------|
+| Status | `- **Status:**` | `Proposed`, `Accepted`, `Rejected`, `Deprecated`, `Superseded by ADR NNNN` | Required |
+| Date | `- **Date:**` | ISO `YYYY-MM-DD` — the date the status last changed | Required |
+| Related | `- **Related:**` | Issues, PRs, specs, review-finding ids (`R17`, `M-3`); `—` when there is nothing to link | Expected on every ADR written from the template; not lint-enforced |
+| Supersedes / Extends | `- **Supersedes:**`, `- **Extends:**` | ADR numbers or `—`. *Supersedes* retires the older ADR (set its status to `Superseded by ADR NNNN`); *Extends* refines it and leaves it Accepted | Expected on every ADR written from the template; not lint-enforced |
+| Context, Decision, Consequences | `##` headings | Required sections. An `Alternatives Considered` section is optional — prefer one inline sentence in Decision | Required |
+
+Status, Date and the three sections are the lint-enforced minimum, chosen so that pre-existing Nygard-style ADRs (including the legacy `## Status` / `## Date` heading form) keep passing. Related, Supersedes and Extends are part of the template and reviewers should expect them on every new ADR; write `—` rather than omitting the line.
 
 ### Guidelines
 

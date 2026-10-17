@@ -11,6 +11,14 @@
 # standards checkout (.standards/) and the .standards-pending/ staging dir are
 # always skipped.
 #
+# Code is never content: fenced blocks (opener indented at most three spaces,
+# closed only by a fence of the same character and at least the same length)
+# and indented code blocks (four spaces or a tab after a blank line, until a
+# less-indented non-blank line) are removed before both the ADR checks and the
+# link scan, so an example ADR or an example link inside a code block can
+# neither satisfy nor fail a rule. Inline code spans (any backtick run length)
+# are removed from the remaining lines.
+#
 # ADR rules — files under docs/adr/, docs/adrs/, docs/decisions/ or
 # docs/architecture/decisions/. README.md, index.md and the template file
 # itself (template.md, adr-template.md, 0000-template.md, NNNN-template.md …)
@@ -32,12 +40,9 @@
 # directory. Destinations follow CommonMark: optional whitespace after `(`,
 # `<...>` may contain spaces, otherwise balanced parentheses are part of the
 # target and the destination ends at whitespace (title) or the unbalanced `)`;
-# backslash escapes are decoded. An escaped `\[` or `\]` does not form a link,
-# and footnote definitions (`[^1]: …`) are not reference links. Fragments,
-# query strings and titles are stripped. Fenced code blocks (opener indented at
-# most three spaces, matched by delimiter character and length so a shorter
-# fence inside a longer one is content) and inline code spans (any backtick
-# run length) are ignored.
+# backslash escapes and percent-encoding are decoded. An escaped `\[` or `\]`
+# does not form a link, and footnote definitions (`[^1]: …`) are not reference
+# links. Fragments, query strings and titles are stripped.
 #
 # See standards/process/proc-01_documentation_standards.md §1 and §10.
 
@@ -69,6 +74,50 @@ list_markdown_files() {
 }
 
 # ---------------------------------------------------------------------------
+# Shared awk rules: skip fenced and indented code blocks
+# ---------------------------------------------------------------------------
+# Prepended to every awk program below. Lines inside code blocks are consumed
+# with `next`; everything else falls through to the program's own rules.
+#
+# All awk programs run under LC_ALL=C: they walk lines one position at a time,
+# and in a UTF-8 locale macOS awk aborts ("multibyte conversion failure") when
+# a single byte of a multibyte character is tested against a regex. Byte
+# semantics are safe here because every cut point is an ASCII delimiter.
+# shellcheck disable=SC2016  # awk program text, not shell expansion
+AWK_SKIP_CODE='
+    BEGIN { prev_blank = 1 }
+    # Fenced code: an opener may be indented at most three spaces (four make
+    # it indented code). Remember the delimiter character and run length;
+    # only a fence of the same character and at least that length, with
+    # nothing but whitespace after it, closes the block.
+    /^[ \t]*(```|~~~)/ {
+        match($0, /^[ \t]*/); ind = substr($0, 1, RLENGTH); rest = substr($0, RLENGTH + 1)
+        if (length(ind) <= 3 && index(ind, "\t") == 0) {
+            ch = substr(rest, 1, 1); n = 0
+            while (substr(rest, n + 1, 1) == ch) n++
+            if (!in_fence) { in_fence = 1; fence_ch = ch; fence_len = n; prev_blank = 0; next }
+            if (ch == fence_ch && n >= fence_len && substr(rest, n + 1) ~ /^[[:space:]]*$/) {
+                in_fence = 0; prev_blank = 1; next
+            }
+        }
+    }
+    in_fence { next }
+    # Indented code: four spaces or a tab at line start, opened only after a
+    # blank line (an indented line cannot interrupt a paragraph), running
+    # through blank lines until a less-indented non-blank line.
+    {
+        blank = ($0 ~ /^[[:space:]]*$/)
+        if (in_indented) {
+            if (blank || $0 ~ /^(    |\t)/) next
+            in_indented = 0
+        } else if (prev_blank && !blank && $0 ~ /^(    |\t)/) {
+            in_indented = 1; next
+        }
+        prev_blank = blank
+    }
+'
+
+# ---------------------------------------------------------------------------
 # ADR required fields
 # ---------------------------------------------------------------------------
 is_adr_path() {
@@ -90,13 +139,18 @@ is_adr_path() {
     return 0
 }
 
-# Prints the value of a Status/Date-style metadata field (trimmed), or nothing
-# when the field is absent or empty. Accepts:
+# Prints a Markdown file with fenced and indented code blocks removed.
+strip_code_blocks() {
+    LC_ALL=C awk "$AWK_SKIP_CODE"' { print }' "$1"
+}
+
+# Reads a code-stripped ADR on stdin and prints the value of a Status/Date-style
+# metadata field (trimmed), or nothing when the field is absent or empty.
+# Accepts:
 #   - **Field:** value   |   **Field**: value   |   Field: value
 #   ## Field            (value = first non-blank line below, unless a heading)
-# LC_ALL=C: see extract_relative_links.
 adr_field_value() {
-    local file="$1" field="$2"
+    local field="$1"
     LC_ALL=C awk -v field="$field" '
         function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
         {
@@ -112,24 +166,27 @@ adr_field_value() {
                 print trim($0); exit
             }
         }
-    ' "$file"
+    '
 }
 
 # Prints the missing or invalid fields for one ADR (space-separated);
-# empty = complete.
+# empty = complete. Code blocks are removed first so an embedded example
+# cannot satisfy the structure.
 adr_missing_fields() {
-    local file="$1" missing="" status date
-    status="$(adr_field_value "$file" status)"
+    local file="$1" missing="" body status date
+    body="$(strip_code_blocks "$file")"
+    status="$(printf '%s\n' "$body" | adr_field_value status)"
     if ! printf '%s\n' "$status" \
         | grep -qiE '^(proposed|accepted|rejected|deprecated|superseded)([^a-z]|$)'; then
         missing="$missing Status"
     fi
-    date="$(adr_field_value "$file" date)"
+    date="$(printf '%s\n' "$body" | adr_field_value date)"
     if ! printf '%s\n' "$date" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}([^0-9]|$)'; then
         missing="$missing Date"
     fi
     for section in Context Decision Consequences; do
-        if ! grep -qiE "^ {0,3}#{1,6}[[:space:]]+${section}([[:space:]]|$)" "$file"; then
+        if ! printf '%s\n' "$body" \
+            | grep -qiE "^ {0,3}#{1,6}[[:space:]]+${section}([[:space:]]|$)"; then
             missing="$missing $section"
         fi
     done
@@ -140,12 +197,8 @@ adr_missing_fields() {
 # Relative link extraction
 # ---------------------------------------------------------------------------
 # Prints the relative link targets in a Markdown file, one per line.
-# LC_ALL=C: the parsers walk the line one position at a time, and in a UTF-8
-# locale macOS awk aborts ("multibyte conversion failure") when a single byte
-# of a multibyte character is tested against a regex. Byte semantics are safe
-# here because every cut point is an ASCII delimiter.
 extract_relative_links() {
-    LC_ALL=C awk '
+    LC_ALL=C awk "$AWK_SKIP_CODE"'
         # Remove the first unescaped "#" or "?" and everything after it,
         # honouring backslash escapes (a "\#" is part of the path).
         function strip_fragment(t,    i, L, c) {
@@ -172,10 +225,25 @@ extract_relative_links() {
             }
             return out
         }
+        # Decode %XX percent-encoding (any byte, so UTF-8 sequences survive).
+        function percent_decode(t,    out, i, L, h, hex) {
+            hex = "0123456789abcdef"; out = ""; L = length(t); i = 1
+            while (i <= L) {
+                if (substr(t, i, 1) == "%" && i + 2 <= L) {
+                    h = tolower(substr(t, i + 1, 2))
+                    if (h ~ /^[0-9a-f][0-9a-f]$/) {
+                        out = out sprintf("%c", (index(hex, substr(h, 1, 1)) - 1) * 16 + index(hex, substr(h, 2, 1)) - 1)
+                        i += 3; continue
+                    }
+                }
+                out = out substr(t, i, 1); i++
+            }
+            return out
+        }
         # angle=1: the destination came from <...> and may contain spaces.
         function emit(target, angle) {
             if (!angle) sub(/[[:space:]].*$/, "", target)   # drop link title
-            target = unescape(strip_fragment(target))       # drop fragment / query
+            target = percent_decode(unescape(strip_fragment(target)))
             if (target == "") return
             if (target ~ /^[A-Za-z][A-Za-z0-9+.-]*:/) return   # URL scheme
             if (target ~ /^\//) return                         # site-absolute
@@ -250,22 +318,6 @@ extract_relative_links() {
             if (k == 0) return 0
             return lead + j + k - 1
         }
-        # Fenced code: an opener may be indented at most three spaces (four
-        # make it indented code). Remember the delimiter character and run
-        # length; only a fence of the same character and at least that length,
-        # with nothing but whitespace after it, closes the block.
-        /^[ \t]*(```|~~~)/ {
-            match($0, /^[ \t]*/); ind = substr($0, 1, RLENGTH); rest = substr($0, RLENGTH + 1)
-            if (length(ind) <= 3 && index(ind, "\t") == 0) {
-                ch = substr(rest, 1, 1); n = 0
-                while (substr(rest, n + 1, 1) == ch) n++
-                if (!in_fence) { in_fence = 1; fence_ch = ch; fence_len = n; next }
-                if (ch == fence_ch && n >= fence_len && substr(rest, n + 1) ~ /^[[:space:]]*$/) {
-                    in_fence = 0; next
-                }
-            }
-        }
-        in_fence { next }
         {
             line = strip_code_spans($0)
             # Reference-style definition: [label]: target  (not footnotes [^1]:)
@@ -325,7 +377,6 @@ while IFS= read -r rel; do
 
     while IFS= read -r target; do
         [ -n "$target" ] || continue
-        target="${target//%20/ }"
         if [ ! -e "$dir/$target" ]; then
             BROKEN_COUNT=$((BROKEN_COUNT + 1))
             if [ "$BROKEN_COUNT" -le 3 ]; then

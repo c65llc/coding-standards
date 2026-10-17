@@ -633,19 +633,90 @@ out=$(bash "$DOC_LINT" "$link_case" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'GUIDE.Md'; then pass; else
     fail "expected FAIL naming GUIDE.Md, got: $out"; fi
 
-echo -n "Test 40: doc-lint emits a status line on a project with no Markdown at all... "
+echo -n "Test 40: doc-lint ignores a complete ADR example inside a fenced block when validating structure... "
+adr_fenced=$(make_project "adr-fenced-example")
+mkdir -p "$adr_fenced/docs/adr"
+cat > "$adr_fenced/docs/adr/0005-draft.md" <<'EOF'
+# ADR 0005: Still a draft
+
+Here is what a finished ADR looks like:
+
+```markdown
+- **Status:** Accepted
+- **Date:** 2026-01-01
+
+## Context
+
+## Decision
+
+## Consequences
+```
+
+    - **Status:** Accepted
+    - **Date:** 2026-01-01
+    ## Context
+    ## Decision
+    ## Consequences
+
+The real document has none of those yet.
+EOF
+out=$(bash "$DOC_LINT" "$adr_fenced" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q '0005-draft.md' \
+   && echo "$out" | grep -q 'Status' && echo "$out" | grep -q 'Consequences'; then pass; else
+    fail "expected FAIL naming 0005-draft.md with Status and Consequences, got: $out"; fi
+
+echo -n "Test 41: doc-lint skips indented code blocks and decodes percent-encoded destinations... "
+link_ind=$(make_project "link-indented")
+mkdir -p "$link_ind/docs"
+echo "# Hash" > "$link_ind/docs/a#b.md"
+echo "# Space" > "$link_ind/docs/my file.md"
+cat > "$link_ind/docs/index.md" <<'EOF'
+# Index
+
+An indented code block follows a blank line:
+
+    [example](missing.md)
+    [ref-example]: also-missing.md
+
+	[tab-indented](missing-too.md)
+
+Percent-encoded [hash](a%23b.md) and [space](my%20file.md) resolve.
+
+A list item whose continuation is indented is still inside the list:
+
+- item one
+
+    [list continuation is skipped as code; acceptable false negative](nope.md)
+EOF
+out=$(bash "$DOC_LINT" "$link_ind" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 42: doc-lint still lints a 4-space line that continues a paragraph (lazy continuation)... "
+link_lazy=$(make_project "link-lazy")
+mkdir -p "$link_lazy/docs"
+cat > "$link_lazy/docs/index.md" <<'EOF'
+# Index
+
+This paragraph continues on the next line
+    [and this is not code](missing.md) because no blank line precedes it.
+EOF
+out=$(bash "$DOC_LINT" "$link_lazy" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'missing.md'; then pass; else
+    fail "expected FAIL naming missing.md, got: $out"; fi
+
+echo -n "Test 43: doc-lint emits a status line on a project with no Markdown at all... "
 out=$(bash "$DOC_LINT" "$proj" 2>/dev/null || true)
 if echo "$out" | grep -qE '^(PASS|WARN)'; then pass; else fail "expected PASS/WARN, got: $out"; fi
 
 # --- Sibling scripts smoke --------------------------------------------------
 
-echo -n "Test 41: diff-standards.sh runs on a project without .standards.yml... "
+echo -n "Test 44: diff-standards.sh runs on a project without .standards.yml... "
 if bash "$REPO_ROOT/scripts/diff-standards.sh" "$proj" >/dev/null 2>&1; then pass; else
     # diff-standards may exit non-zero; accept as long as it doesn't crash hard (>1)
     rc=$?; if [ "$rc" -le 1 ]; then pass; else fail "diff-standards crashed (exit $rc)"; fi
 fi
 
-echo -n "Test 42: doctor.sh runs without a hard crash... "
+echo -n "Test 45: doctor.sh runs without a hard crash... "
 ( cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -le 1 ]; then pass; else fail "doctor.sh crashed (exit $rc)"; fi
 
