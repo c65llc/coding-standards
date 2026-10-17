@@ -1209,6 +1209,8 @@ if echo "$out" | grep 'Git Hooks' | grep -q 'not installed'; then pass; else
     fail "expected 'not installed' WARN: $(echo "$out" | grep 'Git Hooks')"; fi
 
 echo -n "Test 97: doctor.sh passes once lefthook hooks are installed (core.hooksPath set)... "
+mkdir -p "$lh/.lefthook-hooks"
+printf '#!/bin/sh\n# lefthook\n' > "$lh/.lefthook-hooks/commit-msg"
 ( cd "$lh" && git config core.hooksPath .lefthook-hooks )
 out=$(cd "$lh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
 if echo "$out" | grep 'Git Hooks' | grep -q 'hooks installed' && ! echo "$out" | grep 'Git Hooks' | grep -q 'not installed'; then pass; else
@@ -1281,29 +1283,52 @@ vb=$(make_project "cc-verbatim")
 st=$(make_project "cc-strip")
 ( cd "$st" && git config commit.cleanup strip )
 printf '# this line is kept unless cleanup is strip\nfeat: decoy\n' > "$TMP_BASE/msg-vb"
-# verbatim keeps the '#' line (reject); unset cleanup is ambiguous (-m keeps
-# it) so it is also kept (reject); explicit strip drops it (accept).
+# verbatim keeps the '#' line (reject); explicit strip drops it (accept); with
+# cleanup unset git strips in editor mode (accept) but keeps for -m/-F, which
+# hooks see as GIT_EDITOR=: (reject).
 if ! bash "$CHK" --project-root "$vb" --file "$TMP_BASE/msg-vb" >/dev/null 2>&1 \
-   && ! bash "$CHK" --project-root "$em" --file "$TMP_BASE/msg-vb" >/dev/null 2>&1 \
-   && bash "$CHK" --project-root "$st" --file "$TMP_BASE/msg-vb" >/dev/null 2>&1; then pass; else
+   && bash "$CHK" --project-root "$st" --file "$TMP_BASE/msg-vb" >/dev/null 2>&1 \
+   && env -u GIT_EDITOR bash "$CHK" --project-root "$em" --file "$TMP_BASE/msg-vb" >/dev/null 2>&1 \
+   && ! env GIT_EDITOR=: bash "$CHK" --project-root "$em" --file "$TMP_BASE/msg-vb" >/dev/null 2>&1; then pass; else
     fail "commit.cleanup handling wrong"; fi
 
-echo -n "Test 106: check-commit-message.sh resolves core.commentChar=auto from the message file... "
+echo -n "Test 106: check-commit-message.sh never strips lines under core.commentChar=auto... "
 au=$(make_project "cc-auto")
 ( cd "$au" && git config core.commentChar auto && git config commit.cleanup strip )
-# User lines start with '#', so git chose ';' for its comments: the '#' line is
-# part of the message and must be judged (reject), not stripped.
+# git's auto choice cannot be reconstructed from the file, so a leading
+# comment-looking line is judged as the subject (reject) rather than skipped
+# in favour of a later line.
 printf '# user heading, not a comment\nfeat: decoy\n; Please enter the commit message\n;\n' > "$TMP_BASE/msg-auto1"
-# No user line starts with '#', so git used '#': strip those and accept.
+# A conventional first line passes regardless of the help lines below it.
 printf 'feat(auto): ok\n# Please enter the commit message\n#\n' > "$TMP_BASE/msg-auto2"
 if ! bash "$CHK" --project-root "$au" --file "$TMP_BASE/msg-auto1" >/dev/null 2>&1 \
    && bash "$CHK" --project-root "$au" --file "$TMP_BASE/msg-auto2" >/dev/null 2>&1; then pass; else
-    fail "commentChar=auto not resolved"; fi
+    fail "commentChar=auto not handled conservatively"; fi
 
-echo -n "Test 107: conventional-commits rejects empty --since / --window operands (exit 2)... "
+echo -n "Test 107: conventional-commits rejects empty or zero --since / --window operands (exit 2)... "
 bash "$CC_MOD" --since "" "$win" >/dev/null 2>&1; rc1=$?
 bash "$CC_MOD" --window "" "$win" >/dev/null 2>&1; rc2=$?
-if [ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ]; then pass; else fail "expected exit 2 for empty operands, got $rc1/$rc2"; fi
+bash "$CC_MOD" --window 0 "$win" >/dev/null 2>&1; rc3=$?
+if [ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ] && [ "$rc3" -eq 2 ]; then pass; else fail "expected exit 2, got $rc1/$rc2/$rc3"; fi
+
+echo -n "Test 108: check-commit-message.sh honours multi-character core.commentString... "
+cs=$(make_project "cc-commentstring")
+( cd "$cs" && git config core.commentString '//' && git config commit.cleanup strip )
+printf '// Please enter the commit message\nfeat(cs): after a // help line\n' > "$TMP_BASE/msg-cs"
+if bash "$CHK" --project-root "$cs" --file "$TMP_BASE/msg-cs" >/dev/null 2>&1; then pass; else
+    fail "core.commentString not honoured"; fi
+
+echo -n "Test 109: check-commit-message.sh keeps leading whitespace of a stored subject (but trims PR titles)... "
+printf '  feat: indented subject is stored indented\n' > "$TMP_BASE/msg-indent"
+if ! bash "$CHK" --project-root "$st" --file "$TMP_BASE/msg-indent" >/dev/null 2>&1 \
+   && bash "$CHK" --no-exempt "  feat: padded PR title  " >/dev/null 2>&1; then pass; else
+    fail "leading whitespace handling wrong"; fi
+
+echo -n "Test 110: a control character in a bad subject does not break --format json... "
+cj=$(make_project "cc-json")
+cc_commit "$cj" "$(printf 'bad\tsubject with tab')"
+"$LINT" --format json "$cj" > "$TMP_BASE/cc-json.out" 2>/dev/null || true
+if json_valid "$TMP_BASE/cc-json.out"; then pass; else fail "JSON output invalid: $(head -c 300 "$TMP_BASE/cc-json.out")"; fi
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

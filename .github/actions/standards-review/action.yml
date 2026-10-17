@@ -94,8 +94,13 @@ runs:
           fi
           # On a PR, default the conventional-commits range to the PR base so the
           # PR is judged on its own commits (.standards.yml commits.* still wins).
-          if [ -n "$PR_BASE_REF" ] && git rev-parse --verify --quiet "origin/$PR_BASE_REF^{commit}" >/dev/null 2>&1; then
+          # Exported even when the ref is missing (shallow checkout) so the module
+          # reports the missing ref instead of silently falling back to a window.
+          if [ -n "$PR_BASE_REF" ]; then
             export STANDARDS_COMMITS_SINCE="origin/$PR_BASE_REF"
+            if ! git rev-parse --verify --quiet "origin/$PR_BASE_REF^{commit}" >/dev/null 2>&1; then
+              echo "::warning::origin/$PR_BASE_REF is not in this checkout; use actions/checkout with fetch-depth: 0 so the conventional-commits check can inspect the PR's commits."
+            fi
           fi
           RESULTS=$("$LINTER" --format json 2>/dev/null || true)
           if [ -z "$RESULTS" ]; then

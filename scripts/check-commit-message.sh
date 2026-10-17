@@ -96,22 +96,37 @@ if [ -n "$MSG_FILE" ]; then
         exit 2
     fi
     # The subject is the first non-empty line git will keep. Which lines git
-    # drops depends on commit.cleanup:
-    #   strip     → comment lines (core.commentChar; "auto" resolved from the
-    #               file) are removed
-    #   scissors  → everything from the scissors line down is removed; comment
-    #               lines above it are kept
+    # drops depends on commit.cleanup — and, for the default, on whether an
+    # editor ran: git exports GIT_EDITOR=: to commit hooks when it will not.
+    #   strip                 → comment lines (core.commentString, else
+    #                           core.commentChar, else '#') are removed. With
+    #                           "auto" git picks a character absent from the
+    #                           user's message, which cannot be reconstructed
+    #                           from the final file, so nothing is stripped and
+    #                           a leading comment-looking line is judged as the
+    #                           subject (never skipped in favour of a later,
+    #                           possibly decoy, line).
+    #   scissors              → everything from the scissors line down is
+    #                           removed; comment lines above it are kept
     #   verbatim | whitespace → comment lines are kept
-    #   unset ("default") → strip when an editor was used, whitespace for -m/-F
-    #               messages. A hook cannot tell which path wrote the file, so
-    #               the conservative reading (keep) applies: a leading
-    #               comment-looking line is judged as the subject rather than
-    #               skipped in favour of a later, possibly decoy, line.
+    #   unset ("default")     → strip when an editor ran, whitespace (keep) for
+    #                           -m / -F messages (GIT_EDITOR=:)
     cleanup=$(git -C "$PROJECT_ROOT" config --get commit.cleanup 2>/dev/null)
+    if [ -z "$cleanup" ] || [ "$cleanup" = default ]; then
+        if [ "${GIT_EDITOR:-}" = ":" ]; then
+            cleanup='whitespace'
+        else
+            cleanup='strip'
+        fi
+    fi
     case "$cleanup" in
         strip)
-            comment_char=$(cc_effective_comment_char "$PROJECT_ROOT" "$MSG_FILE")
-            subject=$(awk -v c="$comment_char" 'substr($0, 1, 1) != c' "$MSG_FILE" | grep -m1 . || true)
+            prefix=$(cc_comment_prefix "$PROJECT_ROOT")
+            if [ -n "$prefix" ]; then
+                subject=$(awk -v p="$prefix" 'substr($0, 1, length(p)) != p' "$MSG_FILE" | grep -m1 . || true)
+            else
+                subject=$(grep -m1 . "$MSG_FILE" || true)
+            fi
             ;;
         scissors)
             subject=$(sed '/ ------------------------ >8 ------------------------$/,$d' "$MSG_FILE" | grep -m1 . || true)
@@ -126,8 +141,15 @@ else
     usage
 fi
 
-# Trim surrounding whitespace
-subject=$(printf '%s' "$subject" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+# Trim trailing whitespace. For a stored message the leading whitespace is
+# kept: git preserves indentation on a non-empty subject line and the history
+# check would reject it, so the hook must too. A PR title is trimmed on both
+# sides, as GitHub does.
+if [ -n "$MSG_FILE" ]; then
+    subject=$(printf '%s' "$subject" | sed 's/[[:space:]]*$//')
+else
+    subject=$(printf '%s' "$subject" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+fi
 
 if [ -z "$subject" ]; then
     echo "error: empty commit message" >&2

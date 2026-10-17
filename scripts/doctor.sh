@@ -375,11 +375,12 @@ effective_hooks_dir() {
 
 hook_manager_installed() {
     local name="$1" hooks_dir
+    hooks_dir=$(effective_hooks_dir)
+    # Whatever the config names, git only runs hooks that exist there.
+    { [ -d "$hooks_dir" ] && [ -n "$(ls -A "$hooks_dir" 2>/dev/null)" ]; } || return 1
     if git -C "$PROJECT_ROOT" config --get core.hooksPath 2>/dev/null | grep -qi "$name"; then
         return 0
     fi
-    hooks_dir=$(effective_hooks_dir)
-    [ -d "$hooks_dir" ] || return 1
     grep -qil "$name" "$hooks_dir"/* 2>/dev/null
 }
 

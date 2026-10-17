@@ -101,9 +101,16 @@ if [ -z "$SINCE" ]; then
             ;;
     esac
     if [ "$WINDOW" -lt 1 ]; then
-        WINDOW=50
+        echo "WARN $CHECK_NAME commits.window must be a positive integer (got '$WINDOW')"
+        exit 2
     fi
 fi
+
+# Result messages end up inside JSON strings: drop quotes/backslashes and map
+# control characters (tabs, escapes) to spaces so the report stays parseable.
+json_safe() {
+    printf '%s' "$1" | tr -d '"\\' | tr '\000-\037\177' ' '
+}
 
 SCOPES=$(cc_config_scopes "$PROJECT_ROOT")
 
@@ -144,7 +151,7 @@ while IFS= read -r line; do
     if ! cc_is_conventional "$subject"; then
         bad_format=$((bad_format + 1))
         if [ -z "$example" ]; then
-            example=$(printf '%s' "$subject" | cut -c1-60 | tr -d '"')
+            example=$(json_safe "$(printf '%s' "$subject" | cut -c1-60)")
         fi
         continue
     fi
@@ -152,6 +159,7 @@ while IFS= read -r line; do
         scope=$(cc_scope "$subject")
         if ! cc_scope_allowed "$scope" "$SCOPES"; then
             bad_scope=$((bad_scope + 1))
+            scope=$(json_safe "$scope")
             case " $bad_scopes " in
                 *" $scope "*) ;;
                 *) bad_scopes="${bad_scopes:+$bad_scopes }$scope" ;;
