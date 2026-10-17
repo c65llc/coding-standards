@@ -453,6 +453,23 @@ else
     fail "rc=$eq_rc, leftover='$leftover', output: $eq_out"
 fi
 
+echo -n "Test 30c: empty entries in the agent list (--agents=, / codex, / ,cursor) exit 2 and write nothing... "
+empty_ok=true
+empty_detail=""
+for bad in "," "codex," ",cursor" "codex,,cursor"; do
+    bad_rc=0
+    bad_out=$(cd "$proj" && "$SETUP" --agents="$bad" --languages=typescript 2>&1) || bad_rc=$?
+    if [ "$bad_rc" -ne 2 ] || ! echo "$bad_out" | grep -q "empty agent name"; then
+        empty_ok=false; empty_detail="$empty_detail [--agents=$bad rc=$bad_rc]"
+    fi
+done
+leftover=$(cd "$proj" && git status --porcelain --untracked-files=all 2>/dev/null | grep -v '^?? .standards/' || true)
+if [ "$empty_ok" = true ] && [ -z "$leftover" ] && [ ! -f "$proj/.standards.yml" ] && [ ! -f "$proj/.trufflehog-ignore" ]; then
+    pass
+else
+    fail "leftover='$leftover'$empty_detail"
+fi
+
 # --- Agent-scoped install: explicit --agents installs only that agent's artifacts
 
 echo -n "Test 31: --agents codex writes only AGENTS.md artifacts (no hooks, aliases, Cursor, .claude, .gemini)... "

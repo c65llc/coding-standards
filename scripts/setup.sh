@@ -173,6 +173,12 @@ install_git_extras() {
 
 # Reject agent names we do not know before touching the filesystem.
 if agents_explicit; then
+    # Empty entries (",", "codex,", ",cursor", "a,,b") would be dropped by the
+    # word split below and leave an explicit list that installs no agent at
+    # all, so validate the raw comma-delimited value first.
+    case ",$AGENTS_OVERRIDE," in
+        *,,*) usage_error "Option --agents contains an empty agent name: '$AGENTS_OVERRIDE'" ;;
+    esac
     for a in $(explicit_agent_list); do
         case " $KNOWN_AGENTS " in
             *" $a "*) ;;
