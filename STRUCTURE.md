@@ -86,6 +86,15 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │       └── gemini/                # Note: Gemini CLI uses .gemini/ at root (Gemini CLI convention)
 │           └── (configs in .gemini/ at project root)
 │
+├── templates/                      # 📄 Copy-and-fill templates for consumer projects
+│   ├── docs/                      # ADR, spec, plan, design-pass, verification docs
+│   │   ├── adr.md
+│   │   ├── spec.md
+│   │   ├── plan.md
+│   │   ├── design-pass.md
+│   │   └── verification.md
+│   └── *.example                  # Workflow / config templates
+│
 ├── scripts/                        # 🔧 Automation scripts
 │   ├── setup.sh                   # Setup standards in a project
 │   ├── sync-standards.sh          # Sync standards updates
@@ -141,6 +150,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 | Scripts | `scripts/` | setup.sh, sync-standards.sh |
 | Makefile | Root | Makefile |
 | Config | Root | .cursorrules |
+| Document templates | `templates/docs/` | adr.md, spec.md, plan.md, design-pass.md, verification.md |
 
 ### Documentation
 

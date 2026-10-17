@@ -71,6 +71,10 @@ This document explains the repository layout so you can find what you need quick
 │       └── codex/                  # legacy; Codex now reads AGENTS.md at root
 │           └── .codexrc
 │
+├── templates/                      # Copy-and-fill templates for consumer projects
+│   ├── docs/                       # ADR, spec, plan, design-pass, verification
+│   └── *.example                   # Workflow and config templates
+│
 ├── scripts/                        # Automation scripts
 │   ├── setup.sh                    # First-time project setup
 │   ├── sync-standards.sh           # Pull latest standards

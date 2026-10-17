@@ -43,3 +43,7 @@ Agent-specific behavioral rules. Combined with content blocks by `scripts/assemb
 - `gemini/base-gemini.md` → assembles `.gemini/GEMINI.md`
 - `aider/base-aider.md` + `aiderrc.template` → assembles `.aider-instructions.md` + `.aiderrc`
 - `codex/base-codex.md` → assembles `AGENTS.md`
+
+## Document Templates (`../templates/docs/`)
+
+Copy-and-fill templates for the documents `process/proc-01_documentation_standards.md` asks for: `adr.md`, `spec.md`, `plan.md`, `design-pass.md`, `verification.md`. See [`templates/docs/README.md`](../templates/docs/README.md).

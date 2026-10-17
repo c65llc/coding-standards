@@ -10,39 +10,51 @@ Document significant architectural decisions, their context, and consequences.
 
 Use Markdown files in `docs/adr/` directory. Number sequentially: `0001-decision-title.md`.
 
+Metadata is a **bullet list directly under the title** — not a `## Status` heading or a bare `Date:` line — so humans and the `doc-lint` check find it without parsing section structure. Legacy ADRs that use `## Status` / `## Date` headings still pass the lint; convert them when you next touch them.
+
 ### Template
 
+Copy [`templates/docs/adr.md`](https://github.com/c65llc/coding-standards/blob/main/templates/docs/adr.md):
+
 ```markdown
-# [Number]. [Title]
+# ADR NNNN: [Title]
 
-Date: YYYY-MM-DD
-
-## Status
-
-[Proposed | Accepted | Deprecated | Superseded]
+- **Status:** Proposed
+- **Date:** YYYY-MM-DD
+- **Related:** #123, `docs/specs/YYYY-MM-DD-topic-design.md`
+- **Supersedes:** —
+- **Extends:** —
 
 ## Context
 
-[Describe the issue motivating this decision]
+[The issue motivating this decision, with evidence]
 
 ## Decision
 
-[Describe the change that we're proposing or have agreed to implement]
+[The change we are making. Name a rejected alternative inline when it matters]
 
 ## Consequences
 
-[Describe the resulting context, after applying the decision]
-
-## Alternatives Considered
-
-[Describe alternative approaches and why they were rejected]
+[The resulting context: what gets easier, harder, or impossible; follow-ups spawned]
 ```
+
+### Required Fields
+
+| Field | Form | Values |
+|-------|------|--------|
+| Status | `- **Status:**` | `Proposed`, `Accepted`, `Deprecated`, `Superseded by ADR NNNN` |
+| Date | `- **Date:**` | ISO `YYYY-MM-DD` — the date the status last changed |
+| Related | `- **Related:**` | Issues, PRs, specs, review-finding ids (`R17`, `M-3`) |
+| Supersedes / Extends | `- **Supersedes:**`, `- **Extends:**` | ADR numbers or `—`. *Supersedes* retires the older ADR (set its status to `Superseded by ADR NNNN`); *Extends* refines it and leaves it Accepted |
+| Context, Decision, Consequences | `##` headings | Required sections. An `Alternatives Considered` section is optional — prefer one inline sentence in Decision |
 
 ### Guidelines
 
 * **When to Create:** For decisions that affect structure, dependencies, or significant technical choices.
-* **Status Updates:** Update status when decisions are implemented, deprecated, or superseded.
+* **Status Updates:** Update status (and Date) when decisions are implemented, deprecated, or superseded.
 * **Cross-References:** Link related ADRs. Reference issues/PRs when applicable.
+* **Root-Cause Classes:** When an ADR closes a recurring class of defect (e.g. "UI feedback loop — late async response overwrote newer state"), name the class in Consequences. Over time `docs/adr/` doubles as a design-decision ledger that reviewers cite by number.
+* **Lint:** `make lint-standards` runs `doc-lint`, which fails an ADR missing Status, Date, Context, Decision, or Consequences, and fails any relative Markdown link that does not resolve (§10).
 
 ## 2. Code Documentation
 
@@ -273,8 +285,23 @@ docs/blog/
 ### Versioning
 
 * **Documentation Versions:** Tag documentation with project versions
-* **Current vs. Historical:** Clearly distinguish current and historical documentation
+* **Current vs. Historical:** Clearly distinguish current and historical documentation (see below)
 * **Migration Guides:** Provide guides for breaking changes
+
+### Docs Index: Live vs. Historical
+
+Every `docs/` tree with more than a handful of documents keeps an index (`docs/README.md` or `docs/index.md`) listing each document with a **Status** column:
+
+| Status | Meaning | Edit policy |
+|--------|---------|-------------|
+| `live` | Describes current behavior; maintained alongside the code | Edit in the PR that changes the behavior |
+| `historical` | Point-in-time record: implemented specs, plans, verification docs, superseded ADRs | Never rewritten. Add a dated note at the top if context is needed ("Superseded by …") |
+
+Rules:
+
+* A new document is added to the index **in the PR that creates it**, with its status.
+* Changing a document's status (spec `Draft` → `Implemented`, plan `Active` → `Done`) flips its index row to `historical` in the same PR.
+* Agents and readers take current truth from `live` documents only; `historical` documents are provenance. A document that is neither is deleted or moved.
 
 ### Accessibility
 
@@ -299,6 +326,26 @@ docs/blog/
 ### Automation
 
 * **CI/CD:** Generate and deploy documentation automatically
-* **Link Checking:** Validate internal and external links
+* **Link Checking:** Validate internal and external links. `make lint-standards` runs `doc-lint` (`scripts/lint-checks/common/doc-lint.sh`), which fails on relative Markdown links that do not resolve and on ADRs missing required fields (§1); fenced code and inline code are ignored
 * **Spell Checking:** Use automated spell checkers
 * **Format Validation:** Ensure consistent formatting across documentation
+
+## 11. Spec, Plan, Design-Pass and Verification Documents
+
+Non-trivial work leaves a paper trail a reader can follow from "why" to "what shipped". Templates live in [`templates/docs/`](https://github.com/c65llc/coding-standards/tree/main/templates/docs) (`.standards/templates/docs/` when installed as a submodule); copy, fill, and add each document to the docs index (§9).
+
+| Document | Location | Required sections | Lifecycle |
+|----------|----------|-------------------|-----------|
+| Design spec — [`spec.md`](https://github.com/c65llc/coding-standards/blob/main/templates/docs/spec.md) | `docs/specs/YYYY-MM-DD-<topic>-design.md` | Purpose, Success, Non-goals, Anti-goals, Architecture, Errors, Testing, Left to the plan | `live` while Draft/Agreed → `historical` once Implemented |
+| Implementation plan — [`plan.md`](https://github.com/c65llc/coding-standards/blob/main/templates/docs/plan.md) | `docs/plans/YYYY-MM-DD-<topic>-plan.md` | Goal, Architecture, Global Constraints, Review Focus, phased checkbox tasks, PR map, Execution | `historical` from the first commit: tick boxes, never rewrite |
+| Design pass (UI) — [`design-pass.md`](https://github.com/c65llc/coding-standards/blob/main/templates/docs/design-pass.md) | `docs/design/YYYY-MM-DD-<surface>.md` | Identity prompts, Hard constraints, Deliverables table, State inventory | `live` until Built → `historical` |
+| Verification — [`verification.md`](https://github.com/c65llc/coding-standards/blob/main/templates/docs/verification.md) | `docs/<feature>-verification.md` | Tests run (counts), Coverage per module, What was NOT verified, Residual risk | `historical`; one per feature PR |
+
+### Rules
+
+* **Spec before plan, plan before code** for non-trivial work: a new feature, a change that crosses architectural layers, a migration. Trivial fixes go straight from issue to PR.
+* **"Left to the plan" is the explicit hand-off.** The plan may decide ordering, PR boundaries and file names; it may not silently change the spec's Architecture or cross an Anti-goal. If it must, reopen the spec first.
+* **Design pass precedes UI code.** The state inventory (empty / loading / error / streaming / sync paused / runner unavailable / pending write) is the checklist that [proc-04 §7](./proc-04_agent_workflow_standards.md#7-ui-change-validation) later validates the build against.
+* **Verification docs say what was NOT verified.** A green pipeline is evidence, not proof. Record test counts and per-module coverage from tool output, then name every gap and its residual risk.
+* **Reference review-finding ids.** When a review tool or reviewer assigns ids (`R17`, `M-3`), cite them in the commit body and in the ADR/spec `Related` field so a fix can be traced to the finding that prompted it.
+* **Projects on the `superpowers` workflow** keep specs in `docs/superpowers/specs/` and plans in `docs/superpowers/plans/`; the template content is identical.

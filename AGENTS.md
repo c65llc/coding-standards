@@ -26,7 +26,7 @@ This is a **coding standards repository** — Markdown docs, bash scripts, and a
 
 ## Architecture
 
-Standards documents in `standards/` organized by category. Agent base templates in `standards/agents/`. Content blocks in `standards/shared/blocks/`. Scripts in `scripts/` are all bash.
+Standards documents in `standards/` organized by category. Agent base templates in `standards/agents/`. Content blocks in `standards/shared/blocks/`. Document templates (ADR, spec, plan, design pass, verification) in `templates/docs/`. Scripts in `scripts/` are all bash; lint-check modules in `scripts/lint-checks/`.
 
 ## Testing
 
