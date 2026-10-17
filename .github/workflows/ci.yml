@@ -33,6 +33,7 @@ jobs:
       shell: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.shell == 'true' }}
       markdown: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.markdown == 'true' }}
       website: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.website == 'true' }}
+      agent_configs: ${{ github.event_name != 'pull_request' || steps.filter.outputs.shared == 'true' || steps.filter.outputs.agent_configs == 'true' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -107,11 +108,10 @@ jobs:
       - name: generate-standards-lists functional tests
         run: make test-generate-standards-lists
 
-  # Deliberately not routed through `changes`: its inputs (.cursorrules,
-  # standards/catalog.tsv) fall outside every lane in .github/ci/routing.yml,
-  # and the job takes seconds, so it runs on every PR.
   check-agent-configs:
     name: Agent Config Drift
+    needs: changes
+    if: needs.changes.outputs.agent_configs == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -133,9 +133,16 @@ jobs:
           fi
 
       # Independent of the diff above: every agent config must reference only
-      # standards files that exist and must mention every one that does.
-      - name: Validate references and completeness
+      # standards files that exist and must mention every one that does, and
+      # every language standard must have catalog triggers.
+      - name: Validate references, completeness and catalog
         run: make check-agent-configs
+
+      # The generator's own functional tests live in the agent_configs lane
+      # too, so a catalog-only or standards-only PR (which never triggers the
+      # shell lane) still exercises them.
+      - name: generate-standards-lists functional tests
+        run: make test-generate-standards-lists
 
   markdown-lint:
     name: Markdown Lint

@@ -51,6 +51,7 @@ make_fixture() {
 # path	description	triggers
 architecture/arch-01_project_standards_and_architecture.md	Core architecture, SOLID principles
 languages/lang-01_python_standards.md	Python (uv, ruff, mypy, pytest)	`.py` files
+languages/lang-02_rails_standards.md	Ruby on Rails	`.erb` files, `Gemfile`
 EOF
     cat > "$dir/.cursorrules" <<EOF
 # Cursor rules
@@ -155,7 +156,9 @@ else
 fi
 
 echo -n "Test 10: language-detection uses catalog triggers and a name fallback... "
-out=$(bash -c "source '$LIB' && render_region language-detection '$fx/standards' 'standards/'")
+fb=$(make_fixture "fallback")
+grep -v 'lang-02_rails_standards.md' "$fb/standards/catalog.tsv" > "$fb/standards/catalog.tmp" && mv "$fb/standards/catalog.tmp" "$fb/standards/catalog.tsv"
+out=$(bash -c "source '$LIB' && render_region language-detection '$fb/standards' 'standards/'")
 if echo "$out" | grep -qF -- '- `.py` files → `standards/languages/lang-01_python_standards.md`' \
    && echo "$out" | grep -qF -- '- Ruby on Rails source files → `standards/languages/lang-02_rails_standards.md`'; then
     pass
@@ -419,7 +422,21 @@ else
 $out"
 fi
 
-echo -n "Test 32: temporaries live under .standards_tmp and are cleaned up... "
+echo -n "Test 32: --check FAILs when a language standard has no catalog triggers... "
+notrig=$(make_fixture "check-no-triggers")
+"$GEN" --root "$notrig" >/dev/null 2>&1
+printf '# Go Standards\n' > "$notrig/standards/languages/lang-03_go_standards.md"
+"$GEN" --root "$notrig" >/dev/null 2>&1
+out=$("$GEN" --root "$notrig" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL catalog .*triggers.*languages/lang-03_go_standards.md' \
+   && grep -q 'Go source files →' "$notrig/.cursorrules"; then
+    pass
+else
+    fail "missing language triggers not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 33: temporaries live under .standards_tmp and are cleaned up... "
 tmpfx=$(make_fixture "tmpdir")
 "$GEN" --root "$tmpfx" >/dev/null 2>&1
 if [ -d "$tmpfx/.standards_tmp" ] && [ -z "$(ls -A "$tmpfx/.standards_tmp")" ] \
@@ -431,19 +448,19 @@ fi
 
 # --- Dogfood: the real repository ----------------------------------------------
 
-echo -n "Test 33: the repo's own agent configs pass --check (no drift)... "
+echo -n "Test 34: the repo's own agent configs pass --check (no drift)... "
 out=$("$GEN" --root "$REPO_ROOT" --check 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass; else fail "repo is out of sync — run make generate-standards-lists:
 $out"; fi
 
-echo -n "Test 34: every real agent config carries a generated standards-list region... "
+echo -n "Test 35: every real agent config carries a generated standards-list region... "
 missing=""
 for f in .cursorrules .github/copilot-instructions.md .gemini/GEMINI.md AGENTS.md CLAUDE.md standards/README.md; do
     grep -qF -- "$BEGIN_LIST" "$REPO_ROOT/$f" || missing="$missing $f"
 done
 if [ -z "$missing" ]; then pass; else fail "no standards-list region in:$missing"; fi
 
-echo -n "Test 35: every real language standard has catalog triggers (no name fallback in detection maps)... "
+echo -n "Test 36: every real language standard has catalog triggers (no name fallback in detection maps)... "
 if grep -q 'source files →' "$REPO_ROOT/.cursorrules"; then
     fail "a language is missing its triggers column in standards/catalog.tsv"
 else

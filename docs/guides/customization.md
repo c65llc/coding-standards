@@ -121,7 +121,7 @@ curl -fsSL https://raw.githubusercontent.com/<your-org>/coding-standards/main/in
 If a single project needs extra rules beyond what the shared standards cover:
 
 1. Create a file like `standards/languages/lang-99_project_specific.md` in the project repository.
-2. Add a reference to it by hand in each agent config the project uses (`CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, and so on), outside any `<!-- BEGIN GENERATED -->` / `<!-- END GENERATED -->` block. The generator (`make generate-standards-lists`) only runs inside the standards repository and only enumerates its own `standards/` tree, so it neither sees nor lists project-local files.
+2. Add a reference to it by hand in each agent config the project uses (`CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, and so on), **below the `<!-- BEGIN PROJECT-SPECIFIC -->` marker** at the end of the assembled file. Everything below that marker is preserved verbatim by `make sync-standards`; anything inserted above it changes the assembler-controlled checksum, so later syncs would treat the whole config as customized and stage updates to `.standards-pending/` instead of applying them. (The generator, `make generate-standards-lists`, only runs inside the standards repository and only enumerates its own `standards/` tree, so it neither sees nor lists project-local files.)
 3. Commit to the project repository, not the standards repo.
 
 If the rule belongs in the shared standards instead, add the file to the standards repository (or your fork), give it a row in `standards/catalog.tsv`, run `make generate-standards-lists` there, and let `make sync-standards` carry the updated lists to consuming projects.

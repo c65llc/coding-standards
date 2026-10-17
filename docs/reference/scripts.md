@@ -337,6 +337,6 @@ make check-agent-configs
 - a file in a category directory (other than `README.md`) that does not follow `<prefix>-NN_<name>.md` — such files are never enumerated, so a malformed name would otherwise vanish from every list silently
 - an agent config, base template, or structure doc that references a standards file that does not exist — any complete `standards/….md` path must exist at exactly that path (a misspelt directory or filename fails), while a bare `<prefix>-NN_<name>.md` may live in any category
 - an agent config or structure doc (`standards/README.md`, `STRUCTURE.md`, `docs/getting-started/project-structure.md`) that omits a standards file that does exist
-- a `catalog.tsv` row pointing at a file that does not exist, or two rows for the same path (a standards file without a row is a `WARN`)
+- a `catalog.tsv` row pointing at a file that does not exist, two rows for the same path, or a language standard with no triggers column (a non-language standards file without a row is only a `WARN`; its H1 title is used)
 
 The rendering and splicing functions live in `scripts/lib/standards-lists.sh` and can be sourced independently. Tests: `scripts/test-generate-standards-lists.sh`.

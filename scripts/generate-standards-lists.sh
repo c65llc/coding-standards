@@ -27,6 +27,7 @@
 #                     <prefix>-NN_<name>.md naming convention
 #                   * a catalog row for a file that does not exist, or two
 #                     rows for the same file
+#                   * a language standard with no triggers column in the catalog
 #   --quiet       Suppress per-file "unchanged" output in write mode.
 #
 # Temporary files live under <root>/.standards_tmp/ (per arch-02) and are
@@ -424,6 +425,24 @@ $(list_standards_files "$STANDARDS_DIR")
 EOF
     if [ -n "$uncatalogued" ]; then
         report_warn "catalog" "no catalog description (H1 title used) for:$uncatalogued"
+    fi
+
+    # Language-detection maps need real file triggers. The renderer falls back
+    # to "<Language> source files" so a list is never empty, but shipping that
+    # fallback is a failure, not a warning.
+    local untriggered=""
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        if [ -z "$(standards_catalog_field "$STANDARDS_DIR" "$rel" 3)" ]; then
+            untriggered="$untriggered $rel"
+        fi
+    done <<EOF
+$(list_standards_files "$STANDARDS_DIR" languages)
+EOF
+    if [ -z "$untriggered" ]; then
+        report_pass "catalog" "every language standard has catalog triggers"
+    else
+        report_fail "catalog" "language standard(s) without a triggers column in standards/$STANDARDS_CATALOG_FILE (detection maps would say '<Language> source files'):$untriggered"
     fi
 }
 
