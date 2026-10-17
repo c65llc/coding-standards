@@ -116,6 +116,7 @@ When working with this repository, agents must follow the A-P-E (Analyze, Plan, 
 - `standards/architecture/arch-06_monorepo_workspace_standards.md` — Monorepo/workspace structure
 - `standards/architecture/arch-07_cross_platform_shared_core_standards.md` — Cross-platform shared-core
 - `standards/architecture/arch-08_ci_cd_pipeline_standards.md` — CI/CD pipeline
+- `standards/architecture/arch-10_agent_tools_and_mcp_server_standards.md` — Agent tools and MCP servers (schemas, write gating, untrusted-data fencing)
 
 **Language Standards:**
 

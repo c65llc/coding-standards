@@ -13,6 +13,7 @@ architecture/arch-05_resilient_architecture_patterns.md	Resilient architecture p
 architecture/arch-06_monorepo_workspace_standards.md	Monorepo/workspace structure
 architecture/arch-07_cross_platform_shared_core_standards.md	Cross-platform shared-core
 architecture/arch-08_ci_cd_pipeline_standards.md	CI/CD pipeline
+architecture/arch-10_agent_tools_and_mcp_server_standards.md	Agent tools and MCP servers (schemas, write gating, untrusted-data fencing)
 languages/lang-01_python_standards.md	Python (uv, ruff, mypy, pytest)	`.py` files
 languages/lang-02_java_standards.md	Java (Gradle/Maven, Java 17+, JUnit 5)	`.java` files
 languages/lang-03_kotlin_standards.md	Kotlin (Gradle, ktlint, detekt, MockK)	`.kt`, `.kts` files

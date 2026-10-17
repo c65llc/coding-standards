@@ -257,12 +257,14 @@ splice_generated_regions() {
     return 0
 }
 
-# file_has_generated_regions <file> — true when <file> carries a BEGIN sentinel.
+# file_has_generated_regions <file> — true when <file> carries a BEGIN sentinel
+# line. Anchored to the line start so prose that merely mentions the sentinel
+# (e.g. this script's own documentation) is not treated as a target.
 file_has_generated_regions() {
-    grep -qF -- "$GENERATED_BEGIN_PREFIX" "$1" 2>/dev/null
+    grep -q -- "^${GENERATED_BEGIN_PREFIX}" "$1" 2>/dev/null
 }
 
 # file_has_region <file> <region_id>
 file_has_region() {
-    grep -qF -- "${GENERATED_BEGIN_PREFIX}$2${GENERATED_SUFFIX}" "$1" 2>/dev/null
+    grep -q -- "^${GENERATED_BEGIN_PREFIX}$2${GENERATED_SUFFIX}\$" "$1" 2>/dev/null
 }
