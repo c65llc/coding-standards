@@ -57,6 +57,8 @@ Checks live in `.standards/scripts/lint-checks/` organized by category:
 - `python/` — Banned functions, ruff config, type annotations
 - `typescript/` — Banned functions, eslint config, strict tsconfig
 - `go/` — Error handling, golangci config
+- `rust/` — clippy `-D warnings` in CI, deny.toml license allow-list, toolchain pin consistency, no unwrap in FFI/wasm facades
+- `swift/` — swift-format config, Package.resolved committed, warnings-as-errors
 - `elixir/` — Credo config, dialyzer config
 
 Each check script exits 0 (PASS), 1 (FAIL), or 2 (WARN).
