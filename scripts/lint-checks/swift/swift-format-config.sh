@@ -9,18 +9,27 @@ PROJECT_ROOT="${1:-.}"
 
 CHECK_NAME="swift/swift-format-config"
 
-# swift-format reads `.swift-format` (JSON). Some projects keep it as
-# .swift-format.json; accept both.
-for cfg in .swift-format .swift-format.json; do
-    if [ -f "$PROJECT_ROOT/$cfg" ]; then
-        if grep -qE '"version"' "$PROJECT_ROOT/$cfg" 2>/dev/null; then
-            echo "PASS $CHECK_NAME swift-format configured ($cfg)"
-            exit 0
-        fi
-        echo "WARN $CHECK_NAME $cfg present but has no \"version\" key — is it a valid swift-format configuration?"
-        exit 2
+# swift-format auto-discovers exactly one file name: `.swift-format` (JSON).
+if [ -f "$PROJECT_ROOT/.swift-format" ]; then
+    if grep -qE '"version"' "$PROJECT_ROOT/.swift-format" 2>/dev/null; then
+        echo "PASS $CHECK_NAME swift-format configured (.swift-format)"
+        exit 0
     fi
-done
+    echo "WARN $CHECK_NAME .swift-format present but has no \"version\" key — is it a valid swift-format configuration?"
+    exit 2
+fi
+
+# A `.swift-format.json` is silently ignored by `swift format lint` unless every
+# invocation passes `--configuration`; without that the defaults apply.
+if [ -f "$PROJECT_ROOT/.swift-format.json" ]; then
+    if grep -rqE -- '--configuration[[:space:]=]+[^[:space:]]*\.swift-format\.json' \
+        "$PROJECT_ROOT/.github/workflows" "$PROJECT_ROOT/Makefile" "$PROJECT_ROOT/justfile" "$PROJECT_ROOT/Justfile" 2>/dev/null; then
+        echo "PASS $CHECK_NAME swift-format configured (.swift-format.json, passed via --configuration)"
+        exit 0
+    fi
+    echo "WARN $CHECK_NAME .swift-format.json is not auto-discovered by swift-format — rename it to .swift-format, or pass '--configuration .swift-format.json' in CI"
+    exit 2
+fi
 
 # Nested packages (monorepo) — accept a config one level down.
 nested=$(find "$PROJECT_ROOT" -maxdepth 2 -name ".swift-format" -not -path "*/.git/*" -not -path "*/.build/*" 2>/dev/null | head -1)

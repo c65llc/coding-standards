@@ -35,12 +35,14 @@ if [ "${has_licenses:-0}" -eq 0 ]; then
 fi
 
 # allow = [ ... ] may be inline or multi-line; require at least one quoted SPDX id.
+# TOML strings may be "basic" (double-quoted) or "literal" (single-quoted).
+SPDX_STRING="\"[^\"]+\"|'[^']+'"
 allow_block=$(printf '%s\n' "$licenses_body" | awk '/^[[:space:]]*allow[[:space:]]*=/{found=1} found{print} found && /\]/{exit}')
-if [ -z "$allow_block" ] || ! printf '%s' "$allow_block" | grep -qE '"[^"]+"'; then
+if [ -z "$allow_block" ] || ! printf '%s' "$allow_block" | grep -qE "$SPDX_STRING"; then
     echo "WARN $CHECK_NAME $DENY_FILE has [licenses] but no non-empty 'allow = [...]' list — licenses are not allow-listed"
     exit 2
 fi
 
-count=$(printf '%s' "$allow_block" | grep -oE '"[^"]+"' | wc -l | tr -d ' ')
+count=$(printf '%s' "$allow_block" | grep -oE "$SPDX_STRING" | wc -l | tr -d ' ')
 echo "PASS $CHECK_NAME $DENY_FILE allow-lists $count license(s)"
 exit 0

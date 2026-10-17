@@ -64,7 +64,7 @@ The linter is organized into two tiers: common checks that run on every project,
 | Check | What it verifies |
 |-------|-----------------|
 | `swift/swift-format-config` | `.swift-format` present (WARN if only `.swiftlint.yml` exists — swift-format is the default gate) |
-| `swift/package-resolved` | `Package.resolved` committed when `Package.swift` declares dependencies |
+| `swift/package-resolved` | `Package.resolved` committed when `Package.swift` declares dependencies (WARN only for a library with no executable and no CI build) |
 | `swift/warnings-as-errors` | `-warnings-as-errors`, `SWIFT_TREAT_WARNINGS_AS_ERRORS`, or `treatAllWarnings(as: .error)` enabled in CI or the project spec |
 
 ## Plugin architecture

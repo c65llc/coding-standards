@@ -20,17 +20,28 @@ for extra in .gitlab-ci.yml .circleci/config.yml .buildkite/pipeline.yml; do
 $PROJECT_ROOT/$extra"
     fi
 done
-# Also accept the repo's own Makefile / justfile when CI delegates to it.
-for runner in Makefile justfile Justfile; do
-    if [ -f "$PROJECT_ROOT/$runner" ]; then
-        CI_FILES="${CI_FILES}
-$PROJECT_ROOT/$runner"
-    fi
-done
-
 if [ -z "$(printf '%s' "$CI_FILES" | tr -d '[:space:]')" ]; then
     echo "FAIL $CHECK_NAME No CI workflow found (.github/workflows, .gitlab-ci.yml, .circleci) — cargo clippy -D warnings must run in CI"
     exit 1
+fi
+
+# A Makefile / justfile only counts when an actual CI definition delegates to
+# it (`run: make lint`); on its own it is no evidence that anything runs in CI.
+CI_DELEGATES=""
+while IFS= read -r file; do
+    [ -n "$file" ] && [ -f "$file" ] || continue
+    if grep -qE '(^|[[:space:]:;&|(])(make|just)([[:space:]]|$)' "$file" 2>/dev/null; then
+        CI_DELEGATES="yes"
+        break
+    fi
+done <<< "$CI_FILES"
+if [ -n "$CI_DELEGATES" ]; then
+    for runner in Makefile justfile Justfile; do
+        if [ -f "$PROJECT_ROOT/$runner" ]; then
+            CI_FILES="${CI_FILES}
+$PROJECT_ROOT/$runner"
+        fi
+    done
 fi
 
 CLIPPY_LINES=""

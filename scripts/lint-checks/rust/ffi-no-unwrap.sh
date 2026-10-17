@@ -34,11 +34,11 @@ VIOLATIONS=""
 TOTAL=0
 while IFS= read -r file; do
     [ -n "$file" ] || continue
-    # Drop line comments and doc comments; keep code. Also skip lines that
-    # opt out explicitly with a SAFETY/allow annotation on the same line.
+    # Drop line comments and doc comments; keep code. There is deliberately no
+    # opt-out: an `allow(clippy::…)` annotation silences clippy, not the panic,
+    # and a panic across the boundary aborts the host process regardless.
     matches=$(grep -nE "$PANIC_PATTERN" "$file" 2>/dev/null \
         | grep -vE '^[0-9]+:[[:space:]]*//' \
-        | grep -vE 'allow\(clippy::(unwrap_used|expect_used|disallowed_methods|panic)\)' \
         || true)
     if [ -n "$matches" ]; then
         rel="${file#"$PROJECT_ROOT"/}"

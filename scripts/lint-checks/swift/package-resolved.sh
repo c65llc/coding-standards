@@ -32,6 +32,24 @@ else
 fi
 
 if [ -z "$RESOLVED" ]; then
+    # lang-04 §1: apps, executables, and anything with a CI build commit the
+    # lockfile; a library consumed by other packages may omit it.
+    is_executable=0
+    if grep -qE '\.executableTarget[[:space:]]*\(|\.executable[[:space:]]*\(' "$PROJECT_ROOT/Package.swift" 2>/dev/null; then
+        is_executable=1
+    fi
+    has_ci=0
+    if [ -d "$PROJECT_ROOT/.github/workflows" ] \
+        && find "$PROJECT_ROOT/.github/workflows" -maxdepth 1 \( -name "*.yml" -o -name "*.yaml" \) 2>/dev/null | grep -q .; then
+        has_ci=1
+    fi
+    for extra in .gitlab-ci.yml .circleci/config.yml .buildkite/pipeline.yml; do
+        [ -f "$PROJECT_ROOT/$extra" ] && has_ci=1
+    done
+    if [ "$is_executable" -eq 0 ] && [ "$has_ci" -eq 0 ]; then
+        echo "WARN $CHECK_NAME Package.swift has dependencies but no Package.resolved — acceptable for a library with no CI build (lang-04 §1); commit it once this package ships an executable or a CI pipeline"
+        exit 2
+    fi
     echo "FAIL $CHECK_NAME Package.swift has dependencies but no Package.resolved — run 'swift package resolve' and commit it"
     exit 1
 fi

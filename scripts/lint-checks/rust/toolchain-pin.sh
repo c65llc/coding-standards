@@ -33,9 +33,14 @@ if [ -z "$CHANNEL" ]; then
     exit 2
 fi
 
-# Only a concrete version pins anything; "stable"/"nightly" float.
-if ! printf '%s' "$CHANNEL" | grep -qE '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
-    echo "WARN $CHECK_NAME $PIN_SOURCE channel is \"$CHANNEL\" (floating) — pin an exact version so rust-version and CI can be checked against it"
+# Only a concrete major.minor.patch pins anything; "stable"/"nightly" float,
+# and "1.99" still follows the latest patch release (§21.4).
+if ! printf '%s' "$CHANNEL" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    if printf '%s' "$CHANNEL" | grep -qE '^[0-9]+\.[0-9]+$'; then
+        echo "WARN $CHECK_NAME $PIN_SOURCE channel is \"$CHANNEL\" — pin the exact major.minor.patch (e.g. \"$CHANNEL.0\") so local, CI and rust-version agree"
+    else
+        echo "WARN $CHECK_NAME $PIN_SOURCE channel is \"$CHANNEL\" (floating) — pin an exact version so rust-version and CI can be checked against it"
+    fi
     exit 2
 fi
 
@@ -89,7 +94,17 @@ fi
 # --- CI toolchain pins ----------------------------------------------------------
 
 CI_PINS=""
+CI_DEFS=""
 if [ -d "$PROJECT_ROOT/.github/workflows" ]; then
+    CI_DEFS=$(find "$PROJECT_ROOT/.github/workflows" -maxdepth 1 \( -name "*.yml" -o -name "*.yaml" \) 2>/dev/null)
+fi
+for extra in .gitlab-ci.yml .circleci/config.yml .buildkite/pipeline.yml; do
+    if [ -f "$PROJECT_ROOT/$extra" ]; then
+        CI_DEFS="${CI_DEFS}
+$PROJECT_ROOT/$extra"
+    fi
+done
+if [ -n "$(printf '%s' "$CI_DEFS" | tr -d '[:space:]')" ]; then
     while IFS= read -r wf; do
         [ -n "$wf" ] && [ -f "$wf" ] || continue
         rel="${wf#"$PROJECT_ROOT"/}"
@@ -109,7 +124,7 @@ if [ -d "$PROJECT_ROOT/.github/workflows" ]; then
         if grep -qE 'rust-toolchain@(stable|beta|nightly)|^[[:space:]]*toolchain:[[:space:]]*["'"'"']?(stable|beta|nightly)' "$wf" 2>/dev/null; then
             NOTES="${NOTES}${rel} uses a floating toolchain (stable/nightly) instead of ${CHANNEL}; "
         fi
-    done <<< "$(find "$PROJECT_ROOT/.github/workflows" -maxdepth 1 \( -name "*.yml" -o -name "*.yaml" \) 2>/dev/null)"
+    done <<< "$CI_DEFS"
 fi
 
 for pin in $CI_PINS; do

@@ -25,7 +25,9 @@ scripts=$(find "$PROJECT_ROOT" -maxdepth 2 -name "*.sh" -not -path "*/.build/*" 
 [ -n "$scripts" ] && CANDIDATES="${CANDIDATES}
 $scripts"
 
-PATTERN='-warnings-as-errors|SWIFT_TREAT_WARNINGS_AS_ERRORS[[:space:]]*[:=][[:space:]]*"?YES|treatAllWarnings[[:space:]]*\([[:space:]]*as:[[:space:]]*\.error|-Xswiftc[[:space:]]+-warnings-as-errors|-Werror'
+# Swift-specific mechanisms only: a bare `-Werror` is a C/C++/Java flag
+# (CFLAGS, javac) and says nothing about Swift warnings.
+PATTERN='-warnings-as-errors|SWIFT_TREAT_WARNINGS_AS_ERRORS[[:space:]]*[:=][[:space:]]*"?YES|treatAllWarnings[[:space:]]*\([[:space:]]*as:[[:space:]]*\.error|-Xswiftc[[:space:]]+-warnings-as-errors'
 
 while IFS= read -r file; do
     [ -n "$file" ] && [ -f "$file" ] || continue

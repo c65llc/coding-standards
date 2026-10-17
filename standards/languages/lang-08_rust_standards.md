@@ -334,9 +334,15 @@ pub enum Status { Ok = 0, NullPointer = -1, Parse = -2, Internal = -99 }
 pub unsafe extern "C" fn mesh_parse(bytes: *const u8, len: usize, out: *mut *mut Mesh) -> i32 {
     let result = catch_unwind(AssertUnwindSafe(|| {
         if bytes.is_null() || out.is_null() { return Status::NullPointer; }
-        let slice = std::slice::from_raw_parts(bytes, len);
+        // SAFETY: caller guarantees `bytes` points to `len` readable bytes (see `# Safety`).
+        // Explicit block: `unsafe_op_in_unsafe_fn` warns otherwise, and CI runs `-D warnings`.
+        let slice = unsafe { std::slice::from_raw_parts(bytes, len) };
         match crate::parse(slice) {
-            Ok(mesh) => { *out = Box::into_raw(Box::new(mesh)); Status::Ok }
+            Ok(mesh) => {
+                // SAFETY: `out` is non-null (checked above) and the caller guarantees it is writable.
+                unsafe { *out = Box::into_raw(Box::new(mesh)) };
+                Status::Ok
+            }
             Err(_) => Status::Parse,
         }
     }));
@@ -418,7 +424,7 @@ Rules:
 ### 21.5 License allow-list (`deny.toml`)
 
 * Every workspace ships a `deny.toml` with a `[licenses] allow = [...]` list of SPDX identifiers; `cargo deny check` runs in CI alongside `cargo audit`. An allow-list (not a deny-list) means a new copyleft dependency fails the build until someone consciously adds its license.
-* Keep `[advisories]` at `vulnerability = "deny"`, `[bans] multiple-versions = "warn"`, and `[sources]` restricted to crates.io plus explicitly listed git sources.
+* Keep `[advisories]` on the current cargo-deny schema: vulnerabilities are always errors, so the knobs are `unmaintained = "workspace"` and `yanked = "deny"` (the old `vulnerability = "deny"` / `unmaintained = "warn"` keys were removed and now fail to parse). `[bans] multiple-versions = "warn"`, and `[sources]` restricted to crates.io plus explicitly listed git sources.
 * Enforced by `lint-checks/rust/deny-config`: FAIL when no `deny.toml`, WARN when it has no non-empty `allow` list.
 
 ```toml
@@ -428,8 +434,9 @@ allow = ["MIT", "Apache-2.0", "Apache-2.0 WITH LLVM-exception", "BSD-2-Clause", 
 confidence-threshold = 0.9
 
 [advisories]
-vulnerability = "deny"
-unmaintained  = "warn"
+# Vulnerabilities always fail; these are the remaining knobs on the current schema.
+unmaintained = "workspace"
+yanked = "deny"
 
 [bans]
 multiple-versions = "warn"

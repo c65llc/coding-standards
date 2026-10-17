@@ -354,9 +354,9 @@ printf 'Package.resolved\n' > "$sw/.gitignore"
 out=$(bash "$CHECKS/swift/package-resolved.sh" "$sw" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL swift/package-resolved'; then pass; else fail "expected FAIL, got: $out"; fi
 
-echo -n "Test 41: swift/package-resolved FAILs when dependencies exist but no Package.resolved... "
+echo -n "Test 41: swift/package-resolved FAILs when an executable has dependencies but no Package.resolved... "
 sw=$(make_project "swift-resolved-missing")
-printf '// swift-tools-version: 6.0\nlet package = Package(name: "Demo", dependencies: [.package(url: "https://example.com/x", from: "1.0.0")])\n' > "$sw/Package.swift"
+printf '// swift-tools-version: 6.0\nlet package = Package(name: "Demo", dependencies: [.package(url: "https://example.com/x", from: "1.0.0")], targets: [.executableTarget(name: "Demo")])\n' > "$sw/Package.swift"
 out=$(bash "$CHECKS/swift/package-resolved.sh" "$sw" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL swift/package-resolved'; then pass; else fail "expected FAIL, got: $out"; fi
 
@@ -400,6 +400,74 @@ if grep -q '"check": "rust/clippy-ci"' "$TMP_BASE/wired.json" \
 else
     fail "rust/ or swift/ checks missing from JSON output"
 fi
+
+# --- Review follow-ups (#207): precision fixes to the rust/ and swift/ modules
+
+echo -n "Test 47: rust/clippy-ci FAILs when only a Makefile runs clippy and no CI definition exists... "
+rs=$(make_project "rust-clippy-makefile-only")
+printf 'lint:\n\tcargo clippy --all-targets -- -D warnings\n' > "$rs/Makefile"
+out=$(bash "$CHECKS/rust/clippy-ci.sh" "$rs" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL rust/clippy-ci'; then pass; else fail "expected FAIL, got: $out"; fi
+
+echo -n "Test 48: rust/clippy-ci PASSes when CI delegates to a Makefile that runs clippy -D warnings... "
+rs=$(make_project "rust-clippy-via-make")
+mkdir -p "$rs/.github/workflows"
+printf 'jobs:\n  lint:\n    steps:\n      - run: make lint\n' > "$rs/.github/workflows/ci.yml"
+printf 'lint:\n\tcargo clippy --all-targets -- -D warnings\n' > "$rs/Makefile"
+out=$(bash "$CHECKS/rust/clippy-ci.sh" "$rs" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS rust/clippy-ci'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 49: rust/deny-config PASSes with single-quoted TOML license strings... "
+rs=$(make_project "rust-deny-single-quotes")
+printf "[licenses]\nallow = ['MIT', 'Apache-2.0']\n" > "$rs/deny.toml"
+out=$(bash "$CHECKS/rust/deny-config.sh" "$rs" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS rust/deny-config.*2 license'; then pass; else fail "expected PASS with 2 licenses, got: $out"; fi
+
+echo -n "Test 50: rust/toolchain-pin WARNs when the channel lacks a patch component... "
+rs=$(make_project "rust-pin-no-patch")
+printf '[toolchain]\nchannel = "1.99"\n' > "$rs/rust-toolchain.toml"
+printf '[package]\nname = "demo"\nrust-version = "1.99"\n' > "$rs/Cargo.toml"
+out=$(bash "$CHECKS/rust/toolchain-pin.sh" "$rs" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN rust/toolchain-pin.*major.minor.patch'; then pass; else fail "expected WARN about patch component, got: $out"; fi
+
+echo -n "Test 51: rust/toolchain-pin FAILs when .gitlab-ci.yml pins a different toolchain... "
+rs=$(make_project "rust-pin-gitlab-drift")
+printf '[toolchain]\nchannel = "1.99.0"\n' > "$rs/rust-toolchain.toml"
+printf '[package]\nname = "demo"\nrust-version = "1.99"\n' > "$rs/Cargo.toml"
+printf 'test:\n  script:\n    - rustup default 1.98.0\n    - cargo test\n' > "$rs/.gitlab-ci.yml"
+out=$(bash "$CHECKS/rust/toolchain-pin.sh" "$rs" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL rust/toolchain-pin.*gitlab-ci.yml'; then pass; else fail "expected FAIL naming .gitlab-ci.yml, got: $out"; fi
+
+echo -n "Test 52: rust/ffi-no-unwrap FAILs even when the unwrap line carries an allow() annotation... "
+rs=$(make_project "rust-ffi-allow-text")
+mkdir -p "$rs/src"
+printf '#[allow(clippy::unwrap_used)] pub extern "C" fn demo() -> i32 { parse().unwrap() }\n' > "$rs/src/ffi.rs"
+out=$(bash "$CHECKS/rust/ffi-no-unwrap.sh" "$rs" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL rust/ffi-no-unwrap'; then pass; else fail "expected FAIL, got: $out"; fi
+
+echo -n "Test 53: swift/swift-format-config WARNs when only .swift-format.json exists (not auto-discovered)... "
+sw=$(make_project "swift-format-json-only")
+printf '{ "version": 1 }\n' > "$sw/.swift-format.json"
+out=$(bash "$CHECKS/swift/swift-format-config.sh" "$sw" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN swift/swift-format-config.*--configuration'; then pass; else fail "expected WARN, got: $out"; fi
+
+echo -n "Test 54: swift/package-resolved WARNs (not FAIL) for a library with dependencies and no CI build... "
+sw=$(make_project "swift-resolved-library")
+printf '// swift-tools-version: 6.0\nlet package = Package(name: "Demo", dependencies: [.package(url: "https://example.com/x", from: "1.0.0")], targets: [.target(name: "Demo")])\n' > "$sw/Package.swift"
+out=$(bash "$CHECKS/swift/package-resolved.sh" "$sw" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN swift/package-resolved'; then pass; else fail "expected WARN, got: $out"; fi
+
+echo -n "Test 55: swift/package-resolved FAILs for a library with dependencies and a CI build but no lockfile... "
+mkdir -p "$sw/.github/workflows"
+printf 'jobs:\n  test:\n    steps:\n      - run: swift test\n' > "$sw/.github/workflows/ci.yml"
+out=$(bash "$CHECKS/swift/package-resolved.sh" "$sw" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL swift/package-resolved'; then pass; else fail "expected FAIL, got: $out"; fi
+
+echo -n "Test 56: swift/warnings-as-errors FAILs when only an unrelated C -Werror flag exists... "
+sw=$(make_project "swift-wae-cflags")
+printf 'CFLAGS = -Wall -Werror\n\nbuild:\n\tswift build\n' > "$sw/Makefile"
+out=$(bash "$CHECKS/swift/warnings-as-errors.sh" "$sw" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL swift/warnings-as-errors'; then pass; else fail "expected FAIL, got: $out"; fi
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

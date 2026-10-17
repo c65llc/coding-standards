@@ -30,12 +30,12 @@ no automated check modules for them yet. Consumers should not assume
 
 | Check | Severity model |
 | --- | --- |
-| `rust/clippy-ci` | PASS when a CI step runs `cargo clippy … -D warnings` (or `RUSTFLAGS=-D warnings`); WARN when clippy runs without `-D warnings`; FAIL when no CI step runs clippy |
-| `rust/deny-config` | PASS when `deny.toml` has a non-empty `[licenses] allow` list; WARN when the file exists without one; FAIL when missing |
-| `rust/toolchain-pin` | PASS when `rust-toolchain.toml`, `Cargo.toml rust-version`, and CI toolchain pins agree; FAIL when CI pins a different version or `rust-version` is newer than the toolchain; WARN when the toolchain file is missing/floating or `rust-version` trails it |
+| `rust/clippy-ci` | PASS when a CI step runs `cargo clippy … -D warnings` (or `RUSTFLAGS=-D warnings`), directly or via a `Makefile`/`justfile` that CI invokes; WARN when clippy runs without `-D warnings`; FAIL when no CI definition exists or no CI step runs clippy |
+| `rust/deny-config` | PASS when `deny.toml` has a non-empty `[licenses] allow` list (double- or single-quoted TOML strings); WARN when the file exists without one; FAIL when missing |
+| `rust/toolchain-pin` | PASS when `rust-toolchain.toml`, `Cargo.toml rust-version`, and CI toolchain pins agree; FAIL when CI pins a different version or `rust-version` is newer than the toolchain; WARN when the toolchain file is missing, floats (`stable`, or `1.99` without a patch component), or `rust-version` trails it. Reads GitHub, GitLab, CircleCI, and Buildkite definitions |
 | `rust/ffi-no-unwrap` | PASS when `ffi.rs`/`wasm.rs`/`*_ffi.rs`/`*_wasm.rs`/`ffi/`/`wasm/` contain no `unwrap`/`expect`/`panic!`-family calls (or none exist); FAIL otherwise, naming each file |
-| `swift/swift-format-config` | PASS when `.swift-format` exists; WARN when only `.swiftlint.yml`/`.swiftformat` exists; FAIL when no formatter config |
-| `swift/package-resolved` | PASS when `Package.resolved` is committed (or the package has no dependencies); FAIL when dependencies exist but the lockfile is missing, untracked, or gitignored; WARN when there is no `Package.swift` |
+| `swift/swift-format-config` | PASS when `.swift-format` exists (or `.swift-format.json` is passed via `--configuration` in CI); WARN when only `.swift-format.json`, `.swiftlint.yml`, or `.swiftformat` exists; FAIL when no formatter config |
+| `swift/package-resolved` | PASS when `Package.resolved` is committed (or the package has no dependencies); FAIL when an executable target or a CI definition exists and the lockfile is missing, or when it is untracked or gitignored; WARN for a dependency-only library with no CI build (lang-04 §1 lets it omit the lockfile) or when there is no `Package.swift` |
 | `swift/warnings-as-errors` | PASS when CI, `Package.swift`, `project.yml`, an `.xcconfig`, or a build script enables `-warnings-as-errors` / `SWIFT_TREAT_WARNINGS_AS_ERRORS` / `treatAllWarnings(as: .error)`; FAIL otherwise |
 
 ## Roadmap

@@ -135,25 +135,39 @@ enum DomainError: Error {
 * **Hardware-dependent tests skip explicitly.** A GPU/Metal test on a host without a Metal device (Linux CI, some virtualized macOS runners) must skip with a reason — never silently pass, and never guard the assertions with `if let device`. Skipped tests show up in the report; a hollow pass does not.
 
 ```swift
-import Metal
 import XCTest
+#if canImport(Metal)
+import Metal
+#endif
 
 final class RendererTests: XCTestCase {
     override func setUpWithError() throws {
+        #if canImport(Metal)
         // Skip, don't pass: the report shows "skipped (No Metal device…)".
         try XCTSkipUnless(MTLCreateSystemDefaultDevice() != nil, "No Metal device on this host")
+        #else
+        // Linux CI: Metal is not even importable. Still a recorded skip, never a build failure.
+        throw XCTSkip("Metal is unavailable on this platform")
+        #endif
     }
 
+    #if canImport(Metal)
     func testShouldRenderTriangle() throws {
         let device = try XCTUnwrap(MTLCreateSystemDefaultDevice())
         let renderer = Renderer(device: device)
         XCTAssertEqual(try renderer.render(.triangle).vertexCount, 3)
     }
+    #endif
 }
 
 // Swift Testing equivalent
+#if canImport(Metal)
 @Test(.enabled(if: MTLCreateSystemDefaultDevice() != nil, "No Metal device on this host"))
 func rendersTriangle() { /* ... */ }
+#else
+@Test(.disabled("Metal is unavailable on this platform"))
+func rendersTriangle() {}
+#endif
 ```
 
 ### Test Structure
