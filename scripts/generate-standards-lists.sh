@@ -23,7 +23,8 @@
 #                     file that does exist
 #                   * an agent config that lacks a generated region it is
 #                     expected to carry (or carries it twice), or that does
-#                     not exist at all
+#                     not exist at all; a declared documentation index that
+#                     does not exist
 #                   * a file in a category directory that does not follow the
 #                     <prefix>-NN_<name>.md naming convention, or two files
 #                     sharing one <prefix>-NN identifier
@@ -155,8 +156,13 @@ discover_targets() {
 STANDARDS_PATH_REGEX='(^|[^A-Za-z0-9_./-])standards/[A-Za-z0-9_./-]+\.md'
 STANDARDS_BASENAME_REGEX='((arch|lang|proc|sec)-[0-9]+_[A-Za-z0-9_-]+|core-standards)\.md'
 
-# standards_path_exists <standards/...md> — true when the path exists under ROOT.
+# standards_path_exists <standards/...md> — true when the path exists under
+# ROOT and stays inside standards/: a "." or ".." component is rejected even
+# if the filesystem would resolve it to an existing file.
 standards_path_exists() {
+    case "/$1/" in
+        */../*|*/./*) return 1 ;;
+    esac
     [ -f "$ROOT/$1" ]
 }
 
@@ -258,14 +264,31 @@ EOF
         return "$rc"
     fi
 
+    # Phase 1: render every target into TMP_DIR. Any failure (unknown region,
+    # nested or unterminated sentinel) aborts before the first replacement so
+    # a malformed file late in the sort order cannot leave earlier files
+    # rewritten and the tree half-regenerated.
+    local targets
+    targets=$(discover_targets)
     while IFS= read -r target; do
         [ -n "$target" ] || continue
         out="$TMP_DIR/$(echo "$target" | tr '/' '_')"
         if ! splice_generated_regions "$ROOT/$target" "$out" "$STANDARDS_DIR" "$PATH_PREFIX"; then
-            echo "ERROR: left $target untouched" >&2
+            echo "ERROR: cannot regenerate $target" >&2
             rc=1
-            continue
         fi
+    done <<EOF
+$targets
+EOF
+    if [ "$rc" -ne 0 ]; then
+        echo "ERROR: rendering failed; no files were rewritten" >&2
+        return "$rc"
+    fi
+
+    # Phase 2: replace the targets whose content changed.
+    while IFS= read -r target; do
+        [ -n "$target" ] || continue
+        out="$TMP_DIR/$(echo "$target" | tr '/' '_')"
         if cmp -s "$ROOT/$target" "$out"; then
             [ "$QUIET" = true ] || echo "unchanged: $target"
         elif replace_file "$out" "$ROOT/$target"; then
@@ -276,7 +299,7 @@ EOF
             rc=1
         fi
     done <<EOF
-$(discover_targets)
+$targets
 EOF
 
     if [ "$rc" -eq 0 ]; then
@@ -334,6 +357,21 @@ EOF
 # check_naming — every .md in a category directory (other than README.md) must
 # be <prefix>-NN_<name>.md. The generator only enumerates files that match, so
 # a malformed name would otherwise be silently dropped from every list.
+# check_required_files <relpaths...> — every hand-maintained index declared in
+# DOC_INDEXES must exist; a deleted one would otherwise drop out of both the
+# reference and completeness checks silently.
+check_required_files() {
+    local f missing=""
+    for f in "$@"; do
+        [ -f "$ROOT/$f" ] || missing="$missing $f"
+    done
+    if [ -z "$missing" ]; then
+        report_pass "required-file" "every declared documentation index exists"
+    else
+        report_fail "required-file" "declared documentation index(es) do not exist:$missing"
+    fi
+}
+
 check_naming() {
     local cat prefix f base id ids bad="" dup=""
     for cat in $STANDARDS_LIST_CATEGORIES; do
@@ -486,6 +524,8 @@ run_check() {
 
     check_drift
     check_required_regions
+    # shellcheck disable=SC2086
+    check_required_files $DOC_INDEXES
     check_naming
 
     # Reference check: everything that enumerates or cites standards files,

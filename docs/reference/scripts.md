@@ -320,7 +320,7 @@ make check-agent-configs
 **What it does:**
 
 1. Finds every file in the repository that carries a generated region delimited by `<!-- BEGIN GENERATED: <id> -->` and `<!-- END GENERATED: <id> -->` (today: `.cursorrules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `CLAUDE.md`, `standards/README.md`).
-2. Re-renders each region body from the files actually present under `standards/` (`architecture/arch-NN_*.md`, `languages/lang-NN_*.md`, `process/proc-NN_*.md`, `security/sec-NN_*.md`, plus `shared/core-standards.md`). Text outside the sentinels is never touched. Files are replaced atomically (staged under `.standards_tmp/`, then renamed into place), so a failed write leaves the existing config intact and the script exits non-zero. All temporaries live in `.standards_tmp/` and are removed on exit.
+2. Re-renders each region body from the files actually present under `standards/` (`architecture/arch-NN_*.md`, `languages/lang-NN_*.md`, `process/proc-NN_*.md`, `security/sec-NN_*.md`, plus `shared/core-standards.md`). Text outside the sentinels is never touched. Every target is rendered before any is replaced, so one malformed file aborts the run with nothing rewritten. Files are replaced atomically (staged under `.standards_tmp/`, then renamed into place), so a failed write leaves the existing config intact and the script exits non-zero. All temporaries live in `.standards_tmp/` and are removed on exit.
 3. Reads optional descriptions and language triggers from `standards/catalog.tsv`; a file with no row still appears, described by its H1 title.
 
 **Region ids:**
@@ -333,9 +333,9 @@ make check-agent-configs
 **`--check` mode** emits `PASS` / `WARN` / `FAIL` lines and exits non-zero on any `FAIL`:
 
 - a generated region whose content differs from a fresh render (stale)
-- an agent config that does not carry a required generated region exactly once (e.g. the whole `language-detection` block was deleted from `.cursorrules`, or a merge left two copies), or that has been deleted outright; write mode fails the same preflight and rewrites nothing
+- an agent config that does not carry a required generated region exactly once (e.g. the whole `language-detection` block was deleted from `.cursorrules`, or a merge left two copies), or that has been deleted outright, and likewise a deleted `STRUCTURE.md` or `docs/getting-started/project-structure.md`; write mode fails the same preflight and rewrites nothing
 - a file in a category directory (other than `README.md`) that does not follow `<prefix>-NN_<name>.md` — such files are never enumerated, so a malformed name would otherwise vanish from every list silently — or two files sharing one `<prefix>-NN` identifier
-- an agent config, base template, or structure doc that references a standards file that does not exist — any complete `standards/….md` path must exist at exactly that path (a misspelt directory or filename fails), while a bare `<prefix>-NN_<name>.md` or `core-standards.md` may live in any category
+- an agent config, base template, or structure doc that references a standards file that does not exist — any complete `standards/….md` path must exist at exactly that path with no `.`/`..` components (a misspelt directory, a typo, or a traversal fails), while a bare `<prefix>-NN_<name>.md` or `core-standards.md` may live in any category
 - an agent config or structure doc (`standards/README.md`, `STRUCTURE.md`, `docs/getting-started/project-structure.md`) that omits a standards file that does exist
 - a `catalog.tsv` row pointing at a file that does not exist, two rows for the same path, or a language standard with no triggers column — including when `catalog.tsv` is missing altogether (a non-language standards file without a row is only a `WARN`; its H1 title is used)
 

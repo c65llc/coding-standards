@@ -74,6 +74,9 @@ EOF
     cp "$dir/.cursorrules" "$dir/.github/copilot-instructions.md"
     cp "$dir/.cursorrules" "$dir/.gemini/GEMINI.md"
     cp "$dir/.cursorrules" "$dir/standards/README.md"
+    mkdir -p "$dir/docs/getting-started"
+    cp "$dir/.cursorrules" "$dir/STRUCTURE.md"
+    cp "$dir/.cursorrules" "$dir/docs/getting-started/project-structure.md"
     echo "$dir"
 }
 
@@ -208,16 +211,18 @@ else
     fail "not every target was regenerated"
 fi
 
-echo -n "Test 15: unterminated region is an error, file left untouched... "
+echo -n "Test 15: unterminated region is an error; no file is rewritten, not even earlier targets... "
 bad=$(make_fixture "unterminated")
 printf '# X\n%s\nbody\n' "$BEGIN_LIST" > "$bad/CLAUDE.md"
 cp "$bad/CLAUDE.md" "$TMP_BASE/bad.before"
 if "$GEN" --root "$bad" >/dev/null 2>&1; then
     fail "unterminated region did not fail"
-elif cmp -s "$bad/CLAUDE.md" "$TMP_BASE/bad.before"; then
+elif cmp -s "$bad/CLAUDE.md" "$TMP_BASE/bad.before" \
+     && grep -qF 'stale content that must be replaced' "$bad/.cursorrules" \
+     && grep -qF 'stale content that must be replaced' "$bad/AGENTS.md"; then
     pass
 else
-    fail "file was modified despite the error"
+    fail "a file was modified despite the error"
 fi
 
 # --- Check mode ---------------------------------------------------------------
@@ -490,7 +495,33 @@ else
 $out"
 fi
 
-echo -n "Test 37: temporaries live under .standards_tmp and are cleaned up... "
+echo -n "Test 37: --check FAILs when a declared documentation index is deleted... "
+noidx=$(make_fixture "check-no-index")
+"$GEN" --root "$noidx" >/dev/null 2>&1
+rm -f "$noidx/STRUCTURE.md"
+out=$("$GEN" --root "$noidx" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL required-file .*STRUCTURE.md'; then
+    pass
+else
+    fail "deleted documentation index not detected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 38: --check FAILs on a standards path that escapes the tree via '..'... "
+trav=$(make_fixture "check-traversal")
+printf '# Standards\n' > "$trav/standards/README2.md"
+"$GEN" --root "$trav" >/dev/null 2>&1
+printf '\nSee `standards/../standards/README2.md` and `standards/languages/../README2.md`.\n' >> "$trav/CLAUDE.md"
+out=$("$GEN" --root "$trav" --check 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q '^FAIL standards-reference CLAUDE.md.*standards/\.\./standards/README2.md' \
+   && echo "$out" | grep -q 'standards/languages/\.\./README2.md'; then
+    pass
+else
+    fail "traversal reference not rejected (rc=$rc):
+$out"
+fi
+
+echo -n "Test 39: temporaries live under .standards_tmp and are cleaned up... "
 tmpfx=$(make_fixture "tmpdir")
 "$GEN" --root "$tmpfx" >/dev/null 2>&1
 if [ -d "$tmpfx/.standards_tmp" ] && [ -z "$(ls -A "$tmpfx/.standards_tmp")" ] \
@@ -502,19 +533,19 @@ fi
 
 # --- Dogfood: the real repository ----------------------------------------------
 
-echo -n "Test 38: the repo's own agent configs pass --check (no drift)... "
+echo -n "Test 40: the repo's own agent configs pass --check (no drift)... "
 out=$("$GEN" --root "$REPO_ROOT" --check 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass; else fail "repo is out of sync — run make generate-standards-lists:
 $out"; fi
 
-echo -n "Test 39: every real agent config carries a generated standards-list region... "
+echo -n "Test 41: every real agent config carries a generated standards-list region... "
 missing=""
 for f in .cursorrules .github/copilot-instructions.md .gemini/GEMINI.md AGENTS.md CLAUDE.md standards/README.md; do
     grep -qF -- "$BEGIN_LIST" "$REPO_ROOT/$f" || missing="$missing $f"
 done
 if [ -z "$missing" ]; then pass; else fail "no standards-list region in:$missing"; fi
 
-echo -n "Test 40: every real language standard has catalog triggers (no name fallback in detection maps)... "
+echo -n "Test 42: every real language standard has catalog triggers (no name fallback in detection maps)... "
 if grep -q 'source files →' "$REPO_ROOT/.cursorrules"; then
     fail "a language is missing its triggers column in standards/catalog.tsv"
 else
