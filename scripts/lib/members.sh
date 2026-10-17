@@ -255,8 +255,11 @@ member_problem() {
 # member_languages <root> <member> [detect-script]
 #
 # Space-separated languages of one member: the `languages:` list of its own
-# .standards.yml when it has one, else what <detect-script> finds in it (when
-# given). Prints nothing for a missing directory.
+# .standards.yml when it has one — an explicit `languages: []` (or no key) is
+# respected as "none", exactly as lint-standards.sh treats it, so a language
+# the member deliberately did not declare is never assembled or installed on
+# its behalf — else, for a member with no config at all, what <detect-script>
+# finds in it (when given). Prints nothing for a missing directory.
 # ---------------------------------------------------------------------------
 member_languages() {
     local root="$1" member="$2" detect="${3:-}" dir langs=""
@@ -264,8 +267,7 @@ member_languages() {
     [ -d "$dir" ] || return 0
     if [ -f "$dir/.standards.yml" ]; then
         langs=$(yaml_list "languages" "$dir/.standards.yml" | sed 's/[[:space:]]*$//')
-    fi
-    if [ -z "$langs" ] && [ -n "$detect" ] && [ -x "$detect" ]; then
+    elif [ -n "$detect" ] && [ -x "$detect" ]; then
         langs=$("$detect" "$dir" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')
     fi
     printf '%s\n' "$langs"

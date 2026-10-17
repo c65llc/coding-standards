@@ -35,11 +35,16 @@ def member_cell(value):
     and angle brackets), cap the length, and show the result in a code span so
     whatever remains is literal Markdown.
     """
+    text = inert(value)[:200].strip() or "member"
+    return f"`{text}`"
+
+
+def inert(value):
+    """Drop the characters that turn text into a mention, link, image or code span."""
     text = cell(value)
     for ch in "`@[]()<>":
         text = text.replace(ch, "")
-    text = text[:200].strip() or "member"
-    return f"`{text}`"
+    return text
 
 
 icons = {"PASS": ":white_check_mark:", "WARN": ":warning:", "FAIL": ":x:"}
@@ -47,10 +52,17 @@ for r in results:
     if not isinstance(r, dict):
         continue
     status = r.get("status", "")
-    check = cell(r.get("check", ""))
+    raw_check = r.get("check", "")
+    check = cell(raw_check)
     member = r.get("member", "")
     if member and member != ".":
         check = f"{member_cell(member)}: {check}"
-    message = cell(r.get("message", ""))
+    if raw_check == "members":
+        # The synthetic members check quotes declared member paths (missing,
+        # unconfigured or rejected entries) in its message, so that text is
+        # repository-controlled too.
+        message = inert(r.get("message", ""))
+    else:
+        message = cell(r.get("message", ""))
     icon = icons.get(status, ":grey_question:")
     print(f"| {icon} {status} | {check} | {message} |")

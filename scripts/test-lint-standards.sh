@@ -2441,7 +2441,7 @@ echo -n "Test 166: a declared member that is a symlink to a directory outside th
 outside=$(mktemp -d "$TMP_BASE/outside.XXXXXX")
 mkdir -p "$outside/src"
 printf 'version: 1\nlanguages:\n  - python\n' > "$outside/.standards.yml"
-echo 'AWS_SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"' > "$outside/src/leak.py"
+echo "aws_access_key_id = \"$aws_key\"" > "$outside/src/leak.py"   # a pattern no-secrets would report if it scanned this tree
 mono7=$(make_monorepo "members-symlink-out" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - server\n  - escape\n')")
 ln -s "$outside" "$mono7/escape"
 out=$("$LINT" --format json "$mono7" 2>/dev/null || true)
@@ -2450,7 +2450,7 @@ if json_valid "$TMP_BASE/symlink-out.json" \
    && echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *\]' \
    && [ "$(json_member_status '\.' members < "$TMP_BASE/symlink-out.json")" = "WARN" ] \
    && grep -q "declared member 'escape' rejected: 'escape' is a symlink" "$TMP_BASE/symlink-out.json" \
-   && ! grep -q 'leak.py\|wJalrXUtnFEMI' "$TMP_BASE/symlink-out.json"; then pass; else
+   && ! grep -q 'leak.py\|escape/src' "$TMP_BASE/symlink-out.json"; then pass; else
     fail "members=$(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') status=$(json_member_status '\.' members < "$TMP_BASE/symlink-out.json") $(grep -o '"message": "[^"]*symlink[^"]*"' "$TMP_BASE/symlink-out.json" | head -1)"; fi
 
 echo -n "Test 167: an in-repo symlink (and a symlinked path component) is rejected with the same message while the real member is kept... "
@@ -2490,6 +2490,27 @@ out2=$("$LINT" --format json "$mono10" 2>/dev/null || true)
 if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *, *"web" *\]' && ! echo "$out" | grep -q 'not found (no such directory)' \
    && echo "$out2" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *, *"web" *\]' && ! echo "$out2" | grep -q 'not found (no such directory)'; then pass; else
     fail "block: $(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') inline: $(echo "$out2" | tr -d '\n' | grep -o '"members": *\[[^]]*\]')"; fi
+
+echo -n "Test 170: a root that is itself a project does not re-scan its members' files, while repo-wide checks still see them... "
+mono11=$(make_monorepo "members-root-project" "$(printf 'version: 1\nlanguages:\n  - python\nmembers:\n  - server\n  - web\n')")
+mkdir -p "$mono11/src" "$mono11/tests"
+echo 'print("root ok")' > "$mono11/src/main.py"
+echo 'def test_root(): pass' > "$mono11/tests/test_main.py"
+printf 'version: 1\nlanguages:\n  - python\nlint:\n  exclude:\n    - src/app.py\n' > "$mono11/server/.standards.yml"
+echo "aws_access_key_id = \"$aws_key\"" > "$mono11/server/src/cfg.py"   # a pattern no-secrets detects (AKIA + 16)
+git_commit_all "$mono11" "feat: root project"
+out=$("$LINT" --format json "$mono11" 2>/dev/null || true)
+printf '%s\n' "$out" > "$TMP_BASE/root-project.json"
+root_py=$(json_member_status '\.' python/banned-functions < "$TMP_BASE/root-project.json")
+server_py=$(json_member_status 'server' python/banned-functions < "$TMP_BASE/root-project.json")
+root_msg=$(tr -d '\n' < "$TMP_BASE/root-project.json" | grep -o '"check": "python/banned-functions",[[:space:]]*"member": "\.",[[:space:]]*"message": "[^"]*"' | head -1)
+secrets_msg=$(tr -d '\n' < "$TMP_BASE/root-project.json" | grep -o '"check": "no-secrets",[[:space:]]*"member": "\.",[[:space:]]*"message": "[^"]*"' | head -1)
+# The root's own scan passes (server/src/app.py's eval() is the member's file,
+# and the member excludes it); the repo-wide no-secrets scan still reaches
+# server/src/cfg.py.
+if [ "$root_py" = "PASS" ] && [ "$server_py" = "PASS" ] && ! echo "$root_msg" | grep -q 'server/src/app.py' \
+   && echo "$secrets_msg" | grep -q 'server/src/cfg.py'; then pass; else
+    fail "root=$root_py server=$server_py root_msg=$root_msg secrets=$secrets_msg"; fi
 
 
 echo ""

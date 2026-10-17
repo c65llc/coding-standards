@@ -292,18 +292,17 @@ setup_ai_agents() {
     local DETECTED_LANGS="" ROOT_LANGS=""
     local DETECT_SCRIPT="$SCRIPT_DIR/detect-languages.sh"
     if [ -n "$LANGUAGES_OVERRIDE" ]; then
-        DETECTED_LANGS=$(echo "$LANGUAGES_OVERRIDE" | tr ',' ' ')
-        ROOT_LANGS="$DETECTED_LANGS"
-    else
-        if [ -x "$DETECT_SCRIPT" ]; then
-            local detect_args=() m
-            for m in $MEMBERS; do detect_args+=(--skip "$m"); done
-            DETECTED_LANGS=$("$DETECT_SCRIPT" ${detect_args[@]+"${detect_args[@]}"} "$PROJECT_ROOT")
-        fi
-        ROOT_LANGS="$DETECTED_LANGS"
-        if [ -n "$MEMBERS" ]; then
-            DETECTED_LANGS=$(aggregate_member_languages "$PROJECT_ROOT" "$DETECTED_LANGS" "$MEMBERS" "$DETECT_SCRIPT")
-        fi
+        # --languages names the root's own languages; the members still
+        # contribute theirs to the agent configs.
+        ROOT_LANGS=$(echo "$LANGUAGES_OVERRIDE" | tr ',' ' ')
+    elif [ -x "$DETECT_SCRIPT" ]; then
+        local detect_args=() m
+        for m in $MEMBERS; do detect_args+=(--skip "$m"); done
+        ROOT_LANGS=$("$DETECT_SCRIPT" ${detect_args[@]+"${detect_args[@]}"} "$PROJECT_ROOT")
+    fi
+    DETECTED_LANGS="$ROOT_LANGS"
+    if [ -n "$MEMBERS" ]; then
+        DETECTED_LANGS=$(aggregate_member_languages "$PROJECT_ROOT" "$ROOT_LANGS" "$MEMBERS" "$DETECT_SCRIPT")
     fi
 
     # Build block arguments: language blocks + role block

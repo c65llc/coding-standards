@@ -105,6 +105,12 @@ out=$(python3 "$FORMATTER" '{"results":[{"status":"PASS","check":"c","member":"@
 expected="| :white_check_mark: PASS | \`member\`: c | m |"
 assert_eq "markup-only member falls back to a placeholder" "$expected" "$out"
 
+# Test 16: the synthetic members check quotes declared paths in its message, so
+# that message is neutralised too; other checks' messages are left as they are
+out=$(python3 "$FORMATTER" '{"results":[{"status":"WARN","check":"members","member":".","message":"declared member '"'"'@org/team'"'"' not found [x](https://evil)"},{"status":"PASS","check":"naming","member":".","message":"ok (see @docs)"}]}')
+expected=$(printf "| :warning: WARN | members | declared member 'org/team' not found xhttps://evil |\n| :white_check_mark: PASS | naming | ok (see @docs) |")
+assert_eq "members-check message is neutralised, others untouched" "$expected" "$out"
+
 echo ""
 echo "format-results.py tests: $PASS passed, $FAIL failed"
 

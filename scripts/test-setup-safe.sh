@@ -652,6 +652,26 @@ sync_out=$(cd "$proj" && "$SYNC" 2>&1) || sync_rc=$?
 if [ "$sync_rc" -eq 0 ] && echo "$sync_out" | grep -qi 'ghost' && echo "$sync_out" | grep -q 'Sync complete'; then pass; else
     fail "rc=$sync_rc: $sync_out"; fi
 
+echo -n "Test 49: a member whose config declares 'languages: []' contributes nothing to the root agent config (no detection behind its back)... "
+proj=$(make_monorepo "setup-members-empty-langs")
+printf 'version: 1\nlanguages: []\n' > "$proj/web/.standards.yml"   # web/ still has tsconfig.json and package.json
+(cd "$proj" && "$SETUP" --agents codex >/dev/null 2>&1) || true
+errs=""
+[ -f "$proj/AGENTS.md" ]                                          || errs="$errs agents-missing"
+grep -q 'tsc -b' "$proj/AGENTS.md" 2>/dev/null                    && errs="$errs typescript-assembled-despite-empty-list"
+grep -qi 'ruff' "$proj/AGENTS.md" 2>/dev/null                     || errs="$errs python-block-missing"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 50: setup.sh --languages names the root's own languages and still unions the members' into the agent config... "
+proj=$(make_monorepo "setup-members-override")
+(cd "$proj" && "$SETUP" --agents codex --languages python >/dev/null 2>&1) || true
+errs=""
+grep -q '^  - python$' "$proj/.standards.yml"                     || errs="$errs python-not-in-root-languages"
+grep -q '^  - typescript$' "$proj/.standards.yml"                 && errs="$errs typescript-leaked-into-root-languages"
+[ -f "$proj/AGENTS.md" ] && grep -q 'tsc -b' "$proj/AGENTS.md"    || errs="$errs typescript-block-missing"
+[ -f "$proj/AGENTS.md" ] && grep -qi 'ruff' "$proj/AGENTS.md"     || errs="$errs python-block-missing"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

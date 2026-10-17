@@ -372,11 +372,22 @@ member_file_list() {
 # run_member <member>
 # Runs the checks that apply to one member against its own root and config.
 run_member() {
-    local member="$1" member_dir member_langs="" check base saved_list=""
+    local member="$1" member_dir member_langs="" check base saved_list="" member_exclude=""
     member_dir=$(member_root "$PROJECT_ROOT" "$member")
 
     if [ "$member" = "." ]; then
         member_langs="$LANGUAGES"
+        # The root's own project/language checks must not re-scan the members'
+        # files: each member is checked under its own config and lint.exclude,
+        # and a second pass under the root's config would double-report (or
+        # fail on a file the member deliberately excludes). Repo-wide checks
+        # keep the whole tree (the variable is unset for them below).
+        local m
+        for m in "${MEMBERS[@]}"; do
+            [ "$m" = "." ] && continue
+            member_exclude="${member_exclude:+$member_exclude
+}$m"
+        done
     else
         [ -d "$member_dir" ] || return 0
         if [ -f "$member_dir/.standards.yml" ] && declare -f read_standards_config >/dev/null 2>&1; then
@@ -396,17 +407,21 @@ run_member() {
         for check in "$CHECKS_DIR/common/"*.sh; do
             base=$(basename "$check" .sh)
             if [[ "$base" =~ $REPO_SCOPED_CHECKS_ERE ]]; then
-                # Repo-wide: once, at the root.
+                # Repo-wide: once, at the root, over the whole tree.
                 [ "$member" = "." ] || continue
+                unset LINT_MEMBER_EXCLUDE
             elif [ "$member" = "." ] && [ "$ROOT_IS_AGGREGATOR" = true ]; then
                 # Project-level check on a root that is only an aggregator.
                 continue
+            else
+                export LINT_MEMBER_EXCLUDE="$member_exclude"
             fi
             run_check "$check" "$member_dir" "$member"
         done
     fi
 
     local lang
+    export LINT_MEMBER_EXCLUDE="$member_exclude"
     for lang in $member_langs; do
         if [ -d "$CHECKS_DIR/$lang" ]; then
             for check in "$CHECKS_DIR/$lang/"*.sh; do
@@ -414,6 +429,7 @@ run_member() {
             done
         fi
     done
+    unset LINT_MEMBER_EXCLUDE
 
     if [ -n "$saved_list" ]; then
         rm -f "$LINT_FILE_LIST"

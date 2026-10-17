@@ -180,7 +180,11 @@ lives in [`scripts/lib/members.sh`](../lib/members.sh).
 | Project | `coverage-config`, `quarantine-policy`, `test-directory-structure` | In every member, against that member's `.standards.yml`; also at the root unless the root declares no languages and has members (a pure aggregator) |
 | Language | `python/*`, `typescript/*`, `rust/*`, … | In every member, for the languages its own `.standards.yml` declares (the root's `languages:` governs the root) |
 
-Each member's `lint.exclude` applies to its own scans. Under `--since` /
+Each member's `lint.exclude` applies to its own scans, and when the root is
+itself a project its project and language checks skip the members' subtrees
+(the runner passes them as extra excludes via `LINT_MEMBER_EXCLUDE`), so a
+member's file is judged once, under its own config, never a second time under
+the root's; repo-wide checks still see the whole tree. Under `--since` /
 `--changed` the changed-file list is re-based onto each member (`server/src/x.py`
 becomes `src/x.py` for `server/`), so a member's file-scanning checks still see
 their files. Results are aggregated into one report: every JSON and SARIF
