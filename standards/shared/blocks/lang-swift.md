@@ -1,11 +1,13 @@
-Use Swift Package Manager (SPM). `Package.swift` for all dependencies. Swift 5.9+.
-Format with `swiftformat` or `swift-format`. Lint with `swiftlint`. Treat warnings as errors in release builds.
-Prefer `let` over `var`. Use `struct` for value types. Use `class` only when reference semantics needed.
+Use Swift Package Manager (SwiftPM). `Package.swift` for all dependencies; commit `Package.resolved` for apps and executables. Swift 6+ (`swift-tools-version: 6.0`) with strict concurrency as the baseline — Swift 6 language mode, no `-strict-concurrency=minimal` opt-outs.
+Format and lint with `swift-format` (bundled with the Swift 6 toolchain; `.swift-format` config, `swift format lint --strict --recursive Sources Tests` in CI). SwiftLint is optional, never the only gate. Build with `-warnings-as-errors` in CI (`swift build -Xswiftc -warnings-as-errors`, or `SWIFT_TREAT_WARNINGS_AS_ERRORS: YES` for Xcode targets).
+SwiftPM-only apps (no `.xcodeproj`) are a first-class path: `swift build`/`swift test` in CI, `xcodebuild -scheme <Target>` against `Package.swift` only when signing or a device run is needed. Use XcodeGen/Tuist only when the app needs an asset catalog, entitlements, or multi-target signing.
+Prefer `let` over `var`. Use `struct` for value types. Use `class` only when reference semantics needed; mark it `final` and `Sendable` (or isolate it to an actor) under strict concurrency.
 Use protocols for interfaces. Prefer protocol-oriented design.
 Use `Optional<T>` (`T?`) for nullable values. Avoid force unwrapping (`!`).
-Use `enum` with associated values for typed errors. Use `Result<T, Error>` for functional error handling.
-Use `[weak self]` in closures to prevent retain cycles.
+Use `enum` with associated values for typed errors. Use `Result<T, Error>` for functional error handling; prefer typed `throws(E)` where the error type is closed.
+Prefer structured concurrency (`Task`, `TaskGroup`, `async let`) over escaping closures; use `[weak self]` only in long-lived escaping closures (delegates, observers).
+Wrap C/Metal/GPU handles in an `actor`-owned type: hold the raw pointer in an `OSAllocatedUnfairLock` so a `nonisolated deinit` can release it; the lock is the only acceptable justification for `@unchecked Sendable`. Copy buffers out before releasing (copy-before-release) at the C boundary. Never hand a Swift-owned buffer to C past the call that borrows it.
 Naming: `camelCase` functions/variables/constants, `PascalCase` types/protocols, `private` access control (no underscore prefix).
-Test with `XCTest`. Use protocols for testability. 95% coverage minimum, 100% for domain.
-Use `async`/`await` (Swift 5.5+). Use `actor` for thread-safe mutable state.
-Security: Xcode static analyzer; GitHub Dependabot for SPM. Banned: `NSExpression` with user input, `Process` with unsanitized args. Use `SecRandomCopyBytes` for security contexts.
+Test with `XCTest` or Swift Testing (`@Test`). Use protocols for testability. 95% coverage minimum, 100% for domain. GPU/Metal tests skip explicitly (`XCTSkipUnless(MTLCreateSystemDefaultDevice() != nil)` / `.enabled(if:)`) — never silently pass on hosts without a device.
+Keep build caches out of cloud-synced folders: `.build/`, `DerivedData/`, and `.swiftpm/` must not live inside iCloud Drive/Dropbox/OneDrive-synced checkouts — use `--scratch-path`/`-derivedDataPath` outside the synced tree and gitignore them.
+Security: Xcode static analyzer; GitHub Dependabot for SwiftPM. Banned: `NSExpression` with user input, `Process` with unsanitized args. Use `SecRandomCopyBytes` for security contexts.

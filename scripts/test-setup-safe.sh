@@ -544,6 +544,34 @@ fake_home="$TMPDIR_BASE/detect-hooks-home"; mkdir -p "$fake_home"
     "$SETUP" --agents detect --languages typescript >/dev/null 2>&1) || true
 if [ -f "$proj/.git/hooks/post-merge" ]; then pass; else fail "post-merge hook not installed in detect mode"; fi
 
+echo -n "Test 41: swift-only app assembly contains no TypeScript/Dart-specific lines (#193)... "
+proj=$(make_project "swift-only-assembly")
+out="$proj/AGENTS.md"
+bash "$REPO_ROOT/scripts/assemble-config.sh" --project-root "$proj" codex \
+    "$REPO_ROOT/standards/shared/blocks" \
+    "$REPO_ROOT/standards/agents/claude-code/base-claude-code.md" \
+    "$out" lang-swift.md role-app.md >/dev/null 2>&1 || true
+if [ ! -f "$out" ]; then
+    fail "assemble-config.sh did not write $out"
+elif grep -q 'tsc -b' "$out"; then
+    fail "swift-only assembly still contains 'tsc -b' (testing-policy.md leak)"
+elif grep -q '`const` constructors' "$out"; then
+    fail "swift-only assembly still contains Dart '\`const\` constructors' (role-app.md leak)"
+elif ! grep -q 'Swift 6' "$out"; then
+    fail "swift-only assembly does not contain the Swift 6 language block"
+else
+    pass
+fi
+
+echo -n "Test 42: typescript-only assembly keeps the 'tsc -b' build guidance in its language block... "
+proj=$(make_project "ts-only-assembly")
+out="$proj/AGENTS.md"
+bash "$REPO_ROOT/scripts/assemble-config.sh" --project-root "$proj" codex \
+    "$REPO_ROOT/standards/shared/blocks" \
+    "$REPO_ROOT/standards/agents/claude-code/base-claude-code.md" \
+    "$out" lang-typescript.md role-service.md >/dev/null 2>&1 || true
+if [ -f "$out" ] && grep -q 'tsc -b' "$out"; then pass; else fail "'tsc -b' missing from typescript assembly"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

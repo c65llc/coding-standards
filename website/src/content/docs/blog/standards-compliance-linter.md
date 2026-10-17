@@ -50,6 +50,23 @@ The linter is organized into two tiers: common checks that run on every project,
 | `elixir/credo-config` | `:credo` in `mix.exs` dependencies |
 | `elixir/dialyzer-config` | `:dialyxir` in `mix.exs` dependencies |
 
+### Rust checks
+
+| Check | What it verifies |
+|-------|-----------------|
+| `rust/clippy-ci` | A CI step runs `cargo clippy … -D warnings` (WARN if clippy runs without `-D warnings`) |
+| `rust/deny-config` | `deny.toml` present with a non-empty `[licenses] allow` list |
+| `rust/toolchain-pin` | `rust-toolchain.toml` channel, `Cargo.toml rust-version`, and CI toolchain pins agree |
+| `rust/ffi-no-unwrap` | No `unwrap()`/`expect()`/`panic!` family calls in `ffi.rs`, `wasm.rs`, or `ffi/`/`wasm/` facade modules |
+
+### Swift checks
+
+| Check | What it verifies |
+|-------|-----------------|
+| `swift/swift-format-config` | `.swift-format` present (WARN if only `.swiftlint.yml` exists — swift-format is the default gate) |
+| `swift/package-resolved` | `Package.resolved` committed when `Package.swift` declares dependencies |
+| `swift/warnings-as-errors` | `-warnings-as-errors`, `SWIFT_TREAT_WARNINGS_AS_ERRORS`, or `treatAllWarnings(as: .error)` enabled in CI or the project spec |
+
 ## Plugin architecture
 
 Each check is a standalone bash script in `scripts/lint-checks/<language>/`. The interface is minimal: receive the project root as `$1`, print one line (`PASS|WARN|FAIL <check-name> <message>`), exit with `0`, `1`, or `2`. Adding a new check is as simple as dropping a new script in the right directory — the orchestrator discovers it automatically.
