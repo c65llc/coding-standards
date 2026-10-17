@@ -140,6 +140,7 @@ When working with this repository, agents must follow the A-P-E (Analyze, Plan, 
 - `standards/process/proc-02_git_version_control_standards.md` — Git workflow, commits, branching
 - `standards/process/proc-03_code_review_expectations.md` — Code review process and expectations
 - `standards/process/proc-04_agent_workflow_standards.md` — Agent worktree/PR workflow
+- `standards/process/proc-05_test_governance.md` — Test governance: quarantine registry, flake report, fast/slow tiers, routing table, scoped coverage, gates, PR evidence
 
 **Security Standards:**
 

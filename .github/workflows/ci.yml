@@ -107,9 +107,13 @@ jobs:
       - name: generate-standards-lists functional tests
         run: make test-generate-standards-lists
 
+  # Deliberately not routed through `changes`: its inputs (.cursorrules,
+  # standards/catalog.tsv) fall outside every lane in .github/ci/routing.yml,
+  # and the job takes seconds, so it runs on every PR.
   check-agent-configs:
     name: Agent Config Drift
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -235,7 +239,7 @@ jobs:
   # soft budget in the step summary (arch-08 §3).
   ci-gate:
     name: CI Gate
-    needs: [changes, shellcheck, test-scripts, markdown-lint, build-website, lint-standards-selfhost]
+    needs: [changes, shellcheck, test-scripts, check-agent-configs, markdown-lint, build-website, lint-standards-selfhost]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
