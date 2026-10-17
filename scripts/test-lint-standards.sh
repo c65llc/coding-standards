@@ -180,6 +180,56 @@ write_quarantine "$qc/ci/test-quarantine.json" "    {\"test\": \"a::b\", \"issue
 out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qc" 2>/dev/null || true)
 if echo "$out" | grep -q '^PASS' && echo "$out" | grep -q '2 '; then pass; else fail "expected PASS counting 2 entries, got: $out"; fi
 
+echo -n "Test 19a: quarantine-policy FAILs closed on syntactically invalid JSON (missing comma)... "
+qj=$(make_project "quarantine-badjson")
+write_quarantine "$qj/test-quarantine.json" "    {\"test\": \"a::b\" \"issue\": \"#1\", \"owner\": \"@a\", \"reason\": \"r\", \"added\": \"$TODAY\", \"expires\": \"$IN_10_DAYS\"}"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qj" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'not valid JSON'; then pass; else fail "expected FAIL mentioning invalid JSON, got: $out"; fi
+
+echo -n "Test 19b: quarantine-policy FAILs an entries element that is not a quarantine entry... "
+qo=$(make_project "quarantine-foreign")
+write_quarantine "$qo/test-quarantine.json" "    {\"test\": \"a::b\", \"issue\": \"#1\", \"owner\": \"@a\", \"reason\": \"r\", \"added\": \"$TODAY\", \"expires\": \"$IN_10_DAYS\"},
+    {\"foo\": \"bar\"}"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qo" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'entry #2'; then pass; else fail "expected FAIL naming entry #2, got: $out"; fi
+
+echo -n "Test 19c: quarantine-policy FAILs an impossible calendar date (2027-02-31)... "
+qx=$(make_project "quarantine-caldate")
+write_quarantine "$qx/test-quarantine.json" "    {\"test\": \"a::b\", \"issue\": \"#1\", \"owner\": \"@a\", \"reason\": \"r\", \"added\": \"2027-02-31\", \"expires\": \"2027-03-10\"}"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qx" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q '2027-02-31'; then pass; else fail "expected FAIL naming the bad date, got: $out"; fi
+
+echo -n "Test 19d: quarantine-policy FAILs a future-dated added entry... "
+qf=$(make_project "quarantine-future")
+write_quarantine "$qf/test-quarantine.json" "    {\"test\": \"a::b\", \"issue\": \"#1\", \"owner\": \"@a\", \"reason\": \"r\", \"added\": \"2099-01-01\", \"expires\": \"2099-01-20\"}"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qf" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'future'; then pass; else fail "expected FAIL mentioning future, got: $out"; fi
+
+echo -n "Test 19e: quarantine-policy FAILs closed when tests.quarantine_file is declared with no value... "
+qv=$(make_project "quarantine-emptypath")
+printf 'version: 1\ntests:\n  quarantine_file:\n' > "$qv/.standards.yml"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qv" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'no value'; then pass; else fail "expected FAIL mentioning no value, got: $out"; fi
+
+echo -n "Test 19f: quarantine-policy FAILs a whitespace-only owner... "
+qs=$(make_project "quarantine-blank")
+write_quarantine "$qs/test-quarantine.json" "    {\"test\": \"a::b\", \"issue\": \"#1\", \"owner\": \"  \", \"reason\": \"r\", \"added\": \"$TODAY\", \"expires\": \"$IN_10_DAYS\"}"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qs" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'owner'; then pass; else fail "expected FAIL naming owner, got: $out"; fi
+
+echo -n "Test 19g: quarantine-policy PASSes an empty entries array and says 0 quarantined... "
+qz=$(make_project "quarantine-zero")
+write_quarantine "$qz/test-quarantine.json" ""
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qz" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS' && echo "$out" | grep -q '0 quarantined'; then pass; else fail "expected PASS with 0 quarantined, got: $out"; fi
+
+echo -n "Test 19h: quarantine-policy does not confuse an id with a word inside another id (spaces)... "
+qw2=$(make_project "quarantine-spaces")
+write_quarantine "$qw2/test-quarantine.json" "    {\"test\": \"suite applies promo\", \"issue\": \"#1\", \"owner\": \"@a\", \"reason\": \"r\", \"added\": \"$TODAY\", \"expires\": \"$IN_10_DAYS\"},
+    {\"test\": \"applies\", \"issue\": \"#2\", \"owner\": \"@b\", \"reason\": \"r\", \"added\": \"$TODAY\", \"expires\": \"$IN_10_DAYS\"}"
+out=$(bash "$CHECKS/common/quarantine-policy.sh" "$qw2" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS' && echo "$out" | grep -q '2 '; then pass; else fail "expected PASS counting 2 entries, got: $out"; fi
+
 # --- coverage-config scopes (proc-05) ------------------------------------------
 
 echo -n "Test 20: coverage-config PASSes a legacy single-number .standards.yml gate... "
@@ -251,6 +301,63 @@ coverage:
 YML
 out=$(bash "$CHECKS/common/coverage-config.sh" "$cp1" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'path'; then pass; else fail "expected FAIL mentioning path, got: $out"; fi
+
+echo -n "Test 24a: coverage-config enters scopes: even with a trailing YAML comment... "
+cc1=$(make_project "cov-scopes-comment")
+cat > "$cc1/.standards.yml" <<'YML'
+version: 1
+coverage:
+  minimum: 95
+  scopes: # per-module floors
+    - path: src/domain
+      layer: domain
+      minimum: 0
+      reason: should not matter for a domain scope
+YML
+out=$(bash "$CHECKS/common/coverage-config.sh" "$cc1" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'src/domain'; then pass; else fail "expected FAIL naming src/domain, got: $out"; fi
+
+echo -n "Test 24b: coverage-config applies a minimum declared after scopes... "
+cm=$(make_project "cov-min-late")
+cat > "$cm/.standards.yml" <<'YML'
+version: 1
+coverage:
+  scopes:
+    - path: src/app
+      layer: application
+      minimum: 95
+  minimum: 100
+YML
+out=$(bash "$CHECKS/common/coverage-config.sh" "$cm" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'reason'; then pass; else fail "expected FAIL mentioning reason (95 < 100), got: $out"; fi
+
+echo -n "Test 24c: coverage-config FAILs an unknown layer name... "
+cu=$(make_project "cov-layer-typo")
+cat > "$cu/.standards.yml" <<'YML'
+version: 1
+coverage:
+  minimum: 95
+  scopes:
+    - path: src/domain
+      layer: domian
+      minimum: 0
+      reason: typo
+YML
+out=$(bash "$CHECKS/common/coverage-config.sh" "$cu" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'unknown layer'; then pass; else fail "expected FAIL mentioning unknown layer, got: $out"; fi
+
+echo -n "Test 24d: coverage-config FAILs an oversized minimum instead of erroring through to PASS... "
+ch=$(make_project "cov-huge")
+cat > "$ch/.standards.yml" <<'YML'
+version: 1
+coverage:
+  minimum: 95
+  scopes:
+    - path: src/app
+      minimum: 99999999999999999999999
+YML
+out=$(bash "$CHECKS/common/coverage-config.sh" "$ch" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'invalid minimum'; then pass; else fail "expected FAIL mentioning invalid minimum, got: $out"; fi
 
 # --- Sibling scripts smoke --------------------------------------------------
 

@@ -45,7 +45,7 @@ no automated check modules for them yet. Consumers should not assume
 | `conventional-commits` | proc-02 | Recent commit subjects match `type(scope): subject` | WARN/FAIL |
 | `coverage-config` | core-standards, proc-05 § 6 | A coverage gate exists in CI, test config, or `.standards.yml`; `coverage.scopes` entries have a path, an integer floor, 100% for domain/core, and a stated `reason` for any lowered scope | FAIL |
 | `no-secrets` | sec-01 | AWS keys, private-key blocks, hardcoded passwords/tokens in source | FAIL |
-| `quarantine-policy` | proc-05 § 2 | The flaky-test quarantine registry has all required fields, exact test ids, ≤ 30-day windows, no past-due entries, and no coverage overrides; fails closed when a declared registry is missing or malformed | WARN/FAIL |
+| `quarantine-policy` | proc-05 § 2 | The flaky-test quarantine registry is valid JSON whose every `entries` element is a complete entry: non-blank required fields, exact unique test ids, real ISO dates, `added` not in the future, ≤ 30-day windows, no past-due entries, and no coverage overrides; fails closed when a declared registry is missing, empty, or not valid JSON | WARN/FAIL |
 | `test-directory-structure` | core-standards | A recognizable test directory exists | WARN/FAIL |
 | `ci-workflow-hygiene` | arch-08 §3 | Every `pull_request` workflow declares `concurrency` + `cancel-in-progress` (workflow-level or on every job), `timeout-minutes` on each job that runs steps, and path scoping (`paths:` on the PR trigger, a paths-filter + gate job, or `# ci-hygiene: paths-exempt <reason>`) | WARN |
 | `headless-ci` | arch-08 §6 | Workflows and composite actions free of `store-credentials`, `unlock-keychain … login`, `osascript`, `open -a` (steps that need an unlocked desktop) | WARN |

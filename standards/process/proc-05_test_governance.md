@@ -80,7 +80,7 @@ Every entry MUST carry all six fields. An entry missing any of them fails CI.
 
 ### 2.4 Enforcement
 
-- `scripts/lint-checks/common/quarantine-policy.sh` validates the registry in `make lint-standards` and in the standards-review action: required fields, exact ids, unique ids, ISO dates, 30-day window, no past-due entries, no coverage overrides. It fails closed when `.standards.yml` declares a registry file that is missing or unreadable.
+- `scripts/lint-checks/common/quarantine-policy.sh` validates the registry in `make lint-standards` and in the standards-review action: the file is valid JSON and every element of `entries` is a complete entry with non-blank required fields, exact unique ids, real ISO calendar dates, an `added` date that is not in the future, a 30-day window, no past-due entries, and no coverage overrides. It fails closed when `.standards.yml` declares a registry file that is missing, empty, or not valid JSON. A registry whose `entries` array is empty is the normal state after the last flaky test is fixed and passes, with the PASS line saying `0 quarantined test(s)`.
 - The project's test runner MUST read the same file to decide what to exclude from the gate. One registry, two readers: a quarantine that only one of them knows about is a configuration bug.
 
 ## 3. Flake Surfacing Without Gating
