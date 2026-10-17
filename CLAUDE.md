@@ -32,6 +32,8 @@ Use `--dry-run` with setup or sync to preview changes without modifying files:
 
 In a consumer project the scripts live under `.standards/` and must be run from the project root (`./.standards/scripts/sync-standards.sh`). `setup.sh`, `sync-standards.sh` and `diff-standards.sh` refuse to run when the project root resolves to `.standards/` (`scripts/lib/guard.sh`). `sync-standards.sh` gates every side effect (Cursor commands, `.gemini/`, `.claude/`) on the `agents:` list in `.standards.yml`; git aliases are opt-in via `--aliases`.
 
+`setup.sh --help` lists every flag; unknown flags exit 2 before anything is written. An explicit `--agents <list>` installs only those agents' artifacts (no git hooks, git aliases, Cursor commands, `.claude/settings.json` or `.gemini/` unless the owning agent is listed); `--agents detect` (the default) keeps the full install.
+
 The standards-review composite GitHub Action lives at `.github/actions/standards-review/action.yml`. It runs `lint-standards.sh --format json` and posts structured PR comments. A ready-to-use workflow template is at `templates/standards-review.yml.example`. Installing it into a consumer project is **opt-in**: run `.standards/scripts/setup.sh --workflow` (or `./scripts/setup.sh --workflow` from a clone of this repo) to copy it to `.github/workflows/standards-review.yml`. Without `--workflow`, setup only prints how to install it.
 
 There are no build steps, no test suites, and no application to run. The primary "tests" are `bash -n` syntax checks on shell scripts.

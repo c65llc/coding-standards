@@ -1,5 +1,11 @@
 #!/bin/bash
 # Setup script for integrating standards into a new project
+#
+# Usage:
+#   ./scripts/setup.sh [--agents <list>|all|detect] [--languages <list>]
+#                      [--role <role>] [--workflow] [--dry-run] [-h|--help]
+#
+# Run with --help for the full option reference.
 
 set -e
 
@@ -11,6 +17,53 @@ PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 source "$SCRIPT_DIR/lib/guard.sh"
 refuse_if_inside_standards_dir "$PROJECT_ROOT" "setup.sh" || exit 2
 
+KNOWN_AGENTS="claude-code cursor copilot gemini codex aider"
+
+usage() {
+    cat <<EOF
+Usage: $0 [options]
+
+Install coding standards and AI agent configurations into the current project.
+
+Options:
+  --agents <list>      Comma-separated agents to configure, or 'all', or 'detect'
+                       (default). Agents: ${KNOWN_AGENTS// /, }.
+                       With an explicit list, setup installs ONLY that agent's
+                       artifacts: no git hooks, git aliases, Cursor commands,
+                       .claude/settings.json or .gemini/ unless that agent is
+                       in the list. 'detect' configures the agents already
+                       present in the project plus git hooks and aliases.
+  --languages <list>   Comma-separated languages (skips auto-detection), e.g.
+                       typescript,python
+  --role <role>        Project role block to include (default: service)
+  --workflow           Also install the opt-in GitHub workflow templates
+                       (standards-review.yml, trufflehog.yml)
+  --dry-run            Print every write that would happen; modify nothing
+  -h, --help           Show this help and exit
+
+Examples:
+  $0                                 # detect agents, full install
+  $0 --agents codex                  # AGENTS.md + .standards.yml only
+  $0 --agents claude-code,cursor --languages typescript
+  $0 --dry-run
+EOF
+}
+
+# Exit 2 with a usage error, mirroring lint-standards.sh. Nothing has been
+# written to disk at this point, so an unknown flag never triggers an install.
+usage_error() {
+    echo "$1" >&2
+    usage >&2
+    exit 2
+}
+
+# Require that option "$1" received a value in "$2".
+require_option_value() {
+    if [ $# -lt 2 ] || [ -z "$2" ]; then
+        usage_error "Option $1 requires a value"
+    fi
+}
+
 # Parse arguments
 ROLE="service"
 AGENTS_OVERRIDE=""
@@ -21,16 +74,31 @@ INSTALL_WORKFLOW=false
 while [ $# -gt 0 ]; do
     case "$1" in
         --role)
+            require_option_value "$@"
             ROLE="$2"
             shift 2
             ;;
+        --role=*)
+            ROLE="${1#--role=}"
+            shift
+            ;;
         --agents)
+            require_option_value "$@"
             AGENTS_OVERRIDE="$2"
             shift 2
             ;;
+        --agents=*)
+            AGENTS_OVERRIDE="${1#--agents=}"
+            shift
+            ;;
         --languages)
+            require_option_value "$@"
             LANGUAGES_OVERRIDE="$2"
             shift 2
+            ;;
+        --languages=*)
+            LANGUAGES_OVERRIDE="${1#--languages=}"
+            shift
             ;;
         --dry-run)
             DRY_RUN=true
@@ -40,11 +108,65 @@ while [ $# -gt 0 ]; do
             INSTALL_WORKFLOW=true
             shift
             ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
         *)
-            shift
+            usage_error "Unknown option: $1"
             ;;
     esac
 done
+
+# --- Agent-scoped install -----------------------------------------------------
+# When --agents names an explicit list, only that agent's artifacts are
+# installed. Workstation extras (git hooks, global git aliases) and other
+# agents' side files are skipped unless the owning agent is in the list.
+
+# True when the caller passed an explicit agent list (not detect/default).
+agents_explicit() {
+    [ -n "$AGENTS_OVERRIDE" ] && [ "$AGENTS_OVERRIDE" != "detect" ]
+}
+
+# Resolve the explicit --agents value to a space-separated list.
+explicit_agent_list() {
+    if [ "$AGENTS_OVERRIDE" = "all" ]; then
+        echo "$KNOWN_AGENTS"
+    else
+        echo "$AGENTS_OVERRIDE" | tr ',' ' '
+    fi
+}
+
+# agent_requested <agent>: should <agent>'s side artifacts be installed?
+# In detect mode (default) every agent-side artifact is installed (the legacy
+# full install); with an explicit list only listed agents qualify.
+agent_requested() {
+    local wanted="$1"
+    if ! agents_explicit; then
+        return 0
+    fi
+    local a
+    for a in $(explicit_agent_list); do
+        [ "$a" = "$wanted" ] && return 0
+    done
+    return 1
+}
+
+# Workstation extras (git hooks, global git aliases) are not owned by any
+# agent, so they install only in detect mode.
+install_git_extras() {
+    ! agents_explicit
+}
+
+# Reject agent names we do not know before touching the filesystem.
+if agents_explicit; then
+    for a in $(explicit_agent_list); do
+        case " $KNOWN_AGENTS " in
+            *" $a "*) ;;
+            *) usage_error "Unknown agent: $a (expected one of: ${KNOWN_AGENTS// /, }, all, detect)" ;;
+        esac
+    done
+fi
 
 # Dry-run aware file operations (shared: scripts/lib/dry-run.sh)
 # shellcheck source=lib/dry-run.sh disable=SC1091
@@ -135,12 +257,9 @@ setup_ai_agents() {
 
     # Determine which agents to set up
     local AGENTS_LIST
-    if [ -n "$AGENTS_OVERRIDE" ] && [ "$AGENTS_OVERRIDE" != "detect" ]; then
-        if [ "$AGENTS_OVERRIDE" = "all" ]; then
-            AGENTS_LIST="claude-code cursor copilot gemini codex aider"
-        else
-            AGENTS_LIST=$(echo "$AGENTS_OVERRIDE" | tr ',' ' ')
-        fi
+    if agents_explicit; then
+        AGENTS_LIST=$(explicit_agent_list)
+        echo "ℹ️  Explicit agents: $AGENTS_LIST (installing only their artifacts)"
     else
         # Default: detect agents already in use in the project.
         # Use the pre-detection snapshot captured before .cursor/commands was installed.
@@ -242,8 +361,10 @@ setup_ai_agents() {
         echo "   Your .codexrc has been preserved. Remove it when ready."
     fi
 
-    # Claude Code settings.json and permissions (unchanged from original)
-    if [ ! -f "$PROJECT_ROOT/.claude/settings.json" ] || [ "$DRY_RUN" = true ]; then
+    # Claude Code settings.json and permissions — only when claude-code is requested
+    if ! agent_requested claude-code; then
+        : # skipped: claude-code not in --agents list
+    elif [ ! -f "$PROJECT_ROOT/.claude/settings.json" ] || [ "$DRY_RUN" = true ]; then
         if [ "$DRY_RUN" = false ]; then
             mkdir -p "$PROJECT_ROOT/.claude"
         fi
@@ -312,9 +433,12 @@ setup_ai_agents() {
         done
     fi
 
-    # Gemini settings.json (separate from GEMINI.md which is now assembled)
+    # Gemini settings.json (separate from GEMINI.md which is now assembled).
+    # Only when gemini is requested — otherwise .gemini/ must not appear.
     local GEMINI_SOURCE=""
-    if [ -n "$STANDARDS_DIR" ] && [ -d "$STANDARDS_DIR/.gemini" ]; then
+    if ! agent_requested gemini; then
+        GEMINI_SOURCE=""
+    elif [ -n "$STANDARDS_DIR" ] && [ -d "$STANDARDS_DIR/.gemini" ]; then
         GEMINI_SOURCE="$STANDARDS_DIR/.gemini"
     elif [ -d "$SCRIPT_DIR/../.gemini" ]; then
         GEMINI_SOURCE="$SCRIPT_DIR/../.gemini"
@@ -382,9 +506,9 @@ setup_ai_agents() {
         echo "  [dry-run] Would write: $PROJECT_ROOT/$CHECKSUMS_FILE"
     fi
 
-    # Install merge-standards skill
+    # Install merge-standards skill (lives under .claude/, so claude-code only)
     local SKILL_SOURCE="$AGENTS_DIR/claude-code/skills/merge-standards.md"
-    if [ -f "$SKILL_SOURCE" ]; then
+    if agent_requested claude-code && [ -f "$SKILL_SOURCE" ]; then
         dry_run_mkdir "$PROJECT_ROOT/.claude/skills"
         if [ "$DRY_RUN" = true ]; then
             echo "  [dry-run] Would copy: $SKILL_SOURCE → $PROJECT_ROOT/.claude/skills/merge-standards.md"
@@ -425,8 +549,10 @@ else
         fi
     fi
 
-    # Copy Cursor custom commands if they exist
-    if [ -d "$STANDARDS_DIR/.cursor/commands" ]; then
+    # Copy Cursor custom commands if they exist (only when cursor is requested)
+    if ! agent_requested cursor; then
+        CURSOR_COMMANDS_SOURCE=""
+    elif [ -d "$STANDARDS_DIR/.cursor/commands" ]; then
         CURSOR_COMMANDS_SOURCE="$STANDARDS_DIR/.cursor/commands"
     elif [ -d "$SCRIPT_DIR/../.cursor/commands" ]; then
         CURSOR_COMMANDS_SOURCE="$SCRIPT_DIR/../.cursor/commands"
@@ -465,16 +591,19 @@ else
     fi
 fi
 
-# Set up git hooks
-echo "🪝 Setting up git hooks..."
-
+# Set up git hooks (workstation extra: skipped when --agents names an explicit list)
 GIT_HOOKS_DIR="$PROJECT_ROOT/.git/hooks"
 
-if [ ! -d "$GIT_HOOKS_DIR" ]; then
+if ! install_git_extras; then
+    echo "ℹ️  Skipping git hooks (explicit --agents). Run without --agents to install them."
+elif [ ! -d "$GIT_HOOKS_DIR" ]; then
+    echo "🪝 Setting up git hooks..."
     echo "⚠️  Not a git repository. Skipping git hooks setup."
 elif [ "$DRY_RUN" = true ]; then
+    echo "🪝 Setting up git hooks..."
     echo "  [dry-run] Would write: $GIT_HOOKS_DIR/post-merge"
 else
+    echo "🪝 Setting up git hooks..."
     # Post-merge hook to sync standards
     cat > "$GIT_HOOKS_DIR/post-merge" << 'HOOK'
 #!/bin/bash
@@ -538,8 +667,10 @@ elif [ -f "$STANDARDS_DIR/templates/trufflehog.yml.example" ] && [ ! -f "$PROJEC
     echo "ℹ️  TruffleHog secret-scan workflow available. To install: ./setup.sh --workflow"
 fi
 
-# Set up git aliases (global configuration)
-if command -v git >/dev/null 2>&1; then
+# Set up git aliases (global configuration; skipped when --agents names an explicit list)
+if ! install_git_extras; then
+    echo "ℹ️  Skipping global git aliases (explicit --agents). Run scripts/setup-git-aliases.sh to install them."
+elif command -v git >/dev/null 2>&1; then
     # Determine path to setup-git-aliases.sh
     if [ "$SCRIPT_DIR" = "$PROJECT_ROOT" ]; then
         # We're in the standards repo itself
