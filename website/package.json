@@ -8,6 +8,7 @@
     "preview": "astro preview",
     "astro": "astro",
     "prebuild": "bash scripts/sync-content.sh",
+    "postbuild": "node scripts/csp-postbuild.mjs",
     "predev": "bash scripts/sync-content.sh"
   },
   "dependencies": {

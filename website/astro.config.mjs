@@ -4,6 +4,11 @@ import starlightBlog from 'starlight-blog';
 
 export default defineConfig({
   site: 'https://coding-standards.c65llc.com',
+  build: {
+    // Never inline CSS into <style> tags: every stylesheet ships as a file
+    // served from 'self', so the CSP style-src needs no per-build hashes.
+    inlineStylesheets: 'never',
+  },
   integrations: [
     starlight({
       plugins: [starlightBlog()],
