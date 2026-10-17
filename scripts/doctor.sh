@@ -20,6 +20,17 @@ if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
     # shellcheck disable=SC1091
     source "$SCRIPT_DIR/lib/checksums.sh"
 fi
+# Supported language keys (languages.sh) and monorepo members (members.sh).
+if [ -f "$SCRIPT_DIR/lib/languages.sh" ]; then
+    # shellcheck source=scripts/lib/languages.sh
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/lib/languages.sh"
+fi
+if [ -f "$SCRIPT_DIR/lib/members.sh" ]; then
+    # shellcheck source=scripts/lib/members.sh
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/lib/members.sh"
+fi
 
 # ---------------------------------------------------------------------------
 # Colors and formatting
@@ -243,66 +254,172 @@ check_checksums() {
 # Check 4: Languages match detected vs declared
 # ---------------------------------------------------------------------------
 
-check_languages() {
-    local detect_script=""
-
-    if [ -f "$SCRIPT_DIR/detect-languages.sh" ]; then
-        detect_script="$SCRIPT_DIR/detect-languages.sh"
-    elif [ -f "$PROJECT_ROOT/.standards/scripts/detect-languages.sh" ]; then
-        detect_script="$PROJECT_ROOT/.standards/scripts/detect-languages.sh"
+# Members (root-relative sub-roots with their own .standards.yml), resolved
+# once from the root config or by auto-discovery (scripts/lib/members.sh).
+MEMBERS=""
+MEMBERS_SOURCE=""
+if declare -f resolve_members >/dev/null 2>&1; then
+    MEMBERS=$(resolve_members "$PROJECT_ROOT" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+    if members_declared "$PROJECT_ROOT"; then
+        MEMBERS_SOURCE="declared"
+    else
+        MEMBERS_SOURCE="auto-discovered"
     fi
+fi
 
-    if [ -z "$detect_script" ]; then
-        check_warn "Languages" "detect-languages.sh not found (skipping)" ""
-        return
-    fi
+# in_list <word> <space-separated list>
+in_list() {
+    case " $2 " in
+        *" $1 "*) return 0 ;;
+        *)        return 1 ;;
+    esac
+}
 
-    # Detect languages in current project
+# check_languages_for <dir> <label> <skip-dirs> [--root-only]
+#
+# Compares the languages detected under <dir> with the ones its .standards.yml
+# declares. Three findings:
+#   - a declared key with no standards document or lint checks (unsupported):
+#     agent assembly and lint-standards silently ignore it, so say so
+#   - a supported language detected but not declared
+#   - nothing declared although languages were detected
+# Detection skips <skip-dirs> (the members, when checking the root) so a
+# member's languages are judged by its own config, not demanded of the root.
+# With --root-only (used for the root) only the directory's own manifests
+# count: a tsconfig.json under apps/web must not be demanded of the root
+# config, where it would make lint-standards look for a root tsconfig.json.
+check_languages_for() {
+    local dir="$1" label="$2" skip_dirs="$3" root_only="${4:-}"
+    local detect_args=() s
+    [ "$root_only" = "--root-only" ] && detect_args+=(--root-only)
+    for s in $skip_dirs; do
+        detect_args+=(--skip "$s")
+    done
+
     local detected
-    detected=$(bash "$detect_script" "$PROJECT_ROOT" 2>/dev/null | sort | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+    detected=$(bash "$DETECT_SCRIPT" ${detect_args[@]+"${detect_args[@]}"} "$dir" 2>/dev/null | sort | tr '\n' ' ' | sed 's/[[:space:]]*$//')
 
-    # Get declared languages from config
     local declared=""
-    if declare -f read_standards_config >/dev/null 2>&1; then
-        read_standards_config "$PROJECT_ROOT" 2>/dev/null || true
-        declared=$(printf '%s\n' "$STD_LANGUAGES" | sort | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+    if declare -f read_standards_config >/dev/null 2>&1 && [ -f "$dir/.standards.yml" ]; then
+        read_standards_config "$dir" 2>/dev/null || true
+        declared=$(printf '%s\n' "$STD_LANGUAGES" | tr ' ' '\n' | grep -v '^$' | sort | tr '\n' ' ' | sed 's/[[:space:]]*$//')
     fi
 
-    if [ -z "$declared" ] && [ -z "$detected" ]; then
-        check_pass "Languages" "No languages detected or declared"
+    # Declared but unsupported: no lang-NN standard, no lint-checks directory.
+    local unsupported="" lang
+    if declare -f language_supported >/dev/null 2>&1; then
+        for lang in $declared; do
+            language_supported "$lang" || unsupported="${unsupported:+$unsupported }$lang"
+        done
+    fi
+    if [ -n "$unsupported" ]; then
+        check_warn "$label" "Declared '$unsupported' is unsupported: no standards document or lint checks exist for it (ignored by agent assembly and lint-standards)" \
+            "Remove '$unsupported' from the languages list in ${dir#"$PROJECT_ROOT/"}/.standards.yml, or contribute a lang-NN standard for it"
+    fi
+
+    # Only supported detections are ever suggested: an unsupported key such as
+    # cpp (a CMake-only project) has no standards or checks, so asking for it
+    # to be declared would only trip the unsupported warning above.
+    local supported_detected=""
+    for lang in $detected; do
+        if declare -f language_supported >/dev/null 2>&1 && ! language_supported "$lang"; then
+            continue
+        fi
+        supported_detected="${supported_detected:+$supported_detected }$lang"
+    done
+
+    if [ -z "$declared" ] && [ -z "$supported_detected" ]; then
+        check_pass "$label" "No languages detected or declared"
         return
     fi
 
     if [ -z "$declared" ]; then
-        check_warn "Languages" "Languages detected but none declared in .standards.yml" \
-            "Add: declare 'languages: [${detected// /, }]' in .standards.yml"
+        check_warn "$label" "Languages detected but none declared in .standards.yml" \
+            "Add: declare 'languages: [${supported_detected// /, }]' in .standards.yml"
         return
     fi
 
-    # Find languages detected but not declared
+    # Detected (and supported) but not declared.
     local undeclared=""
-    for lang in $detected; do
-        local found=false
-        for decl in $declared; do
-            if [ "$lang" = "$decl" ]; then
-                found=true
-                break
-            fi
-        done
-        if [ "$found" = "false" ]; then
-            if [ -z "$undeclared" ]; then
-                undeclared="$lang"
-            else
-                undeclared="$undeclared $lang"
-            fi
-        fi
+    for lang in $supported_detected; do
+        in_list "$lang" "$declared" || undeclared="${undeclared:+$undeclared }$lang"
     done
 
     if [ -n "$undeclared" ]; then
-        check_warn "Languages" "Detected '$undeclared' not in .standards.yml" \
+        check_warn "$label" "Detected '$undeclared' not in .standards.yml" \
             "Add: '$undeclared' to .standards.yml languages list"
-    else
-        check_pass "Languages" "Declared languages match detected languages"
+    elif [ -z "$unsupported" ]; then
+        check_pass "$label" "Declared languages match detected languages"
+    fi
+}
+
+check_languages() {
+    DETECT_SCRIPT=""
+
+    if [ -f "$SCRIPT_DIR/detect-languages.sh" ]; then
+        DETECT_SCRIPT="$SCRIPT_DIR/detect-languages.sh"
+    elif [ -f "$PROJECT_ROOT/.standards/scripts/detect-languages.sh" ]; then
+        DETECT_SCRIPT="$PROJECT_ROOT/.standards/scripts/detect-languages.sh"
+    fi
+
+    if [ -z "$DETECT_SCRIPT" ]; then
+        check_warn "Languages" "detect-languages.sh not found (skipping)" ""
+        return
+    fi
+
+    check_languages_for "$PROJECT_ROOT" "Languages" "$MEMBERS" --root-only
+
+    local m
+    for m in $MEMBERS; do
+        [ -d "$PROJECT_ROOT/$m" ] || continue
+        # Skip the members nested below this one (re-based onto it), so a
+        # parent member is not asked to declare a child member's languages.
+        # shellcheck disable=SC2086
+        check_languages_for "$PROJECT_ROOT/$m" "Languages ($m)" "$(member_descendants "$m" $MEMBERS | tr '\n' ' ')"
+    done
+}
+
+# ---------------------------------------------------------------------------
+# Check 4b: Members (monorepo sub-roots) are present and configured
+# ---------------------------------------------------------------------------
+
+check_members() {
+    local m problems=0 rejected
+
+    # A declared entry that escapes the root (lexically, or physically through
+    # a symlink) is dropped by resolve_members; say so rather than skip it.
+    if declare -f rejected_members >/dev/null 2>&1; then
+        while IFS= read -r rejected; do
+            [ -z "$rejected" ] && continue
+            check_fail "Members" "$rejected" \
+                "Fix: members: entries must be real directories inside the project; remove the entry or replace the symlink with the directory"
+            problems=$((problems + 1))
+        done <<EOF
+$(rejected_members "$PROJECT_ROOT" 2>/dev/null)
+EOF
+    fi
+
+    if [ -z "$MEMBERS" ]; then
+        if [ "$MEMBERS_SOURCE" = "declared" ] && [ "$problems" -eq 0 ]; then
+            check_pass "Members" "members: [] (single-root project, auto-discovery off)"
+        fi
+        return
+    fi
+
+    for m in $MEMBERS; do
+        if [ ! -d "$PROJECT_ROOT/$m" ]; then
+            check_fail "Members" "declared member '$m' not found (no such directory)" \
+                "Fix: remove '$m' from members: in .standards.yml, or create the directory"
+            problems=$((problems + 1))
+        elif [ ! -f "$PROJECT_ROOT/$m/.standards.yml" ]; then
+            check_warn "Members" "member '$m' has no .standards.yml (its languages are never linted)" \
+                "Run: .standards/scripts/setup.sh  (bootstraps $m/.standards.yml), or copy .standards/templates/standards.yml.example to $m/.standards.yml"
+            problems=$((problems + 1))
+        fi
+    done
+
+    if [ "$problems" -eq 0 ]; then
+        check_pass "Members" "$(echo "$MEMBERS" | wc -w | tr -d ' ') member(s) $MEMBERS_SOURCE: ${MEMBERS// /, }"
     fi
 }
 
@@ -604,6 +721,7 @@ printf "\n%s\n" "${BOLD}Standards Health Check${NC}"
 printf "=======================================\n\n"
 
 check_config
+check_members
 check_agents
 check_checksums
 check_languages

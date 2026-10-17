@@ -2246,6 +2246,411 @@ out=$(bash "$CHECKS/python/banned-functions.sh" "$ic" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q 'gen/bad.py' && ! echo "$out" | grep -q 'gen,old'; then pass; else
     fail "expected FAIL naming gen/bad.py only, got: $out"; fi
 
+# --- Monorepo members (#179) --------------------------------------------------
+
+DETECT="$REPO_ROOT/scripts/detect-languages.sh"
+
+# Extract the status of one check for one member from the runner's JSON output.
+# Field order in a result object is status, check, member, message.
+json_member_status() {
+    tr -d '\n' | grep -o "\"status\": \"[A-Z]*\",[[:space:]]*\"check\": \"$2\",[[:space:]]*\"member\": \"$1\"" | head -1 | grep -o '"[A-Z]*"' | head -1 | tr -d '"'
+}
+
+# Fixture: a monorepo with two members. server/ is Python (with a banned
+# eval()), web/ is TypeScript (strict tsconfig). Decoys under node_modules/ and
+# .worktrees/ carry a .standards.yml that auto-discovery must ignore.
+# $2 = root .standards.yml body (defaults to a pure aggregator declaring the members).
+make_monorepo() {
+    local name="$1"
+    local root_yml="${2:-$(printf 'version: 1\nlanguages: []\nmembers:\n  - server\n  - web\n')}"
+    local m
+    m=$(make_project "$name")
+    mkdir -p "$m/server/src" "$m/server/tests" "$m/web/src" "$m/web/tests" \
+             "$m/node_modules/pkg" "$m/.worktrees/agent"
+    printf '%s\n' "$root_yml" > "$m/.standards.yml"
+    printf 'version: 1\nlanguages:\n  - python\n' > "$m/server/.standards.yml"
+    printf '[project]\nname = "server"\n' > "$m/server/pyproject.toml"
+    echo 'eval("1")' > "$m/server/src/app.py"
+    echo 'def test_ok(): pass' > "$m/server/tests/test_app.py"
+    printf 'version: 1\nlanguages:\n  - typescript\n' > "$m/web/.standards.yml"
+    printf '{"name":"web"}\n' > "$m/web/package.json"
+    printf '{"compilerOptions":{"strict":true}}\n' > "$m/web/tsconfig.json"
+    echo 'export const x = 1;' > "$m/web/src/index.ts"
+    echo 'export const t = 1;' > "$m/web/tests/index.test.ts"
+    printf 'version: 1\nlanguages:\n  - python\n' > "$m/node_modules/pkg/.standards.yml"
+    printf 'version: 1\nlanguages:\n  - python\n' > "$m/.worktrees/agent/.standards.yml"
+    printf 'node_modules/\n.worktrees/\n' > "$m/.gitignore"
+    git_commit_all "$m" "feat: monorepo fixture"
+    echo "$m"
+}
+
+mono=$(make_monorepo "members-declared")
+mono_json=$("$LINT" --format json "$mono" 2>/dev/null || true)
+
+echo -n "Test 145: --format json lists the members and tags every result with its member... "
+printf '%s\n' "$mono_json" > "$TMP_BASE/members.json"
+if json_valid "$TMP_BASE/members.json" \
+   && echo "$mono_json" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *, *"web" *\]' \
+   && echo "$mono_json" | grep -q '"member": "server"' \
+   && echo "$mono_json" | grep -q '"member": "web"' \
+   && echo "$mono_json" | grep -q '"member": "\."'; then pass; else fail "members/member fields missing: $mono_json"; fi
+
+echo -n "Test 146: python checks run against member server (banned eval() is FAIL) and not against web... "
+srv=$(echo "$mono_json" | json_member_status server python/banned-functions)
+web=$(echo "$mono_json" | json_member_status web python/banned-functions)
+if [ "$srv" = "FAIL" ] && echo "$mono_json" | grep -q 'src/app.py' && [ -z "$web" ]; then pass; else
+    fail "server='$srv' web='$web'"; fi
+
+echo -n "Test 147: typescript checks run against member web (strict tsconfig PASS) and not against server... "
+web=$(echo "$mono_json" | json_member_status web typescript/strict-tsconfig)
+srv=$(echo "$mono_json" | json_member_status server typescript/strict-tsconfig)
+if [ "$web" = "PASS" ] && [ -z "$srv" ]; then pass; else fail "web='$web' server='$srv'"; fi
+
+echo -n "Test 148: a root that declares no languages runs only repo-wide checks; project checks run per member... "
+root_secrets=$(echo "$mono_json" | json_member_status '\.' no-secrets)
+root_tests=$(echo "$mono_json" | json_member_status '\.' test-directory)
+srv_tests=$(echo "$mono_json" | json_member_status server test-directory)
+web_tests=$(echo "$mono_json" | json_member_status web test-directory)
+srv_secrets=$(echo "$mono_json" | json_member_status server no-secrets)
+if [ "$root_secrets" = "PASS" ] && [ -z "$root_tests" ] && [ -n "$srv_tests" ] && [ -n "$web_tests" ] && [ -z "$srv_secrets" ]; then pass; else
+    fail "root: secrets='$root_secrets' tests='$root_tests'; server: tests='$srv_tests' secrets='$srv_secrets'; web tests='$web_tests'"; fi
+
+echo -n "Test 149: a root that declares languages still runs every common check at the root... "
+mono2=$(make_monorepo "members-root-langs" "$(printf 'version: 1\nlanguages:\n  - python\nmembers:\n  - server\n  - web\n')")
+out=$("$LINT" --format json "$mono2" 2>/dev/null || true)
+if [ -n "$(echo "$out" | json_member_status '\.' test-directory)" ] && [ -n "$(echo "$out" | json_member_status '\.' python/banned-functions)" ]; then pass; else
+    fail "root checks missing: $out"; fi
+
+echo -n "Test 150: without members: the runner auto-discovers */.standards.yml and skips node_modules and worktrees... "
+mono3=$(make_monorepo "members-discovered" "$(printf 'version: 1\nlanguages: []\n')")
+out=$("$LINT" --format json "$mono3" 2>/dev/null || true)
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *, *"web" *\]' && ! echo "$out" | grep -q 'node_modules\|worktrees'; then pass; else
+    fail "discovery wrong: $(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]')"; fi
+
+echo -n "Test 151: 'members: []' disables auto-discovery... "
+mono4=$(make_monorepo "members-none" "$(printf 'version: 1\nlanguages: []\nmembers: []\n')")
+out=$("$LINT" --format json "$mono4" 2>/dev/null || true)
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *\]' && ! echo "$out" | grep -q '"member": "server"'; then pass; else
+    fail "expected only the root: $(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]')"; fi
+
+echo -n "Test 152: a declared member that does not exist is reported as a WARN finding, not a crash... "
+mono5=$(make_monorepo "members-missing" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - server\n  - ghost\n')")
+"$LINT" --format json "$mono5" > "$TMP_BASE/missing.json" 2>/dev/null; rc=$?
+if [ "$rc" -le 1 ] && json_valid "$TMP_BASE/missing.json" \
+   && [ "$(json_member_status '\.' members < "$TMP_BASE/missing.json")" = "WARN" ] && grep -q 'ghost' "$TMP_BASE/missing.json"; then pass; else
+    fail "rc=$rc status=$(json_member_status '\.' members < "$TMP_BASE/missing.json")"; fi
+
+echo -n "Test 153: a path that escapes the root (..) is never accepted as a member... "
+mono6=$(make_monorepo "members-escape" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - ../outside\n  - /etc\n  - server\n')")
+out=$("$LINT" --format json "$mono6" 2>/dev/null || true)
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *\]'; then pass; else
+    fail "members: $(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]')"; fi
+
+echo -n "Test 154: --format sarif carries the member in properties and as the artifact location... "
+"$LINT" --format sarif "$mono" > "$TMP_BASE/members.sarif" 2>/dev/null || true
+if json_valid "$TMP_BASE/members.sarif" && tr -d '\n' < "$TMP_BASE/members.sarif" | grep -q '"properties": *{ *"member": *"server"' \
+   && grep -q '"uri": "server"' "$TMP_BASE/members.sarif"; then pass; else fail "SARIF member fields missing"; fi
+
+echo -n "Test 155: summary.total equals the number of results aggregated across members... "
+total=$(echo "$mono_json" | tr -d '\n' | grep -o '"total": *[0-9]*' | grep -o '[0-9]*$')
+count=$(echo "$mono_json" | grep -c '"status": "')
+if [ -n "$total" ] && [ "$total" -eq "$count" ] && [ "$total" -gt 5 ]; then pass; else fail "total=$total count=$count"; fi
+
+echo -n "Test 156: --since scopes file-scanning checks per member (paths re-based onto the member root)... "
+sbase=$(cd "$mono" && git rev-parse HEAD)
+echo 'eval("x")' > "$mono/web/src/bad.ts"
+git_commit_all "$mono" "feat: web change"
+since=$("$LINT" --format json --since "$sbase" "$mono" 2>/dev/null || true)
+web_bf=$(echo "$since" | json_member_status web typescript/banned-functions)
+srv_bf=$(echo "$since" | json_member_status server python/banned-functions)
+if [ "$web_bf" = "FAIL" ] && echo "$since" | grep -q 'src/bad.ts' && [ "$srv_bf" = "PASS" ]; then pass; else
+    fail "web banned-functions='$web_bf' server banned-functions='$srv_bf'"; fi
+
+echo -n "Test 157: text output groups results under a heading per member... "
+txt=$(NO_COLOR=1 "$LINT" --format text "$mono" 2>/dev/null || true)
+if echo "$txt" | grep -q 'Members:' && echo "$txt" | grep -q '▸ server' && echo "$txt" | grep -q '▸ web'; then pass; else
+    fail "no member headings: $(echo "$txt" | head -20)"; fi
+
+echo -n "Test 158: lint-standards.sh run on a member directory directly behaves as a single-root project... "
+out=$("$LINT" --format json "$mono/server" 2>/dev/null || true)
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *\]' && [ "$(echo "$out" | json_member_status '\.' python/banned-functions)" = "FAIL" ]; then pass; else
+    fail "member run wrong: $(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]')"; fi
+
+# detect-languages.sh walks the conventional monorepo sub-roots.
+echo -n "Test 159: detect-languages.sh finds manifests under apps/*, packages/*, crates/*, core, server, web, shells/*... "
+dl=$(make_project "detect-walk")
+mkdir -p "$dl/apps/api" "$dl/packages/ui" "$dl/crates/core" "$dl/core" "$dl/server" "$dl/web" "$dl/shells/apple" "$dl/node_modules/x"
+touch "$dl/apps/api/pyproject.toml" "$dl/crates/core/Cargo.toml" "$dl/core/CMakeLists.txt" "$dl/server/go.mod" \
+      "$dl/web/package.json" "$dl/web/tsconfig.app.json" "$dl/shells/apple/Package.swift" "$dl/packages/ui/mix.exs" "$dl/node_modules/x/pubspec.yaml"
+got=$(bash "$DETECT" "$dl" 2>/dev/null | tr '\n' ' ')
+want_ok=true
+for l in python rust cpp go javascript typescript swift elixir; do
+    case " $got " in *" $l "*) ;; *) want_ok=false ;; esac
+done
+case " $got " in *" dart "*) want_ok=false ;; esac
+if [ "$want_ok" = true ]; then pass; else fail "got: '$got'"; fi
+
+echo -n "Test 160: detect-languages.sh emits each language once and --root-only disables the walk... "
+dl2=$(make_project "detect-dedupe")
+mkdir -p "$dl2/apps/a" "$dl2/apps/b"
+touch "$dl2/apps/a/package.json" "$dl2/apps/b/package.json" "$dl2/Cargo.toml"
+full=$(bash "$DETECT" "$dl2" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
+root_only=$(bash "$DETECT" --root-only "$dl2" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
+js_count=$(bash "$DETECT" "$dl2" 2>/dev/null | grep -c '^javascript$')
+if [ "$js_count" -eq 1 ] && [ "$root_only" = "rust" ] && echo " $full " | grep -q ' rust ' && echo " $full " | grep -q ' javascript '; then pass; else
+    fail "full='$full' root_only='$root_only' js_count=$js_count"; fi
+
+echo -n "Test 161: detect-languages.sh --skip <dir> leaves that sub-root to its own member config... "
+skipped=$(bash "$DETECT" --skip apps/a "$dl2" 2>/dev/null | tr '\n' ' ')
+both_skipped=$(bash "$DETECT" --skip apps/a --skip apps/b "$dl2" 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
+if echo " $skipped " | grep -q ' javascript ' && [ "$both_skipped" = "rust" ]; then pass; else fail "skipped='$skipped' both='$both_skipped'"; fi
+
+# doctor.sh on monorepos and unsupported language keys.
+echo -n "Test 162: doctor.sh flags a declared language that has no standards or checks (cpp)... "
+dc=$(make_project "doctor-cpp")
+printf 'version: 1\nlanguages:\n  - cpp\n  - python\nagents: []\n' > "$dc/.standards.yml"
+touch "$dc/pyproject.toml"
+out=$(cd "$dc" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Languages' | grep -q 'WARN' && echo "$out" | grep 'Languages' | grep -q "cpp" \
+   && echo "$out" | grep 'Languages' | grep -qi 'unsupported\|no standards'; then pass; else
+    fail "cpp not flagged: $(echo "$out" | grep 'Languages')"; fi
+
+echo -n "Test 163: doctor.sh reports the members and checks each member's languages... "
+out=$(cd "$mono" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Members' | grep -q 'PASS' && echo "$out" | grep 'Members' | grep -q 'server' \
+   && echo "$out" | grep -q 'Languages (server)' && echo "$out" | grep -q 'Languages (web)'; then pass; else
+    fail "member lines missing: $(echo "$out" | grep -E 'Members|Languages')"; fi
+
+echo -n "Test 164: doctor.sh does not blame the root for languages that belong to a member... "
+# server/ is Python, declared in server/.standards.yml only; the root must not
+# demand `python` in its own languages list.
+if ! echo "$out" | grep 'Languages' | grep -v '(server)\|(web)' | grep -q "Detected 'python"; then pass; else
+    fail "root nagged about member language: $(echo "$out" | grep 'Languages')"; fi
+
+echo -n "Test 165: doctor.sh fails a declared member whose directory is missing and warns on one without .standards.yml... "
+mkdir -p "$mono5/bare"
+printf 'version: 1\nlanguages: []\nmembers:\n  - server\n  - ghost\n  - bare\n' > "$mono5/.standards.yml"
+out=$(cd "$mono5" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Members' | grep 'FAIL' | grep -q 'ghost' && echo "$out" | grep 'Members' | grep 'WARN' | grep -q 'bare'; then pass; else
+    fail "member problems not reported: $(echo "$out" | grep 'Members')"; fi
+
+# A declared member is PR-controlled, so a committed symlink must not let the
+# scripts read or write outside the checkout: lexically valid paths are also
+# resolved physically, and any symlink component is rejected.
+echo -n "Test 166: a declared member that is a symlink to a directory outside the root is rejected with a WARN and never scanned... "
+outside=$(mktemp -d "$TMP_BASE/outside.XXXXXX")
+mkdir -p "$outside/src"
+printf 'version: 1\nlanguages:\n  - python\n' > "$outside/.standards.yml"
+echo "aws_access_key_id = \"$aws_key\"" > "$outside/src/leak.py"   # a pattern no-secrets would report if it scanned this tree
+mono7=$(make_monorepo "members-symlink-out" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - server\n  - escape\n')")
+ln -s "$outside" "$mono7/escape"
+out=$("$LINT" --format json "$mono7" 2>/dev/null || true)
+printf '%s\n' "$out" > "$TMP_BASE/symlink-out.json"
+if json_valid "$TMP_BASE/symlink-out.json" \
+   && echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *\]' \
+   && [ "$(json_member_status '\.' members < "$TMP_BASE/symlink-out.json")" = "WARN" ] \
+   && grep -q "declared member 'escape' rejected: 'escape' is a symlink" "$TMP_BASE/symlink-out.json" \
+   && ! grep -q 'leak.py\|escape/src' "$TMP_BASE/symlink-out.json"; then pass; else
+    fail "members=$(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') status=$(json_member_status '\.' members < "$TMP_BASE/symlink-out.json") $(grep -o '"message": "[^"]*symlink[^"]*"' "$TMP_BASE/symlink-out.json" | head -1)"; fi
+
+echo -n "Test 167: an in-repo symlink (and a symlinked path component) is rejected with the same message while the real member is kept... "
+mono8=$(make_monorepo "members-symlink-in" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - server\n  - alias\n  - link/web\n')")
+ln -s server "$mono8/alias"
+mkdir -p "$mono8/real"
+mv "$mono8/web" "$mono8/real/web"
+ln -s real "$mono8/link"
+out=$("$LINT" --format json "$mono8" 2>/dev/null || true)
+printf '%s\n' "$out" > "$TMP_BASE/symlink-in.json"
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *\]' \
+   && grep -q "declared member 'alias' rejected: 'alias' is a symlink (members must be real directories inside the project)" "$TMP_BASE/symlink-in.json" \
+   && grep -q "declared member 'link/web' rejected: 'link' is a symlink" "$TMP_BASE/symlink-in.json" \
+   && [ "$(json_member_status 'server' python/banned-functions < "$TMP_BASE/symlink-in.json")" = "FAIL" ]; then pass; else
+    fail "members=$(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') $(grep -o '"message": "[^"]*rejected[^"]*"' "$TMP_BASE/symlink-in.json")"; fi
+
+echo -n "Test 168: doctor.sh fails a symlinked member, and member_escape_reason rejects the symlink while accepting real and missing members... "
+out=$(cd "$mono7" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+# Exercise member_escape_reason directly with a root that is itself reached
+# through a symlink, so the comparison must use physical paths on both sides.
+lib_out=$(bash -c '
+    source "$1/scripts/lib/members.sh"
+    r=$(member_escape_reason "$2" "escape") && echo "escape:$r"
+    member_escape_reason "$2" "server" || echo "server:ok"
+    member_escape_reason "$2" "missing" || echo "missing:ok"
+' _ "$REPO_ROOT" "$mono7")
+if echo "$out" | grep 'Members' | grep 'FAIL' | grep -q "declared member 'escape' rejected" \
+   && echo "$lib_out" | grep -q "^escape:declared member 'escape' rejected: 'escape' is a symlink" \
+   && echo "$lib_out" | grep -q '^server:ok' && echo "$lib_out" | grep -q '^missing:ok'; then pass; else
+    fail "doctor: $(echo "$out" | grep 'Members') lib: $lib_out"; fi
+
+echo -n "Test 169: a trailing YAML comment on a members: entry (block or inline) is not split into bogus member names... "
+mono9=$(make_monorepo "members-comments" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - server   # backend service\n  - web # front end\n  - # a comment-only entry\n')")
+out=$("$LINT" --format json "$mono9" 2>/dev/null || true)
+mono10=$(make_monorepo "members-inline-comment" "$(printf 'version: 1\nlanguages: []\nmembers: [server, web]  # both sub-roots\n')")
+out2=$("$LINT" --format json "$mono10" 2>/dev/null || true)
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *, *"web" *\]' && ! echo "$out" | grep -q 'not found (no such directory)' \
+   && echo "$out2" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *, *"web" *\]' && ! echo "$out2" | grep -q 'not found (no such directory)'; then pass; else
+    fail "block: $(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') inline: $(echo "$out2" | tr -d '\n' | grep -o '"members": *\[[^]]*\]')"; fi
+
+echo -n "Test 170: a root that is itself a project does not re-scan its members' files, while repo-wide checks still see them... "
+mono11=$(make_monorepo "members-root-project" "$(printf 'version: 1\nlanguages:\n  - python\nmembers:\n  - server\n  - web\n')")
+mkdir -p "$mono11/src" "$mono11/tests"
+echo 'print("root ok")' > "$mono11/src/main.py"
+echo 'def test_root(): pass' > "$mono11/tests/test_main.py"
+printf 'version: 1\nlanguages:\n  - python\nlint:\n  exclude:\n    - src/app.py\n' > "$mono11/server/.standards.yml"
+echo "aws_access_key_id = \"$aws_key\"" > "$mono11/server/src/cfg.py"   # a pattern no-secrets detects (AKIA + 16)
+git_commit_all "$mono11" "feat: root project"
+out=$("$LINT" --format json "$mono11" 2>/dev/null || true)
+printf '%s\n' "$out" > "$TMP_BASE/root-project.json"
+root_py=$(json_member_status '\.' python/banned-functions < "$TMP_BASE/root-project.json")
+server_py=$(json_member_status 'server' python/banned-functions < "$TMP_BASE/root-project.json")
+root_msg=$(tr -d '\n' < "$TMP_BASE/root-project.json" | grep -o '"check": "python/banned-functions",[[:space:]]*"member": "\.",[[:space:]]*"message": "[^"]*"' | head -1)
+secrets_msg=$(tr -d '\n' < "$TMP_BASE/root-project.json" | grep -o '"check": "no-secrets",[[:space:]]*"member": "\.",[[:space:]]*"message": "[^"]*"' | head -1)
+# The root's own scan passes (server/src/app.py's eval() is the member's file,
+# and the member excludes it); the repo-wide no-secrets scan still reaches
+# server/src/cfg.py.
+if [ "$root_py" = "PASS" ] && [ "$server_py" = "PASS" ] && ! echo "$root_msg" | grep -q 'server/src/app.py' \
+   && echo "$secrets_msg" | grep -q 'server/src/cfg.py'; then pass; else
+    fail "root=$root_py server=$server_py root_msg=$root_msg secrets=$secrets_msg"; fi
+
+echo -n "Test 171: an auto-discovered parent member does not re-scan the files of a member nested below it... "
+nest=$(make_project "members-nested")
+mkdir -p "$nest/packages/src" "$nest/packages/tests" "$nest/packages/web/src" "$nest/packages/web/tests"
+printf 'version: 1\nlanguages: []\n' > "$nest/.standards.yml"
+printf 'version: 1\nlanguages:\n  - python\n' > "$nest/packages/.standards.yml"
+echo 'print("parent ok")' > "$nest/packages/src/lib.py"
+echo 'def test_lib(): pass' > "$nest/packages/tests/test_lib.py"
+printf 'version: 1\nlanguages:\n  - python\nlint:\n  exclude:\n    - src/bad.py\n' > "$nest/packages/web/.standards.yml"
+echo 'eval("1")' > "$nest/packages/web/src/bad.py"   # the child's own lint.exclude hides it
+echo 'def test_web(): pass' > "$nest/packages/web/tests/test_web.py"
+git_commit_all "$nest" "feat: nested members"
+out=$("$LINT" --format json "$nest" 2>/dev/null || true)
+printf '%s\n' "$out" > "$TMP_BASE/nested.json"
+parent_py=$(json_member_status 'packages' python/banned-functions < "$TMP_BASE/nested.json")
+child_py=$(json_member_status 'packages/web' python/banned-functions < "$TMP_BASE/nested.json")
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"packages" *, *"packages/web" *\]' \
+   && [ "$parent_py" = "PASS" ] && [ "$child_py" = "PASS" ]; then pass; else
+    fail "members=$(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') parent=$parent_py child=$child_py"; fi
+
+echo -n "Test 172: a trailing comment after a quoted members: entry is dropped too... "
+mono12=$(make_monorepo "members-quoted-comment" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - "server" # backend service\n  - '"'"'web'"'"'   # front end\n')")
+out=$("$LINT" --format json "$mono12" 2>/dev/null || true)
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *, *"web" *\]' && ! echo "$out" | grep -q 'not found (no such directory)'; then pass; else
+    fail "members: $(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') $(grep -o '"message": "[^"]*not found[^"]*"' <<<"$out")"; fi
+
+echo -n "Test 173: a member whose .standards.yml is a symlink is rejected when declared and skipped by discovery... "
+cfg_outside=$(mktemp -d "$TMP_BASE/cfg-outside.XXXXXX")
+printf 'version: 1\nlanguages:\n  - python\n' > "$cfg_outside/standards.yml"
+mono13=$(make_monorepo "members-config-symlink")
+rm -f "$mono13/server/.standards.yml"
+ln -s "$cfg_outside/standards.yml" "$mono13/server/.standards.yml"
+out=$("$LINT" --format json "$mono13" 2>/dev/null || true)
+printf '%s\n' "$out" > "$TMP_BASE/config-symlink.json"
+mono14=$(make_monorepo "members-config-symlink-discovery" "$(printf 'version: 1\nlanguages: []\n')")
+rm -f "$mono14/web/.standards.yml"
+ln -s "$cfg_outside/standards.yml" "$mono14/web/.standards.yml"
+out2=$("$LINT" --format json "$mono14" 2>/dev/null || true)
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"web" *\]' \
+   && grep -q "declared member 'server' rejected: its .standards.yml is a symlink" "$TMP_BASE/config-symlink.json" \
+   && echo "$out2" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *\]'; then pass; else
+    fail "declared: $(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') discovered: $(echo "$out2" | tr -d '\n' | grep -o '"members": *\[[^]]*\]')"; fi
+
+echo -n "Test 174: doctor.sh judges the root by its own manifests, not by a tsconfig.json under apps/web... "
+zc=$(make_project "doctor-root-only")
+mkdir -p "$zc/apps/web"
+printf 'version: 1\nlanguages:\n  - python\n' > "$zc/.standards.yml"
+printf '[project]\nname = "root"\n' > "$zc/pyproject.toml"
+printf '{"compilerOptions":{"strict":true}}\n' > "$zc/apps/web/tsconfig.json"
+printf '{"name":"web"}\n' > "$zc/apps/web/package.json"
+out=$(cd "$zc" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep -q 'Languages' && ! echo "$out" | grep 'Languages' | grep -q 'typescript'; then pass; else
+    fail "root nagged about a sub-root language: $(echo "$out" | grep 'Languages')"; fi
+
+echo -n "Test 175: dot segments in members: entries are canonicalised and duplicate declarations are checked once... "
+mono15=$(make_monorepo "members-canonical" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - server/.\n  - ./server/\n  - server\n  - ./web//\n')")
+out=$("$LINT" --format json "$mono15" 2>/dev/null || true)
+server_runs=$(printf '%s' "$out" | tr -d '\n' | grep -o '"check": "python/banned-functions",[[:space:]]*"member": "server"' | wc -l | tr -d ' ')
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *, *"web" *\]' && [ "$server_runs" = "1" ]; then pass; else
+    fail "members=$(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') server_runs=$server_runs"; fi
+
+echo -n "Test 176: doctor.sh does not ask a CMake-only project to declare the unsupported 'cpp' key... "
+cm=$(make_project "doctor-cmake-only")
+printf 'version: 1\nlanguages: []\n' > "$cm/.standards.yml"
+printf 'cmake_minimum_required(VERSION 3.20)\nproject(demo)\n' > "$cm/CMakeLists.txt"
+out=$(cd "$cm" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep -q 'Languages' && ! echo "$out" | grep 'Languages' | grep -q 'cpp'; then pass; else
+    fail "doctor suggested cpp: $(echo "$out" | grep 'Languages')"; fi
+
+echo -n "Test 177: doctor.sh does not ask a parent member to declare a nested member's languages... "
+nest2=$(make_project "doctor-nested-members")
+mkdir -p "$nest2/packages/web"
+printf 'version: 1\nlanguages: []\nmembers:\n  - packages\n  - packages/web\n' > "$nest2/.standards.yml"
+printf 'version: 1\nlanguages: []\n' > "$nest2/packages/.standards.yml"
+printf 'version: 1\nlanguages:\n  - typescript\n' > "$nest2/packages/web/.standards.yml"
+printf '{"name":"web"}\n' > "$nest2/packages/web/package.json"
+printf '{"compilerOptions":{"strict":true}}\n' > "$nest2/packages/web/tsconfig.json"
+out=$(cd "$nest2" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep -q 'Languages (packages)' && ! echo "$out" | grep 'Languages (packages)' | grep -q 'typescript'; then pass; else
+    fail "parent nagged about child language: $(echo "$out" | grep 'Languages (packages')"; fi
+
+echo -n "Test 178: a nested member that only aggregates (no languages, members below it) skips project-level checks like the root... "
+agg=$(make_project "members-nested-aggregator")
+mkdir -p "$agg/packages/web/src" "$agg/packages/web/tests"
+printf 'version: 1\nlanguages: []\nmembers:\n  - packages\n  - packages/web\n' > "$agg/.standards.yml"
+printf 'version: 1\nlanguages: []\n' > "$agg/packages/.standards.yml"
+printf 'version: 1\nlanguages:\n  - python\n' > "$agg/packages/web/.standards.yml"
+printf '[project]\nname = "web"\n' > "$agg/packages/web/pyproject.toml"
+echo 'print("ok")' > "$agg/packages/web/src/app.py"
+echo 'def test_ok(): pass' > "$agg/packages/web/tests/test_app.py"
+git_commit_all "$agg" "feat: nested aggregator"
+out=$("$LINT" --format json "$agg" 2>/dev/null || true)
+printf '%s\n' "$out" > "$TMP_BASE/nested-agg.json"
+parent_tests=$(json_member_status 'packages' test-directory < "$TMP_BASE/nested-agg.json")
+root_tests=$(json_member_status '\.' test-directory < "$TMP_BASE/nested-agg.json")
+child_tests=$(json_member_status 'packages/web' test-directory < "$TMP_BASE/nested-agg.json")
+if [ -z "$parent_tests" ] && [ -z "$root_tests" ] && [ -n "$child_tests" ]; then pass; else
+    fail "parent='$parent_tests' root='$root_tests' child='$child_tests'"; fi
+
+echo -n "Test 179: --format sarif percent-encodes a member path that is not a plain URI path, keeping the raw value in properties... "
+svc=$(make_monorepo "members-sarif-uri" "$(printf 'version: 1\nlanguages: []\nmembers:\n  - "#svc"\n  - web\n')")
+mv "$svc/server" "$svc/#svc"
+git_commit_all "$svc" "feat: rename"
+"$LINT" --format sarif "$svc" > "$TMP_BASE/svc.sarif" 2>/dev/null || true
+if json_valid "$TMP_BASE/svc.sarif" && grep -q '"uri": "%23svc"' "$TMP_BASE/svc.sarif" \
+   && tr -d '\n' < "$TMP_BASE/svc.sarif" | grep -q '"properties": *{ *"member": *"#svc"' && grep -q '"uri": "web"' "$TMP_BASE/svc.sarif"; then pass; else
+    fail "uris: $(grep -o '"uri": "[^"]*"' "$TMP_BASE/svc.sarif" | sort -u | tr '\n' ' ')"; fi
+
+echo -n "Test 180: detect-languages.sh never follows a symlinked conventional sub-root (or symlinked parent) outside the checkout... "
+ext=$(mktemp -d "$TMP_BASE/ext-crate.XXXXXX")
+printf '[package]\nname = "ext"\n' > "$ext/Cargo.toml"
+mkdir -p "$ext/pkg"
+printf 'build.zig\n' > "$ext/pkg/build.zig"
+dl=$(make_project "detect-symlinked-subroots")
+mkdir -p "$dl/apps"
+printf '[project]\nname = "root"\n' > "$dl/pyproject.toml"
+ln -s "$ext" "$dl/apps/web"          # symlinked sub-root
+ln -s "$ext" "$dl/packages"          # symlinked parent of packages/*
+out=$("$DETECT" "$dl" 2>/dev/null | tr '\n' ' ')
+if [ "$out" = "python " ]; then pass; else fail "detected: '$out'"; fi
+
+echo -n "Test 181: an inline members: list keeps a quoted comma inside one value... "
+mono16=$(make_monorepo "members-quoted-comma" "$(printf 'version: 1\nlanguages: []\nmembers: ["api,v2", web]\n')")
+mkdir -p "$mono16/api,v2/src" "$mono16/api,v2/tests"
+printf 'version: 1\nlanguages:\n  - python\n' > "$mono16/api,v2/.standards.yml"
+printf '[project]\nname = "api"\n' > "$mono16/api,v2/pyproject.toml"
+git_commit_all "$mono16" "feat: api v2"
+out=$("$LINT" --format json "$mono16" 2>/dev/null || true)
+if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"api,v2" *, *"web" *\]' && ! echo "$out" | grep -q 'not found (no such directory)'; then pass; else
+    fail "members: $(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]')"; fi
+
+echo -n "Test 182: --format sarif builds the member URI from the raw path, not from its JSON-escaped form... "
+qm=$(make_monorepo "members-sarif-quote" "$(printf "version: 1\nlanguages: []\nmembers:\n  - 'a\"b'\n  - web\n")")
+mv "$qm/server" "$qm/a\"b"
+git_commit_all "$qm" "feat: rename"
+"$LINT" --format sarif "$qm" > "$TMP_BASE/quote.sarif" 2>/dev/null || true
+if json_valid "$TMP_BASE/quote.sarif" && grep -q '"uri": "a%22b"' "$TMP_BASE/quote.sarif" \
+   && tr -d '\n' < "$TMP_BASE/quote.sarif" | grep -q '"properties": *{ *"member": *"a\\"b"'; then pass; else
+    fail "uris: $(grep -o '"uri": "[^"]*"' "$TMP_BASE/quote.sarif" | sort -u | tr '\n' ' ') props: $(grep -o '"member": "[^,}]*' "$TMP_BASE/quote.sarif" | sort -u | tr '\n' ' ')"; fi
+
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

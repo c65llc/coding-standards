@@ -53,6 +53,15 @@
 #                   paths. Set by `lint-standards.sh --since/--changed`; when
 #                   present it replaces tracked-file enumeration (untracked
 #                   files are still enumerated, and exclusions still apply).
+#   LINT_MEMBER_EXCLUDE
+#                   Newline-separated project-relative directory prefixes that
+#                   are treated as additional lint.exclude entries. Set by
+#                   `lint-standards.sh` to the monorepo members while the
+#                   root's own project/language checks run, so a root that is
+#                   itself a project does not re-scan (and double-report) its
+#                   members' files under the root's config. Like lint.exclude
+#                   it does not apply to --strict checks, and the runner never
+#                   sets it for repository-wide checks.
 #
 # Configuration (.standards.yml):
 #   lint:
@@ -176,6 +185,7 @@ lint__user_exclude_ere() {
     done <<EOF
 $entries
 $(printf '%s\n' "$@")
+${LINT_MEMBER_EXCLUDE:-}
 EOF
     [ -n "$alts" ] && printf '^(%s)(/|$)' "$alts"
     return 0

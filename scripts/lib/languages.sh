@@ -9,6 +9,20 @@
 # Usage:
 #   source "$SCRIPT_DIR/lib/languages.sh"
 #   blocks=$(map_languages_to_blocks "python typescript go")
+#   language_supported cpp || echo "no standard for cpp"
+
+# Every language key the toolchain knows: the keys map_languages_to_blocks
+# maps to a lang-*.md block. doctor.sh flags a declared key outside this list
+# as unsupported (dust3d declares `cpp`, which has no standard yet).
+SUPPORTED_LANGUAGES="python javascript typescript jvm java kotlin ruby rails rust swift dart zig go elixir"
+
+# language_supported <key>: true when <key> has a standards block.
+language_supported() {
+    case " $SUPPORTED_LANGUAGES " in
+        *" $1 "*) return 0 ;;
+        *)        return 1 ;;
+    esac
+}
 
 # Map detected languages to block filenames.
 map_languages_to_blocks() {

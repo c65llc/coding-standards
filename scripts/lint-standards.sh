@@ -26,6 +26,19 @@
 #                      LINT_FAIL_ON_TIMEOUT=1). The standards-review action sets
 #                      this so CI never fails open.
 #
+# Monorepo members (#179):
+#   The root .standards.yml may declare `members:` (root-relative sub-roots
+#   with their own .standards.yml); without the key, every */.standards.yml
+#   and */*/.standards.yml is auto-discovered (see scripts/lib/members.sh).
+#   Repo-wide checks (conventional-commits, ci-workflow-hygiene, headless-ci,
+#   no-secrets, doc-lint) run once at the root. Project checks
+#   (coverage-config, quarantine-policy, test-directory-structure) and the
+#   language checks run in every member against that member's own config;
+#   they also run at the root unless the root declares no languages and has
+#   members (a pure aggregator). Results are aggregated into one report; each
+#   JSON/SARIF result carries a "member" field ("." for the root) and --since
+#   scopes are re-based onto each member.
+#
 # Environment:
 #   LINT_CHECK_TIMEOUT    Default for --timeout.
 #   LINT_FAIL_ON_TIMEOUT  Default for --fail-on-timeout (1/true).
@@ -180,7 +193,41 @@ fi
 LANGUAGES=""
 if declare -f read_standards_config >/dev/null 2>&1; then
     read_standards_config "$PROJECT_ROOT" 2>/dev/null || true
-    LANGUAGES="${STD_LANGUAGES:-}"
+    # Normalize: `languages: []` parses to a lone space, which must read as
+    # "no languages" below.
+    LANGUAGES=$(printf '%s\n' "${STD_LANGUAGES:-}" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
+fi
+
+# ---------------------------------------------------------------------------
+# Members: the root (".") plus every declared or discovered sub-root.
+# ---------------------------------------------------------------------------
+if [ ! -f "$SCRIPT_DIR/lib/members.sh" ]; then
+    echo "lint-standards: required library not found: $SCRIPT_DIR/lib/members.sh" >&2
+    exit 1
+fi
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/members.sh"
+MEMBERS=(".")
+while IFS= read -r m; do
+    [ -z "$m" ] && continue
+    MEMBERS+=("$m")
+done <<EOF
+$(resolve_members "$PROJECT_ROOT")
+EOF
+MEMBER_COUNT=${#MEMBERS[@]}
+
+# Common checks that describe the repository as a whole (history, CI
+# definitions, every tracked file) run once at the root; all other common
+# checks describe one project and run per member. Classified by module file
+# name under lint-checks/common/.
+REPO_SCOPED_CHECKS_ERE='^(conventional-commits|ci-workflow-hygiene|headless-ci|no-secrets|doc-lint)$'
+
+# A root that has members but declares no languages is a pure aggregator: its
+# project-level checks (test directory, coverage config …) would only report
+# the members' layout as missing.
+ROOT_IS_AGGREGATOR=false
+if [ "$MEMBER_COUNT" -gt 1 ] && [ -z "$LANGUAGES" ]; then
+    ROOT_IS_AGGREGATOR=true
 fi
 
 # ---------------------------------------------------------------------------
@@ -188,9 +235,23 @@ fi
 # ---------------------------------------------------------------------------
 
 RESULTS=()
+RESULT_MEMBERS=()
 PASS=0
 WARN=0
 FAIL=0
+
+# record_result <member> <status line>
+record_result() {
+    local member="$1" output="$2"
+    [ -z "$output" ] && return 0
+    RESULTS+=("$output")
+    RESULT_MEMBERS+=("$member")
+    case "$output" in
+        PASS*) PASS=$((PASS + 1)) ;;
+        WARN*) WARN=$((WARN + 1)) ;;
+        FAIL*) FAIL=$((FAIL + 1)) ;;
+    esac
+}
 
 # descendants <pid>: the pid and all of its descendants, deepest first, as a
 # space-separated list. Snapshotted before any signal is sent, because once a
@@ -240,8 +301,12 @@ check_label() {
     fi
 }
 
+# run_check <script> [root] [member]
+# Runs one module against <root> (default: the project root) and records the
+# result under <member> (default "."). LINT_FILE_LIST, when set, has already
+# been re-based onto <root> by the member loop.
 run_check() {
-    local check_script="$1"
+    local check_script="$1" check_root="${2:-$PROJECT_ROOT}" member="${3:-.}"
     if [ ! -f "$check_script" ] || [ ! -x "$check_script" ]; then
         return
     fi
@@ -249,7 +314,7 @@ run_check() {
     local output
     # Capture output; allow non-zero exit (checks use exit codes for severity)
     if [ "$CHECK_TIMEOUT" -eq 0 ]; then
-        output=$("$check_script" "$PROJECT_ROOT" 2>/dev/null) || true
+        output=$("$check_script" "$check_root" 2>/dev/null) || true
     else
         # Wall-clock guard: run the module in the background and poll (bash 3.2
         # has no `timeout`). A module that overruns is killed with its children
@@ -258,7 +323,7 @@ run_check() {
         # --fail-on-timeout: an incomplete scan must not pass a gate.
         local out_file pid ticks max_ticks timed_out=false label status
         out_file=$(mktemp "${TMPDIR:-/tmp}/lint-check.XXXXXX")
-        "$check_script" "$PROJECT_ROOT" >"$out_file" 2>/dev/null &
+        "$check_script" "$check_root" >"$out_file" 2>/dev/null &
         pid=$!
         ticks=0
         max_ticks=$((CHECK_TIMEOUT * 20))
@@ -285,33 +350,171 @@ run_check() {
         rm -f "$out_file"
     fi
 
-    if [ -n "$output" ]; then
-        RESULTS+=("$output")
-        case "$output" in
-            PASS*) PASS=$((PASS + 1)) ;;
-            WARN*) WARN=$((WARN + 1)) ;;
-            FAIL*) FAIL=$((FAIL + 1)) ;;
+    record_result "$member" "$output"
+}
+
+# member_file_list <member> <src> <dest>
+# Writes the entries of the NUL-delimited root scope list <src> that live under
+# <member>/ to <dest>, re-based onto the member root, so a member's
+# file-scanning checks see "src/x.py" rather than "server/src/x.py" (which they
+# would look up under the member root and silently miss).
+member_file_list() {
+    local member="$1" src="$2" dest="$3" entry
+    : > "$dest"
+    while IFS= read -r -d '' entry || [ -n "$entry" ]; do
+        case "$entry" in
+            "$member"/*) printf '%s\0' "${entry#"$member/"}" >> "$dest" ;;
         esac
+        entry=""
+    done < "$src"
+}
+
+# run_member <member>
+# Runs the checks that apply to one member against its own root and config.
+run_member() {
+    local member="$1" member_dir member_langs="" check base saved_list="" member_exclude=""
+    member_dir=$(member_root "$PROJECT_ROOT" "$member")
+
+    # A member's project/language checks must not re-scan the files of the
+    # members nested below it (every member, for the root; `packages/web` for
+    # a `packages` member): each member is checked under its own config and
+    # lint.exclude, and a second pass under an ancestor's config would
+    # double-report (or fail on a file the member deliberately excludes).
+    # Descendants are listed relative to this member's root. Repo-wide checks
+    # keep the whole tree (the variable is unset for them below).
+    local m
+    for m in "${MEMBERS[@]}"; do
+        [ "$m" = "." ] && continue
+        if [ "$member" = "." ]; then
+            member_exclude="${member_exclude:+$member_exclude
+}$m"
+        else
+            case "$m" in
+                "$member"/*) member_exclude="${member_exclude:+$member_exclude
+}${m#"$member/"}" ;;
+            esac
+        fi
+    done
+
+    if [ "$member" = "." ]; then
+        member_langs="$LANGUAGES"
+    else
+        [ -d "$member_dir" ] || return 0
+        if [ -f "$member_dir/.standards.yml" ] && declare -f read_standards_config >/dev/null 2>&1; then
+            read_standards_config "$member_dir" 2>/dev/null || true
+            # yaml_list yields a lone space for `languages: []`; normalise so an
+            # explicit empty list reads as empty (as the root's does above).
+            member_langs=$(printf '%s\n' "${STD_LANGUAGES:-}" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
+        fi
+        # Re-base the --since scope onto this member.
+        if [ -n "${LINT_FILE_LIST:-}" ] && [ -r "$LINT_FILE_LIST" ]; then
+            saved_list="$LINT_FILE_LIST"
+            LINT_FILE_LIST=$(mktemp "${TMPDIR:-/tmp}/lint-scope-member.XXXXXX")
+            member_file_list "$member" "$saved_list" "$LINT_FILE_LIST"
+            export LINT_FILE_LIST
+        fi
+    fi
+
+    # A member that declares no languages and has members nested below it is
+    # only an aggregator (the root with members, or `packages` holding
+    # `packages/web`): its project-level checks (test directory, coverage
+    # config …) would only report the nested members' layout as missing.
+    local is_aggregator=false
+    if [ -z "$member_langs" ] && [ -n "$member_exclude" ]; then
+        is_aggregator=true
+    fi
+
+    if [ -d "$CHECKS_DIR/common" ]; then
+        for check in "$CHECKS_DIR/common/"*.sh; do
+            base=$(basename "$check" .sh)
+            if [[ "$base" =~ $REPO_SCOPED_CHECKS_ERE ]]; then
+                # Repo-wide: once, at the root, over the whole tree.
+                [ "$member" = "." ] || continue
+                unset LINT_MEMBER_EXCLUDE
+            elif [ "$is_aggregator" = true ]; then
+                # Project-level check on a member that is only an aggregator.
+                continue
+            else
+                export LINT_MEMBER_EXCLUDE="$member_exclude"
+            fi
+            run_check "$check" "$member_dir" "$member"
+        done
+    fi
+
+    local lang
+    export LINT_MEMBER_EXCLUDE="$member_exclude"
+    for lang in $member_langs; do
+        if [ -d "$CHECKS_DIR/$lang" ]; then
+            for check in "$CHECKS_DIR/$lang/"*.sh; do
+                run_check "$check" "$member_dir" "$member"
+            done
+        fi
+    done
+    unset LINT_MEMBER_EXCLUDE
+
+    if [ -n "$saved_list" ]; then
+        rm -f "$LINT_FILE_LIST"
+        LINT_FILE_LIST="$saved_list"
+        export LINT_FILE_LIST
     fi
 }
 
-# Run common checks
-if [ -d "$CHECKS_DIR/common" ]; then
-    for check in "$CHECKS_DIR/common/"*.sh; do
-        run_check "$check"
-    done
-fi
-
-# Run language-specific checks
-for lang in $LANGUAGES; do
-    if [ -d "$CHECKS_DIR/$lang" ]; then
-        for check in "$CHECKS_DIR/$lang/"*.sh; do
-            run_check "$check"
-        done
+# A declared member that was rejected (escapes the root lexically or through
+# a symlink), is missing, or has no .standards.yml, is a finding in its own
+# right (recorded under the root, before any module runs, so it leads the
+# root group), not a silent skip.
+while IFS= read -r rejected; do
+    [ -z "$rejected" ] && continue
+    record_result "." "WARN members $rejected"
+done <<EOF
+$(rejected_members "$PROJECT_ROOT" 2>/dev/null)
+EOF
+for member in "${MEMBERS[@]}"; do
+    [ "$member" = "." ] && continue
+    if ! problem=$(member_problem "$PROJECT_ROOT" "$member"); then
+        record_result "." "WARN members $problem"
     fi
 done
 
+for member in "${MEMBERS[@]}"; do
+    run_member "$member"
+done
+
 TOTAL=$((PASS + WARN + FAIL))
+
+# sarif_uri_path <member>: the member directory as a relative URI reference.
+# Unreserved characters and "/" pass through; everything else (including "#",
+# "?", "%", spaces and non-ASCII bytes) is percent-encoded, so a member such
+# as "#svc" is a path, not a fragment. The raw value stays in
+# properties.member.
+sarif_uri_path() {
+    local path="$1" out="" i c
+    for ((i = 0; i < ${#path}; i++)); do
+        c="${path:i:1}"
+        case "$c" in
+            [A-Za-z0-9._~/-]) out="$out$c" ;;
+            *)
+                local b
+                while IFS= read -r b; do
+                    [ -n "$b" ] && out="$out%$b"
+                done <<EOF
+$(printf '%s' "$c" | od -An -tx1 | tr 'a-f' 'A-F' | tr -s ' ' '\n')
+EOF
+                ;;
+        esac
+    done
+    printf '%s' "$out"
+}
+
+# members_json: the members array as a one-line JSON list.
+members_json() {
+    local first=true m out="["
+    for m in "${MEMBERS[@]}"; do
+        if [ "$first" = true ]; then first=false; else out="$out, "; fi
+        out="$out\"$(printf '%s' "$m" | sed 's/\\/\\\\/g; s/"/\\"/g')\""
+    done
+    printf '%s]' "$out"
+}
 
 # ---------------------------------------------------------------------------
 # Output: text format
@@ -346,12 +549,28 @@ output_text() {
         printf "  %s\n\n" "${DIM}Scope: $SCOPE_FILE_COUNT changed file(s) since $SCOPE_BASE (file-scanning checks only)${RESET}"
     fi
 
+    if [ "$MEMBER_COUNT" -gt 1 ]; then
+        local m labels=""
+        for m in "${MEMBERS[@]}"; do
+            labels="${labels:+$labels, }$(member_label "$m")"
+        done
+        printf "  %s\n\n" "${DIM}Members: $labels${RESET}"
+    fi
+
     if [ ${#RESULTS[@]} -eq 0 ]; then
         printf "  %s\n" "${DIM}No checks ran. Is .standards.yml configured?${RESET}"
     fi
 
+    local i=0 current_member=""
     for result in "${RESULTS[@]}"; do
-        local status check_name message icon color
+        local status check_name message icon color member
+        member="${RESULT_MEMBERS[$i]}"
+        i=$((i + 1))
+        if [ "$MEMBER_COUNT" -gt 1 ] && [ "$member" != "$current_member" ]; then
+            [ -n "$current_member" ] && printf "\n"
+            printf "  %s\n" "${BOLD}▸ $(member_label "$member")${RESET}"
+            current_member="$member"
+        fi
         status=$(echo "$result" | awk '{print $1}')
         check_name=$(echo "$result" | awk '{print $2}')
         message=$(echo "$result" | cut -d' ' -f3-)
@@ -409,6 +628,7 @@ output_json() {
     printf '{\n'
     printf '  "timestamp": "%s",\n' "$timestamp"
     printf '  "projectRoot": "%s",\n' "$PROJECT_ROOT"
+    printf '  "members": %s,\n' "$(members_json)"
     printf '  "summary": {\n'
     printf '    "pass": %d,\n' "$PASS"
     printf '    "warn": %d,\n' "$WARN"
@@ -417,16 +637,19 @@ output_json() {
     printf '  },\n'
     printf '  "results": [\n'
 
-    local first=true
+    local first=true i=0
     if [ ${#RESULTS[@]} -gt 0 ]; then
     for result in "${RESULTS[@]}"; do
-        local status check_name message
+        local status check_name message member
+        member="${RESULT_MEMBERS[$i]}"
+        i=$((i + 1))
         status=$(echo "$result" | awk '{print $1}')
         check_name=$(echo "$result" | awk '{print $2}')
         message=$(echo "$result" | cut -d' ' -f3-)
 
         # Escape message for JSON
         message=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        member=$(printf '%s' "$member" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
         if [ "$first" = true ]; then
             first=false
@@ -437,6 +660,7 @@ output_json() {
         printf '    {\n'
         printf '      "status": "%s",\n' "$status"
         printf '      "check": "%s",\n' "$check_name"
+        printf '      "member": "%s",\n' "$member"
         printf '      "message": "%s"\n' "$message"
         printf '    }'
     done
@@ -523,10 +747,12 @@ output_sarif() {
     printf '      },\n'
     printf '      "results": [\n'
 
-    local results_first=true
+    local results_first=true i=0
     if [ ${#RESULTS[@]} -gt 0 ]; then
     for result in "${RESULTS[@]}"; do
-        local status check_name message level
+        local status check_name message level member
+        member="${RESULT_MEMBERS[$i]}"
+        i=$((i + 1))
         status=$(echo "$result" | awk '{print $1}')
         check_name=$(echo "$result" | awk '{print $2}')
         message=$(echo "$result" | cut -d' ' -f3-)
@@ -536,6 +762,11 @@ output_sarif() {
         [ "$status" = "PASS" ] && continue
 
         message=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')
+        # The URI is built from the raw path; only the JSON property value is
+        # JSON-escaped (a member a"b is URI a%22b, not a%5C%22b).
+        local member_uri
+        member_uri=$(sarif_uri_path "$member")
+        member=$(printf '%s' "$member" | sed 's/\\/\\\\/g; s/"/\\"/g')
 
         if [ "$results_first" = true ]; then
             results_first=false
@@ -543,6 +774,8 @@ output_sarif() {
             printf ',\n'
         fi
 
+        # The member directory is the artifact location, so Code Scanning
+        # attributes a finding to the sub-root it was produced in.
         printf '        {\n'
         printf '          "ruleId": "%s",\n' "$check_name"
         printf '          "level": "%s",\n' "$level"
@@ -551,12 +784,13 @@ output_sarif() {
         printf '            {\n'
         printf '              "physicalLocation": {\n'
         printf '                "artifactLocation": {\n'
-        printf '                  "uri": ".",\n'
+        printf '                  "uri": "%s",\n' "$member_uri"
         printf '                  "uriBaseId": "%%SRCROOT%%"\n'
         printf '                }\n'
         printf '              }\n'
         printf '            }\n'
-        printf '          ]\n'
+        printf '          ],\n'
+        printf '          "properties": { "member": "%s" }\n' "$member"
         printf '        }'
     done
     fi

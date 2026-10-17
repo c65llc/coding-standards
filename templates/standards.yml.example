@@ -22,6 +22,25 @@ agents:
 # Options: service, library, app, data-pipeline
 role: service
 
+# Monorepo members — sub-roots that are projects in their own right, each with
+# its own .standards.yml (languages, lint.exclude, coverage ...). Paths are
+# relative to this file; absolute paths, "..", and symlinks (or paths that
+# resolve outside the project) are rejected and reported.
+#   - lint-standards.sh runs repo-wide checks (secrets, commits, CI hygiene,
+#     docs) once at the root and project/language checks in every member,
+#     aggregating one report (JSON/SARIF results carry a "member" field).
+#   - doctor.sh checks each member's languages against its own config.
+#   - setup.sh / sync-standards.sh assemble the root agent configs from the
+#     union of the root's and the members' languages, and setup bootstraps a
+#     .standards.yml for a declared member that has none.
+# Omit the key to auto-discover every */.standards.yml and */*/.standards.yml
+# (hidden dirs, node_modules, vendor, dist, build, target are skipped); set
+# `members: []` to disable discovery for a single-root project.
+# members:
+#   - server
+#   - web
+#   - shells/apple
+
 # Coverage thresholds
 coverage:
   minimum: 95    # Overall minimum (%)

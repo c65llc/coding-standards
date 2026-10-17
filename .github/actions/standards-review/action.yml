@@ -1,5 +1,5 @@
 name: 'Standards Review'
-description: 'Run standards compliance linter, check the PR title, and post results as PR comment'
+description: 'Run standards compliance linter across the root and every monorepo member, check the PR title, and post aggregated results as PR comment'
 inputs:
   standards-path:
     description: 'Path to .standards/ submodule (default: .standards)'
@@ -253,6 +253,20 @@ runs:
               printf ":white_check_mark: PR title follows Conventional Commits\n\n"
               ;;
           esac
+
+          # Monorepo members (#179): lint-standards.sh iterates the root plus
+          # every declared or auto-discovered member and aggregates the results,
+          # so one run covers the whole repository. Name the members here; the
+          # table below prefixes each member's checks with its path.
+          MEMBERS_JSON=$(printf '%s' "$LINT_RESULTS" | tr -d '\n' | grep -o '"members": *\[[^]]*\]' | head -1 || true)
+          # Quoted strings in order: "members", "." (the root), then each member.
+          MEMBERS_LIST=$(printf '%s' "$MEMBERS_JSON" | grep -o '"[^"]*"' | tail -n +3 | tr -d '"' | tr '\n' ' ' | sed 's/ $//' || true)
+          if [ -n "$MEMBERS_LIST" ]; then
+            # Member paths are untrusted repo content: keep them in a code span
+            # and strip the characters that could break out of it or @-mention.
+            SAFE_MEMBERS=$(printf '%s' "$MEMBERS_LIST" | tr -d '\140@[]()<>' | sed -E 's/^(.{200}).*/\1/')
+            printf "**Members:** root + \`%s\`\n\n" "$SAFE_MEMBERS"
+          fi
 
           printf "| Status | Check | Details |\n"
           printf "|--------|-------|--------|\n"

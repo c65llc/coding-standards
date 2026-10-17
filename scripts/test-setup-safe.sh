@@ -572,6 +572,203 @@ bash "$REPO_ROOT/scripts/assemble-config.sh" --project-root "$proj" codex \
     "$out" lang-typescript.md role-service.md >/dev/null 2>&1 || true
 if [ -f "$out" ] && grep -q 'tsc -b' "$out"; then pass; else fail "'tsc -b' missing from typescript assembly"; fi
 
+# --- Monorepo members (#179): setup, sync and diff iterate members -------------
+
+# Fixture: root declares members server/ (Python manifest, no member config yet)
+# and web/ (TypeScript, with its own .standards.yml). The root itself has no
+# manifests, so every language must come from the members.
+make_monorepo() {
+    local name="$1"
+    local m
+    m=$(make_project "$name")
+    fake_standards "$m"
+    mkdir -p "$m/server/src" "$m/web/src"
+    printf 'version: 1\nlanguages: []\nagents:\n  - codex\nrole: service\nmembers:\n  - server\n  - web\n' > "$m/.standards.yml"
+    printf '[project]\nname = "server"\n' > "$m/server/pyproject.toml"
+    printf 'version: 1\nlanguages:\n  - typescript\n' > "$m/web/.standards.yml"
+    printf '{"name":"web"}\n' > "$m/web/package.json"
+    printf '{"compilerOptions":{"strict":true}}\n' > "$m/web/tsconfig.json"
+    echo "$m"
+}
+
+echo -n "Test 43: setup.sh keeps members:, assembles the members' blocks into the root agent config, and keeps the root's own languages list... "
+proj=$(make_monorepo "setup-members")
+(cd "$proj" && "$SETUP" --agents codex >/dev/null 2>&1) || true
+errs=""
+grep -q '^members:' "$proj/.standards.yml"                       || errs="$errs members-key-dropped"
+grep -q '^  - server$' "$proj/.standards.yml"                     || errs="$errs server-not-listed"
+grep -q '^  - web$' "$proj/.standards.yml"                        || errs="$errs web-not-listed"
+# The union is for agent configs only: a non-empty root languages: list makes
+# lint-standards run language checks against the root, which has no manifests.
+grep -q '^languages: \[\]$' "$proj/.standards.yml"                || errs="$errs root-languages-not-empty"
+grep -q '^  - python$' "$proj/.standards.yml"                     && errs="$errs python-leaked-into-root-languages"
+grep -q '^  - typescript$' "$proj/.standards.yml"                 && errs="$errs typescript-leaked-into-root-languages"
+grep -q 'Member languages' "$proj/.standards.yml"                 || errs="$errs member-languages-note-missing"
+[ -f "$proj/AGENTS.md" ] && grep -q 'tsc -b' "$proj/AGENTS.md"    || errs="$errs typescript-block-missing"
+[ -f "$proj/AGENTS.md" ] && grep -qi 'ruff' "$proj/AGENTS.md"     || errs="$errs python-block-missing"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 43b: after setup.sh, lint-standards.sh does not run a member's language checks against the aggregator root... "
+lint_json=$(bash "$REPO_ROOT/scripts/lint-standards.sh" --format json "$proj" 2>/dev/null || true)
+root_ts=$(printf '%s' "$lint_json" | tr -d '\n' | grep -o '"check": "typescript/strict-tsconfig",[[:space:]]*"member": "\."' || true)
+web_ts=$(printf '%s' "$lint_json" | tr -d '\n' | grep -o '"check": "typescript/strict-tsconfig",[[:space:]]*"member": "web"' || true)
+if [ -z "$root_ts" ] && [ -n "$web_ts" ]; then pass; else
+    fail "root_ts='$root_ts' web_ts='$web_ts'"; fi
+
+echo -n "Test 44: setup.sh bootstraps a .standards.yml for a declared member that has none, and leaves an existing one alone... "
+errs=""
+[ -f "$proj/server/.standards.yml" ]                              || errs="$errs server-config-missing"
+grep -q '^  - python$' "$proj/server/.standards.yml" 2>/dev/null  || errs="$errs server-python-missing"
+grep -q '^members:' "$proj/server/.standards.yml" 2>/dev/null     && errs="$errs server-config-has-members"
+[ "$(cat "$proj/web/.standards.yml")" = "$(printf 'version: 1\nlanguages:\n  - typescript')" ] || errs="$errs web-config-rewritten"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 45: setup.sh --dry-run names the member config it would write and writes nothing... "
+proj=$(make_monorepo "setup-members-dry")
+dry_out=$(cd "$proj" && "$SETUP" --agents codex --dry-run 2>&1) || true
+if echo "$dry_out" | grep -q 'server/.standards.yml' && [ ! -e "$proj/server/.standards.yml" ] && [ ! -e "$proj/AGENTS.md" ]; then pass; else
+    fail "dry-run wrote files or did not mention the member config"; fi
+
+echo -n "Test 46: sync-standards.sh unions member languages into the root agent config and lists the members... "
+proj=$(make_monorepo "sync-members")
+printf 'version: 1\nlanguages:\n  - python\n' > "$proj/server/.standards.yml"
+sync_out=$(cd "$proj" && "$SYNC" 2>&1) || true
+errs=""
+echo "$sync_out" | grep -q 'server'                               || errs="$errs server-not-listed"
+echo "$sync_out" | grep -q 'web'                                  || errs="$errs web-not-listed"
+[ -f "$proj/AGENTS.md" ] && grep -q 'tsc -b' "$proj/AGENTS.md"    || errs="$errs typescript-block-missing"
+[ -f "$proj/AGENTS.md" ] && grep -qi 'ruff' "$proj/AGENTS.md"     || errs="$errs python-block-missing"
+if [ -z "$errs" ]; then pass; else fail "$errs: $sync_out"; fi
+
+echo -n "Test 47: diff-standards.sh --exit-code agrees with sync on a monorepo (no drift right after a sync)... "
+diff_rc=0
+(cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code >/dev/null 2>&1) || diff_rc=$?
+if [ "$diff_rc" -eq 0 ]; then pass; else fail "diff-standards reported drift (exit $diff_rc) immediately after sync"; fi
+
+echo -n "Test 48: sync-standards.sh warns about a declared member that does not exist and still completes... "
+printf 'version: 1\nlanguages: []\nagents:\n  - codex\nrole: service\nmembers:\n  - server\n  - ghost\n' > "$proj/.standards.yml"
+sync_rc=0
+sync_out=$(cd "$proj" && "$SYNC" 2>&1) || sync_rc=$?
+if [ "$sync_rc" -eq 0 ] && echo "$sync_out" | grep -qi 'ghost' && echo "$sync_out" | grep -q 'Sync complete'; then pass; else
+    fail "rc=$sync_rc: $sync_out"; fi
+
+echo -n "Test 49: a member whose config declares 'languages: []' contributes nothing to the root agent config (no detection behind its back)... "
+proj=$(make_monorepo "setup-members-empty-langs")
+printf 'version: 1\nlanguages: []\n' > "$proj/web/.standards.yml"   # web/ still has tsconfig.json and package.json
+(cd "$proj" && "$SETUP" --agents codex >/dev/null 2>&1) || true
+errs=""
+[ -f "$proj/AGENTS.md" ]                                          || errs="$errs agents-missing"
+grep -q 'tsc -b' "$proj/AGENTS.md" 2>/dev/null                    && errs="$errs typescript-assembled-despite-empty-list"
+grep -qi 'ruff' "$proj/AGENTS.md" 2>/dev/null                     || errs="$errs python-block-missing"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 50: setup.sh --languages names the root's own languages and still unions the members' into the agent config... "
+proj=$(make_monorepo "setup-members-override")
+(cd "$proj" && "$SETUP" --agents codex --languages python >/dev/null 2>&1) || true
+errs=""
+grep -q '^  - python$' "$proj/.standards.yml"                     || errs="$errs python-not-in-root-languages"
+grep -q '^  - typescript$' "$proj/.standards.yml"                 && errs="$errs typescript-leaked-into-root-languages"
+[ -f "$proj/AGENTS.md" ] && grep -q 'tsc -b' "$proj/AGENTS.md"    || errs="$errs typescript-block-missing"
+[ -f "$proj/AGENTS.md" ] && grep -qi 'ruff' "$proj/AGENTS.md"     || errs="$errs python-block-missing"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 51: zero-config bootstrap: a tsconfig.json under apps/web feeds the agent config but not the root languages list... "
+proj=$(make_project "setup-zero-config-monorepo")
+fake_standards "$proj"
+mkdir -p "$proj/apps/web"
+printf '{"name":"web"}\n' > "$proj/apps/web/package.json"
+printf '{"compilerOptions":{"strict":true}}\n' > "$proj/apps/web/tsconfig.json"
+setup_out=$(cd "$proj" && "$SETUP" --agents codex 2>&1) || true
+errs=""
+grep -q '^languages: \[\]$' "$proj/.standards.yml"                || errs="$errs root-languages-not-empty"
+grep -q '^  - typescript$' "$proj/.standards.yml"                 && errs="$errs typescript-leaked-into-root-languages"
+[ -f "$proj/AGENTS.md" ] && grep -q 'tsc -b' "$proj/AGENTS.md"    || errs="$errs typescript-block-missing"
+echo "$setup_out" | grep -q 'sub-roots.*typescript'               || errs="$errs sub-root-hint-missing"
+lint_json=$(bash "$REPO_ROOT/scripts/lint-standards.sh" --format json "$proj" 2>/dev/null || true)
+printf '%s' "$lint_json" | tr -d '\n' | grep -q '"check": "typescript/strict-tsconfig",[[:space:]]*"member": "\."' && errs="$errs root-ts-check-ran"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$setup_out" | grep -i 'sub-roots' | head -2)"; fi
+
+echo -n "Test 52: setup.sh never writes a member config through a symlink (dangling link to a path outside the checkout)... "
+proj=$(make_monorepo "setup-member-config-symlink")
+link_target_dir=$(mktemp -d "${TMPDIR:-/tmp}/setup-safe-outside.XXXXXX")
+link_target="$link_target_dir/standards.yml"
+ln -s "$link_target" "$proj/server/.standards.yml"
+setup_out=$(cd "$proj" && "$SETUP" --agents codex 2>&1) || true
+errs=""
+[ -e "$link_target" ]                                             && errs="$errs wrote-through-symlink"
+[ -L "$proj/server/.standards.yml" ]                              || errs="$errs symlink-replaced"
+echo "$setup_out" | grep -q "server' rejected: its .standards.yml is a symlink" || errs="$errs no-rejection-message"
+rm -rf "$link_target_dir"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$setup_out" | grep -i 'symlink\|members' | head -3)"; fi
+
+echo -n "Test 53: setup.sh re-quotes a member path that YAML needs quoted, so the regenerated config re-reads to the same member... "
+proj=$(make_monorepo "setup-member-quoting")
+mkdir -p "$proj/#svc/src"
+printf 'version: 1\nlanguages:\n  - python\n' > "$proj/#svc/.standards.yml"
+printf 'version: 1\nlanguages: []\nagents:\n  - codex\nrole: service\nmembers:\n  - "#svc"\n  - web\n' > "$proj/.standards.yml"
+(cd "$proj" && "$SETUP" --agents codex >/dev/null 2>&1) || true
+errs=""
+grep -q '^  - "#svc"$' "$proj/.standards.yml"                      || errs="$errs svc-not-requoted"
+grep -q '^  - web$' "$proj/.standards.yml"                        || errs="$errs web-not-plain"
+lint_json=$(bash "$REPO_ROOT/scripts/lint-standards.sh" --format json "$proj" 2>/dev/null || true)
+printf '%s' "$lint_json" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"#svc" *, *"web" *\]' || errs="$errs svc-not-resolved-after-rewrite"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(grep -A3 '^members:' "$proj/.standards.yml" | tr '\n' '|')"; fi
+
+echo -n "Test 54: sync and diff build the same root + sub-root + member union as setup (no drift, sub-root block kept)... "
+proj=$(make_project "sync-subroot-union")
+fake_standards "$proj"
+mkdir -p "$proj/apps/web"
+printf '[project]\nname = "root"\n' > "$proj/pyproject.toml"
+printf '{"name":"web"}\n' > "$proj/apps/web/package.json"
+printf '{"compilerOptions":{"strict":true}}\n' > "$proj/apps/web/tsconfig.json"
+(cd "$proj" && "$SETUP" --agents codex >/dev/null 2>&1) || true
+errs=""
+grep -q '^  - python$' "$proj/.standards.yml"                     || errs="$errs python-not-in-root-languages"
+grep -q '^  - typescript$' "$proj/.standards.yml"                 && errs="$errs typescript-leaked-into-root-languages"
+[ -f "$proj/AGENTS.md" ] && grep -q 'tsc -b' "$proj/AGENTS.md"    || errs="$errs setup-typescript-block-missing"
+(cd "$proj" && "$SYNC" >/dev/null 2>&1) || true
+grep -q 'tsc -b' "$proj/AGENTS.md"                                || errs="$errs sync-dropped-typescript-block"
+grep -qi 'ruff' "$proj/AGENTS.md"                                 || errs="$errs sync-dropped-python-block"
+diff_rc=0
+(cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code >/dev/null 2>&1) || diff_rc=$?
+[ "$diff_rc" -eq 0 ]                                              || errs="$errs diff-reports-drift($diff_rc)"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 55: bootstrapping a config-less parent member does not detect through a nested member's manifests... "
+proj=$(make_project "setup-nested-bootstrap")
+fake_standards "$proj"
+mkdir -p "$proj/packages/web"
+printf 'version: 1\nlanguages: []\nagents:\n  - codex\nrole: service\nmembers:\n  - packages\n  - packages/web\n' > "$proj/.standards.yml"
+printf 'version: 1\nlanguages:\n  - typescript\n' > "$proj/packages/web/.standards.yml"
+printf '{"name":"web"}\n' > "$proj/packages/web/package.json"
+printf '{"compilerOptions":{"strict":true}}\n' > "$proj/packages/web/tsconfig.json"
+(cd "$proj" && "$SETUP" --agents codex >/dev/null 2>&1) || true
+errs=""
+[ -f "$proj/packages/.standards.yml" ]                            || errs="$errs parent-config-not-bootstrapped"
+grep -q '^languages: \[\]$' "$proj/packages/.standards.yml" 2>/dev/null || errs="$errs parent-languages-not-empty"
+grep -q 'typescript' "$proj/packages/.standards.yml" 2>/dev/null   && errs="$errs child-language-leaked-into-parent"
+[ -f "$proj/AGENTS.md" ] && grep -q 'tsc -b' "$proj/AGENTS.md"    || errs="$errs typescript-block-missing"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(cat "$proj/packages/.standards.yml" 2>/dev/null | tr '\n' '|')"; fi
+
+echo -n "Test 56: a language both the root (tooling manifest) and a sub-root carry is still assembled from the sub-root when the root omits it... "
+proj=$(make_project "sync-subroot-overlap")
+fake_standards "$proj"
+mkdir -p "$proj/apps/web"
+printf 'version: 1\nlanguages:\n  - python\nagents:\n  - codex\nrole: service\n' > "$proj/.standards.yml"
+printf '[project]\nname = "root"\n' > "$proj/pyproject.toml"
+printf '{"name":"root-tooling"}\n' > "$proj/package.json"          # root carries javascript but declares only python
+printf '{"name":"web"}\n' > "$proj/apps/web/package.json"          # the sub-root carries javascript too
+sync_out=$(cd "$proj" && "$SYNC" 2>&1) || true
+errs=""
+[ -f "$proj/AGENTS.md" ]                                          || errs="$errs agents-missing"
+grep -q 'eslint-config-prettier' "$proj/AGENTS.md" 2>/dev/null    || errs="$errs javascript-block-missing"
+grep -qi 'ruff' "$proj/AGENTS.md" 2>/dev/null                     || errs="$errs python-block-missing"
+grep -q '^  - javascript$' "$proj/.standards.yml"                 && errs="$errs javascript-forced-into-root-languages"
+diff_rc=0
+(cd "$proj" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code >/dev/null 2>&1) || diff_rc=$?
+[ "$diff_rc" -eq 0 ]                                              || errs="$errs diff-reports-drift($diff_rc)"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$sync_out" | grep -i 'languages' | head -2)"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

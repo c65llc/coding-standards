@@ -144,6 +144,17 @@ PR's own commits (`origin/<base>..HEAD`) unless `.standards.yml` sets
 `commits.since`; a configured `commits.window` applies only when no range is
 available, so it never widens a PR check to unrelated mainline history.
 
+### Monorepos
+
+One run of the action covers the whole repository: `lint-standards.sh`
+iterates the root plus every member (`members:` in the root `.standards.yml`,
+or auto-discovered `*/.standards.yml`) and aggregates the results, so a
+workflow no longer needs one linter invocation per sub-root. The PR comment
+names the members and prefixes each member's checks with its path
+(`server: python/banned-functions`). With `changed-only: true` the changed-file
+scope is re-based onto each member. See
+[Monorepos: Members](customization.md#monorepos-members).
+
 ## Manual Sync
 
 Run the sync script at any time to pull the latest standards and update all agent configuration files:

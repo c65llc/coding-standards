@@ -128,6 +128,46 @@ If the rule belongs in the shared standards instead, add the file to the standar
 
 This keeps the shared standards clean while allowing per-project overrides.
 
+## Monorepos: Members
+
+Most real projects are monorepos: a Rust core with a SwiftUI shell and TypeScript workers, or `server/` + `web/` with the test directory, `mypy` and `eslint` configuration each one level down. Run against the root alone, the scripts assume a single project and report those layouts as missing. `.standards.yml` therefore supports **members** — sub-roots that are projects in their own right, each with its own `.standards.yml`:
+
+```yaml
+# .standards.yml (repository root)
+version: 1
+languages: []          # nothing lives at the root itself
+agents: [claude-code, cursor]
+members:
+  - server
+  - web
+  - shells/apple
+```
+
+```yaml
+# server/.standards.yml
+version: 1
+languages: [python]
+lint:
+  exclude: [migrations/]
+```
+
+Paths are relative to the root config; absolute paths and `..` are rejected. A declared path is also resolved physically: a symlink anywhere in it, or a real location outside the project root, is rejected and reported (`lint-standards.sh` records a `WARN` under the `members` check, `doctor.sh` a `FAIL`), because the root config is PR-controlled and a committed symlink must not let the scripts read or write outside the checkout. Members are not recursive (a member's own `members:` key is ignored).
+
+**Auto-discovery.** Without a `members:` key, every `*/.standards.yml` and `*/*/.standards.yml` one or two levels below the root is a member. Hidden directories (`.git`, `.standards`, `.worktrees`, `.claude/worktrees`, …), `node_modules`, `vendor`, `third_party`, `dist`, `build`, `target` and `coverage` are never entered. Declare `members:` to pin the list (new sub-roots then need an entry), or `members: []` to turn discovery off for a single-root project.
+
+**What each script does with members:**
+
+| Script | Behaviour |
+| --- | --- |
+| `lint-standards.sh` | Repo-wide checks (`conventional-commits`, `ci-workflow-hygiene`, `headless-ci`, `no-secrets`, `doc-lint`) run once at the root. Project checks (`coverage-config`, `quarantine-policy`, `test-directory-structure`) and the language checks run in every member against that member's own config and `lint.exclude`; they also run at the root unless the root declares no languages (a pure aggregator), and every member (the root included) skips the subtrees of the members nested below it, so a member's file is judged once, under its own config (repo-wide checks still see the whole tree). One aggregated report; every JSON/SARIF result carries a `member` field (`.` for the root), text output groups results per member, and `--since`/`--changed` scopes are re-based onto each member. A declared member that is missing, or has no `.standards.yml`, is a `WARN` finding under the `members` check. |
+| `doctor.sh` | Reports the members (`Members` line; a missing declared member is a `FAIL`, one without a config a `WARN`) and runs the languages check for the root (its own manifests only) and for each member (`Languages (server)`). The root is not asked to declare a member's or a sub-root's languages, and a declared key with no standards document or lint checks (for example `cpp`) is flagged as unsupported. |
+| `detect-languages.sh` | Also walks `apps/*`, `packages/*`, `crates/*`, `core`, `server`, `web` and `shells/*` for manifests, so a Rust core + Swift shell + TypeScript workers repository detects all three. `--skip <dir>` leaves a member to its own config; `--root-only` disables the walk; `--subroots-only` inspects only the sub-roots (how setup, sync and diff attribute a language to a sub-root even when the root carries it too). |
+| `setup.sh` | Resolves the members before rewriting the root config, keeps a declared `members:` list verbatim, writes only the root's own languages (detected from the root's own manifests with `--root-only`, or `--languages`) to the root `.standards.yml` and prints a hint when a conventional sub-root (`apps/*`, `packages/*`, …) carries a language the root does not, so it can be made a member, assembles the root agent configs from the **union** of the root's and the members' languages (the root file is the only one Cursor, Copilot and Aider read; a member with a config contributes exactly what it declares, so `languages: []` contributes nothing, and a member without a config contributes what is detected in it), and bootstraps a `.standards.yml` for a declared member that has none (an existing member config is never rewritten). |
+| `sync-standards.sh`, `diff-standards.sh` | Build the same union for the root assembly — the root's declared languages (else its own manifests), the conventional sub-roots that are not members, and every member — so `diff-standards.sh --exit-code` agrees with sync and with a fresh setup. |
+| `standards-review` action | Posts the aggregated report; a member's checks are prefixed with its path (`server: python/banned-functions`). |
+
+Running `lint-standards.sh server` directly still treats `server/` as a single-root project, so a per-member Makefile target keeps working; the root run simply makes it unnecessary.
+
 ## Tips
 
 - **Start small.** Fork the repo, change only what you need, and expand over time.

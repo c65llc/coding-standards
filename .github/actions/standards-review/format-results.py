@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Format lint-standards.sh JSON output as a Markdown table row per result."""
+"""Format lint-standards.sh JSON output as a Markdown table row per result.
+
+Each result may carry a ``member`` (the monorepo sub-root it was produced in,
+``"."`` for the project root). A member other than the root is shown as a
+prefix on the check name so one table covers the whole aggregated run.
+"""
 import json
 import sys
 
@@ -14,10 +19,50 @@ try:
 except (json.JSONDecodeError, ValueError):
     pass
 
+
+def cell(value):
+    """Escape a table cell: no pipes, no line breaks."""
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def member_cell(value):
+    """Render a member path as an inert literal.
+
+    The member list comes from the PR's own ``.standards.yml``, so it is
+    untrusted: ``@org/team`` would ping a team and ``[x](url)`` or
+    ``![x](url)`` would inject a link or image into the bot's comment. Mirror
+    the action's own sanitising (drop backticks, ``@``, brackets, parentheses
+    and angle brackets), cap the length, and show the result in a code span so
+    whatever remains is literal Markdown.
+    """
+    text = inert(value)[:200].strip() or "member"
+    return f"`{text}`"
+
+
+def inert(value):
+    """Drop the characters that turn text into a mention, link, image or code span."""
+    text = cell(value)
+    for ch in "`@[]()<>":
+        text = text.replace(ch, "")
+    return text
+
+
 icons = {"PASS": ":white_check_mark:", "WARN": ":warning:", "FAIL": ":x:"}
 for r in results:
+    if not isinstance(r, dict):
+        continue
     status = r.get("status", "")
-    check = r.get("check", "")
-    message = r.get("message", "").replace("|", "\\|").replace("\n", " ")
+    raw_check = r.get("check", "")
+    check = cell(raw_check)
+    member = r.get("member", "")
+    if member and member != ".":
+        check = f"{member_cell(member)}: {check}"
+    if raw_check == "members":
+        # The synthetic members check quotes declared member paths (missing,
+        # unconfigured or rejected entries) in its message, so that text is
+        # repository-controlled too.
+        message = inert(r.get("message", ""))
+    else:
+        message = cell(r.get("message", ""))
     icon = icons.get(status, ":grey_question:")
     print(f"| {icon} {status} | {check} | {message} |")

@@ -209,13 +209,48 @@ yaml_list() {
     local inline
     inline=$(grep "^${key}:" "$file" 2>/dev/null | sed "s/^${key}:[[:space:]]*//" | sed 's/[[:space:]]*$//')
     if [[ "$inline" == \[* ]]; then
-        # Inline format: [python, typescript]
-        echo "$inline" | tr -d '[]' | tr ',' '\n' | sed 's/^[[:space:]]*//' | sed 's/[[:space:]]*$//' | tr '\n' ' '
+        # Inline format: [python, typescript]   # a trailing comment is dropped.
+        # Commas split entries only outside quotes, so ["api,v2", web] keeps
+        # "api,v2" whole (the caller unquotes), as yaml_nested_list does.
+        awk -v line="$inline" 'BEGIN {
+            sub(/^\[/, "", line)
+            sub(/\].*$/, "", line)
+            len = length(line); cur = ""; q = ""
+            for (i = 1; i <= len; i++) {
+                ch = substr(line, i, 1)
+                if (q != "") {
+                    cur = cur ch
+                    if (ch == q) q = ""
+                } else if (ch == "\"" || ch == "\047") {
+                    q = ch; cur = cur ch
+                } else if (ch == ",") {
+                    gsub(/^[[:space:]]+|[[:space:]]+$/, "", cur)
+                    if (cur != "") print cur
+                    cur = ""
+                } else {
+                    cur = cur ch
+                }
+            }
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", cur)
+            if (cur != "") print cur
+        }' | tr '\n' ' '
     else
         # Block format:
         #   - python
-        #   - typescript
-        awk "/^${key}:/{found=1;next} found && /^[[:space:]]*-/{gsub(/^[[:space:]]*-[[:space:]]*/,\"\"); print; next} found && /^[^[:space:]-]/{exit}" "$file" 2>/dev/null | tr '\n' ' '
+        #   - typescript   # a trailing comment is dropped; a quoted value keeps
+        #   - "gen#tmp"    # its "#" and loses anything after the closing quote
+        #                  # (the caller unquotes)
+        awk "/^${key}:/{found=1;next}
+             found && /^[[:space:]]*-/{
+                 gsub(/^[[:space:]]*-[[:space:]]*/,\"\");
+                 if (\$0 ~ /^\\\"/)      { if (match(\$0, /^\\\"[^\\\"]*\\\"/)) \$0 = substr(\$0, 1, RLENGTH) }
+                 else if (\$0 ~ /^'/)   { if (match(\$0, /^'[^']*'/)) \$0 = substr(\$0, 1, RLENGTH) }
+                 else                    { sub(/^#.*$/, \"\"); sub(/[[:space:]]+#.*$/, \"\") }
+                 sub(/[[:space:]]+$/, \"\");
+                 if (length(\$0) > 0) print;
+                 next
+             }
+             found && /^[^[:space:]-]/{exit}" "$file" 2>/dev/null | tr '\n' ' '
     fi
 }
 
@@ -284,7 +319,7 @@ yaml_nested_list() {
 }
 
 # Read .standards.yml or fall back to .standards-config
-# Sets global variables: STD_LANGUAGES, STD_AGENTS, STD_ROLE, STD_VERSION, STD_COVERAGE_MIN, STD_COVERAGE_DOMAIN, STD_ARCHITECTURE, STD_SECURITY, STD_LINT_EXCLUDE
+# Sets global variables: STD_LANGUAGES, STD_AGENTS, STD_ROLE, STD_VERSION, STD_COVERAGE_MIN, STD_COVERAGE_DOMAIN, STD_ARCHITECTURE, STD_SECURITY, STD_LINT_EXCLUDE, STD_MEMBERS
 read_standards_config() {
     local project_root="$1"
     local yml="$project_root/.standards.yml"
@@ -294,6 +329,9 @@ read_standards_config() {
         STD_VERSION=$(yaml_get "version" "$yml")
         STD_LANGUAGES=$(yaml_list "languages" "$yml")
         STD_AGENTS=$(yaml_list "agents" "$yml")
+        # members: root-relative sub-roots with their own .standards.yml (#179).
+        # Raw values; scripts/lib/members.sh normalizes and validates them.
+        STD_MEMBERS=$(yaml_list "members" "$yml" | sed 's/[[:space:]]*$//')
         STD_ROLE=$(yaml_get "role" "$yml")
         STD_COVERAGE_MIN=$(yaml_nested_get "coverage" "minimum" "$yml")
         STD_COVERAGE_DOMAIN=$(yaml_nested_get "coverage" "domain" "$yml")
@@ -332,6 +370,7 @@ read_standards_config() {
         STD_ARCHITECTURE="clean"
         STD_SECURITY="strict"
         STD_LINT_EXCLUDE=""
+        STD_MEMBERS=""
         return 0
     else
         return 1
