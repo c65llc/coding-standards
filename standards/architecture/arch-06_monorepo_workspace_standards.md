@@ -179,7 +179,10 @@ gate fails with no source change, check:
 `lint-standards.sh` ships the `artifact-hygiene` common check, which scans
 committed `*.wasm`, `*.a`, `*.so`, `*.dylib` and `*.jar` files for embedded
 `/Users/` and `/home/` paths and WARNs with the offending artifact (username
-redacted). A WARN there means the first row of this table has been missed.
+redacted). JAR entries are inflated before scanning when `unzip` is on the
+runner; without it only the archive's raw bytes (stored entries and the
+central directory) are inspected. A WARN there means the first row of this
+table has been missed.
 
 ### Worked example: one wasm drift gate, five commits
 

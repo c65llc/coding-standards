@@ -150,15 +150,56 @@ printf 'PK\003\004/Users/carol/proj/build/libs/app.jar\000' > "$hyg_nogit/lib/ap
 out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_nogit" 2>/dev/null || true)
 if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'app.jar'; then pass; else fail "expected WARN naming app.jar, got: $out"; fi
 
+echo -n "Test 17: artifact-hygiene module handles a project root containing '&' and '|'... "
+hyg_amp=$(make_project "hygiene r&d|x")
+mkdir -p "$hyg_amp/pkg"
+printf '\000asm\001\000\000\000/Users/dave/src/core/src/lib.rs\000' > "$hyg_amp/pkg/core_bg.wasm"
+( cd "$hyg_amp" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+    commit -q -m "chore: commit tainted wasm" )
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_amp" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'core_bg.wasm'; then pass; else fail "expected WARN naming core_bg.wasm, got: $out"; fi
+
+echo -n "Test 18: artifact-hygiene fallback only excludes directories below the project root... "
+hyg_anc="$TMP_BASE/target/exported-project"
+mkdir -p "$hyg_anc/lib" "$hyg_anc/node_modules/dep"
+printf '\177ELF\002\001\001\000/home/erin/work/core/build/libcore.so\000' > "$hyg_anc/lib/libcore.so"
+printf '\177ELF\002\001\001\000/home/erin/.npm/libdep.so\000' > "$hyg_anc/node_modules/dep/libdep.so"
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_anc" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'libcore.so' \
+   && ! echo "$out" | grep -q 'libdep.so'; then pass; else fail "expected WARN naming libcore.so only, got: $out"; fi
+
+echo -n "Test 19: artifact-hygiene module inspects deflated JAR entries... "
+if command -v python3 >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
+    hyg_jar=$(make_project "hygiene-jar")
+    mkdir -p "$hyg_jar/build/libs"
+    python3 -c '
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as z:
+    z.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\n")
+    z.writestr("com/example/build.properties",
+               "source=/Users/frank/src/app/src/main/java/com/example/App.java\n" * 8)
+' "$hyg_jar/build/libs/app.jar"
+    if LC_ALL=C grep -aq '/Users/frank' "$hyg_jar/build/libs/app.jar"; then
+        fail "test fixture is not compressed; cannot prove inflation"
+    else
+        ( cd "$hyg_jar" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+            commit -q -m "chore: commit jar" )
+        out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_jar" 2>/dev/null || true)
+        if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'app.jar'; then pass; else fail "expected WARN naming app.jar, got: $out"; fi
+    fi
+else
+    echo "skipped (python3/unzip unavailable)"
+fi
+
 # --- Sibling scripts smoke --------------------------------------------------
 
-echo -n "Test 17: diff-standards.sh runs on a project without .standards.yml... "
+echo -n "Test 20: diff-standards.sh runs on a project without .standards.yml... "
 if bash "$REPO_ROOT/scripts/diff-standards.sh" "$proj" >/dev/null 2>&1; then pass; else
     # diff-standards may exit non-zero; accept as long as it doesn't crash hard (>1)
     rc=$?; if [ "$rc" -le 1 ]; then pass; else fail "diff-standards crashed (exit $rc)"; fi
 fi
 
-echo -n "Test 18: doctor.sh runs without a hard crash... "
+echo -n "Test 21: doctor.sh runs without a hard crash... "
 ( cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" >/dev/null 2>&1 ); rc=$?
 if [ "$rc" -le 1 ]; then pass; else fail "doctor.sh crashed (exit $rc)"; fi
 

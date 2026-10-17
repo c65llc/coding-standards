@@ -57,17 +57,27 @@ fi
 # ---------------------------------------------------------------------------
 list_artifacts() {
     if git -C "$PROJECT_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        git -C "$PROJECT_ROOT" ls-files -z 2>/dev/null \
-            | tr '\0' '\n' \
-            | grep -E "$ARTIFACT_REGEX" \
-            | sed "s|^|$PROJECT_ROOT/|"
+        # Prefix each tracked path with the root in the shell rather than via
+        # sed: a root containing '&' or '|' would otherwise be mangled by the
+        # sed replacement and every artifact would silently fail the -f check.
+        local rel
+        while IFS= read -r -d '' rel; do
+            [[ "$rel" =~ $ARTIFACT_REGEX ]] || continue
+            printf '%s/%s\n' "$PROJECT_ROOT" "$rel"
+        done < <(git -C "$PROJECT_ROOT" ls-files -z 2>/dev/null)
     else
-        local exclude_args=()
+        # Prune excluded directories by basename, and only *below* the root
+        # (-mindepth 1): a project that itself lives under e.g. /tmp/target/
+        # must still be scanned, so the exclusion must not match ancestors.
+        local prune_args=()
         local dir
         for dir in "${EXCLUDE_DIRS[@]}"; do
-            exclude_args+=(-not -path "*/$dir/*")
+            [ ${#prune_args[@]} -gt 0 ] && prune_args+=(-o)
+            prune_args+=(-name "$dir")
         done
-        find "$PROJECT_ROOT" -type f "${exclude_args[@]}" 2>/dev/null \
+        find "$PROJECT_ROOT" -mindepth 1 \
+            \( -type d \( "${prune_args[@]}" \) -prune \) -o \
+            \( -type f -print \) 2>/dev/null \
             | grep -E "$ARTIFACT_REGEX"
     fi
 }
@@ -92,13 +102,35 @@ redact_user() {
     sed -E 's#/(Users|home)/[A-Za-z0-9._-]+/#/\1/<user>/#g'
 }
 
+# Emit the bytes worth scanning for one artifact. JARs are ZIP archives whose
+# entries are normally deflated, so grepping the raw file would miss paths
+# inside class files and resources; inflate the entries when unzip is
+# available and fall back to the raw bytes (which still cover stored entries
+# and the central directory) when it is not.
+HAVE_UNZIP=0
+command -v unzip >/dev/null 2>&1 && HAVE_UNZIP=1
+
+artifact_bytes() {
+    local file="$1"
+    case "$file" in
+        *.jar)
+            if [ "$HAVE_UNZIP" -eq 1 ] && unzip -p "$file" >/dev/null 2>&1; then
+                unzip -p "$file" 2>/dev/null
+                return
+            fi
+            ;;
+    esac
+    cat "$file"
+}
+
 while IFS= read -r artifact; do
     [ -n "$artifact" ] || continue
     [ -f "$artifact" ] || continue
     scanned=$((scanned + 1))
 
     # First match only — one example path is enough to point at the producer.
-    sample=$(LC_ALL=C grep -aoE "${HOME_PATH_REGEX}[A-Za-z0-9._/-]*" "$artifact" 2>/dev/null \
+    sample=$(artifact_bytes "$artifact" \
+        | LC_ALL=C grep -aoE "${HOME_PATH_REGEX}[A-Za-z0-9._/-]*" 2>/dev/null \
         | head -1 | redact_user)
     [ -n "$sample" ] || continue
 
