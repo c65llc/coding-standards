@@ -453,10 +453,10 @@ else
     fail "rc=$eq_rc, leftover='$leftover', output: $eq_out"
 fi
 
-echo -n "Test 37c: empty entries in the agent list (--agents=, / codex, / ,cursor) exit 2 and write nothing... "
+echo -n "Test 37c: empty or whitespace-only agent fields (--agents=, / codex, / ,cursor / '   ' / 'codex, ,cursor') exit 2 and write nothing... "
 empty_ok=true
 empty_detail=""
-for bad in "," "codex," ",cursor" "codex,,cursor"; do
+for bad in "," "codex," ",cursor" "codex,,cursor" "   " "codex, ,cursor"; do
     bad_rc=0
     bad_out=$(cd "$proj" && "$SETUP" --agents="$bad" --languages=typescript 2>&1) || bad_rc=$?
     if [ "$bad_rc" -ne 2 ] || ! echo "$bad_out" | grep -q "empty agent name"; then
@@ -471,6 +471,22 @@ else
 fi
 
 # --- Agent-scoped install: explicit --agents installs only that agent's artifacts
+
+echo -n "Test 37d: surrounding whitespace in agent fields is tolerated (--agents='codex , cursor')... "
+ws_rc=0
+ws_out=$(cd "$proj" && "$SETUP" --agents='codex , cursor' --languages=typescript --dry-run 2>&1) || ws_rc=$?
+if [ "$ws_rc" -eq 0 ] && echo "$ws_out" | grep -q "AGENTS.md" && echo "$ws_out" | grep -q "cursorrules"; then
+    pass
+else
+    fail "rc=$ws_rc, output: $ws_out"
+fi
+
+echo -n "Test 37e: setup.sh --help works from inside .standards/ (guard runs after parsing)... "
+proj=$(make_project "help-inside-submodule")
+make_inner_standards_repo "$proj"
+hi_rc=0
+hi_out=$(cd "$proj/.standards" && "$SETUP" --help 2>&1) || hi_rc=$?
+if [ "$hi_rc" -eq 0 ] && echo "$hi_out" | grep -q "^Usage:"; then pass; else fail "rc=$hi_rc, output: $hi_out"; fi
 
 echo -n "Test 38: --agents codex writes only AGENTS.md artifacts (no hooks, aliases, Cursor, .claude, .gemini)... "
 proj=$(make_project "codex-only")

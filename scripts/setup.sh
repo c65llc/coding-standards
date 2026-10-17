@@ -12,11 +12,6 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
-# Refuse to run from inside the .standards/ submodule (see lib/guard.sh).
-# shellcheck source=lib/guard.sh disable=SC1091
-source "$SCRIPT_DIR/lib/guard.sh"
-refuse_if_inside_standards_dir "$PROJECT_ROOT" "setup.sh" || exit 2
-
 KNOWN_AGENTS="claude-code cursor copilot gemini codex aider"
 
 usage() {
@@ -171,21 +166,44 @@ install_git_extras() {
     ! agents_explicit
 }
 
-# Reject agent names we do not know before touching the filesystem.
-if agents_explicit; then
-    # Empty entries (",", "codex,", ",cursor", "a,,b") would be dropped by the
-    # word split below and leave an explicit list that installs no agent at
-    # all, so validate the raw comma-delimited value first.
-    case ",$AGENTS_OVERRIDE," in
-        *,,*) usage_error "Option --agents contains an empty agent name: '$AGENTS_OVERRIDE'" ;;
-    esac
-    for a in $(explicit_agent_list); do
+# Strip leading and trailing whitespace from "$1" (bash 3.2 compatible).
+trim_ws() {
+    local s="$1"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
+}
+
+# Validate the explicit --agents list field by field before anything else runs.
+# Word splitting would silently drop empty or whitespace-only fields (",",
+# "codex,", "codex, ,cursor", "   ") and leave an explicit list that installs
+# no agent at all, so every comma-delimited field must be a known agent name.
+# Surrounding whitespace is tolerated and normalised away.
+if agents_explicit && [ "$AGENTS_OVERRIDE" != "all" ]; then
+    normalised=""
+    rest="$AGENTS_OVERRIDE,"
+    while [ -n "$rest" ]; do
+        field="$(trim_ws "${rest%%,*}")"
+        rest="${rest#*,}"
+        if [ -z "$field" ]; then
+            usage_error "Option --agents contains an empty agent name: '$AGENTS_OVERRIDE'"
+        fi
         case " $KNOWN_AGENTS " in
-            *" $a "*) ;;
-            *) usage_error "Unknown agent: $a (expected one of: ${KNOWN_AGENTS// /, }, all, detect)" ;;
+            *" $field "*) ;;
+            *) usage_error "Unknown agent: $field (expected one of: ${KNOWN_AGENTS// /, }, all, detect)" ;;
         esac
+        normalised="${normalised:+$normalised,}$field"
     done
+    AGENTS_OVERRIDE="$normalised"
+    unset normalised rest field
 fi
+
+# Refuse to run from inside the .standards/ submodule (see lib/guard.sh).
+# This runs after argument parsing, which has no side effects, so --help and
+# usage errors behave the same everywhere; every write still sits behind it.
+# shellcheck source=lib/guard.sh disable=SC1091
+source "$SCRIPT_DIR/lib/guard.sh"
+refuse_if_inside_standards_dir "$PROJECT_ROOT" "setup.sh" || exit 2
 
 # Dry-run aware file operations (shared: scripts/lib/dry-run.sh)
 # shellcheck source=lib/dry-run.sh disable=SC1091
