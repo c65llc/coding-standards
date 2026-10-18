@@ -386,17 +386,12 @@ on:
     # check attached to the commit after the label or the body block changed.
     # Label and body edits re-run the gate so removing either turns it red.
     types: [opened, synchronize, reopened, labeled, unlabeled, edited]
-    # Path scoping (arch-08 §3.1): only a PR that touches a manifest or
-    # lockfile can add or upgrade a dependency. List every ecosystem you use.
-    paths:
-      - "package.json"
-      - "**/package-lock.json"
-      - "**/pnpm-lock.yaml"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "Package.resolved"
+# ci-hygiene: paths-exempt this is a REQUIRED check, so it must create a check
+# run on every PR — a `paths:` filter would leave non-manifest PRs waiting on a
+# status that never arrives (arch-08 §3.1: paths-filter + always-run gate, or
+# exempt). The checker itself returns in seconds when the lockfile diff is
+# empty, so running on every PR costs nothing.
+#
 # One run per PR; a label or body edit cancels the run it supersedes instead of
 # stacking registry lookups (arch-08 §3.1).
 concurrency:
@@ -459,7 +454,9 @@ jobs:
           # matched literally (so `@scope/pkg@1.2.3` works) and followed by a
           # justification. A grouped bump with three young versions needs
           # three lines; a body naming some other package proves nothing.
-          [ -s age-offenders.txt ] || { echo "the age checker failed without naming offenders; cannot honor an override"; exit 1; }
+          # At least one well-formed `<package>@<version>` line — a file holding only a newline is not a report.
+          grep -Eq '^[^[:space:]]+@[^[:space:]]+$' age-offenders.txt 2>/dev/null \
+            || { echo "the age checker failed without naming offenders; cannot honor an override"; exit 1; }
           rc=0
           while IFS= read -r offender; do
             [ -n "$offender" ] || continue
@@ -484,9 +481,9 @@ jobs:
 on:
   pull_request_target:
     types: [closed]
-# Path scoping is deliberately absent: the job runs once, at merge, only for a
-# labelled PR (see `if:`), so there is nothing to scope. Concurrency is keyed
-# on the PR so a re-delivered close event cannot race the first run.
+# ci-hygiene: paths-exempt runs once, at merge, only for a labelled PR (see
+# `if:`) — there is nothing to scope by path. Concurrency is keyed on the PR
+# so a re-delivered close event cannot race the first run.
 concurrency:
   group: dep-age-follow-up-${{ github.event.pull_request.number }}
   cancel-in-progress: false
@@ -530,7 +527,7 @@ jobs:
             --description "Dependency age-gate override awaiting its follow-up (sec-01 §5)"
           gh issue create --repo "$REPO" --label dep-age-follow-up --assignee "$approver" \
             --title "$title" \
-            --body "$(printf '%s\n\nOverrides honored (review each):\n%s\n\nDue: %s — 24 h review: comment here, per override, that the advisory still stands and the version shows no yank or new advisory so far.\nMatures: %s — 72 h after merge at %s: confirm no yank or advisory and close, or roll back and close with a comment starting "Rolled back:".\nPR: %s\n' "$marker" "$overrides" "$due" "$matures" "$MERGED_AT" "$PR_URL")"
+            --body "$(printf '%s\n\nOverrides honored (review each):\n%s\n\nDue: %s — 24 h review: an assignee comments, starting with "Reviewed:", that for each override the advisory still stands and the version shows no yank or new advisory so far.\nMatures: %s — 72 h after merge at %s: confirm no yank or advisory and close, or roll back and close with an assignee comment starting "Rolled back:".\nPR: %s\n' "$marker" "$overrides" "$due" "$matures" "$MERGED_AT" "$PR_URL")"
 ```
 
 ```yaml
@@ -556,8 +553,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           now=$(date -u +%Y-%m-%dT%H:%M:%SZ); rc=0
+          # Only follow-ups THIS workflow created (same author filter as the
+          # creation step): a stranger's issue with a guessed marker is not audited.
           for number in $(gh issue list --repo "$REPO" --state all --limit 200 \
-                            --search 'dep-age-follow-up-for-pr- in:body' --json number --jq '.[].number'); do
+                            --search 'dep-age-follow-up-for-pr- in:body author:app/github-actions' --json number --jq '.[].number'); do
             gh issue view "$number" --repo "$REPO" --json state,closedAt,body,assignees,comments \
               --jq '{state, closedAt, body, as: [.assignees[].login],
                      cs: [.comments[] | {a: .author.login, t: .createdAt, b: .body}]}' > "issue.json"
@@ -566,7 +565,9 @@ jobs:
             [ -n "$due" ] && [ -n "$matures" ] || { echo "::error::#$number has no Due:/Matures: lines"; rc=1; continue; }
             state=$(jq -r .state issue.json); closed_at=$(jq -r '.closedAt // ""' issue.json)
             grace=$(date -u -d "$matures + 24 hours" +%Y-%m-%dT%H:%M:%SZ)
-            reviewed=$(jq -r --arg due "$due" '.as as $as | [.cs[] | select(($as | index(.a)) != null and .t <= $due)] | length' issue.json)
+            # The review is a comment BY AN ASSIGNEE, BEFORE Due:, that STARTS
+            # with "Reviewed:" — "looking into this" is not a review.
+            reviewed=$(jq -r --arg due "$due" '.as as $as | [.cs[] | select(($as | index(.a)) != null and (.b | test("^Reviewed:")) and .t <= $due)] | length' issue.json)
             # A rollback note counts only when an ASSIGNEE wrote it, it starts
             # with "Rolled back:" (so "this was not rolled back" does not match),
             # and it was posted no later than the close.

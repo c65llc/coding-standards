@@ -312,7 +312,7 @@ rc=0
 # pipeline would run the loop in a subshell and always exit 0.
 while IFS=: read -r file line text; do
   due=$(printf '%s' "$text" | sed -n 's/.*workaround-expiry: date \([0-9][0-9]*-[0-9][0-9]-[0-9][0-9]\).*/\1/p')
-  todo=$(sed -n "$((line > 2 ? line - 2 : 1)),${line}p" "$file" | grep -o 'TODO(#[0-9]*)' | head -1)
+  todo=$(sed -n "$((line > 2 ? line - 2 : 1)),${line}p" "$file" | grep -o 'TODO(#[0-9][0-9]*)' | head -1)   # at least one digit: `TODO(#)` is not an owner
   [ -n "$todo" ] || { echo "FAIL $file:$line workaround-expiry without TODO(#issue)"; rc=1; }
   # A real calendar date, not just the shape: `9999-99-99` would sort as "future" forever.
   [ -n "$due" ] && [ "$(date -u -d "$due" +%Y-%m-%d 2>/dev/null)" = "$due" ] \

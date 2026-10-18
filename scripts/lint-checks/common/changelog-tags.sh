@@ -57,13 +57,18 @@ extract_versions() {
         # four would be a code block, so at most three are stripped.
         h = $0; sub(/^ /, "", h); sub(/^ /, "", h); sub(/^ /, "", h)
     }
+    # Fenced code blocks (``` or ~~~, three or more, same character to close):
+    # a `## [9.9.9]` inside an example is code, not a release heading.
+    !infence && h ~ /^(```|~~~)/ { fence = substr(h, 1, 1); infence = 1; next }
+    infence && ((fence == "`" && h ~ /^```/) || (fence == "~" && h ~ /^~~~/)) { infence = 0; next }
+    infence { next }
     h ~ /^##[[:blank:]]/ {
         # A space or a tab may follow the `##` (CommonMark).
         s = substr(h, 4)
         sub(/^[[:space:]]+/, "", s)
         sub(/^\[/, "", s)
-        # Cut at the end of the version token: closing bracket, space, "(" or ":".
-        if (match(s, /[] (:]/)) s = substr(s, 1, RSTART - 1)
+        # Cut at the end of the version token: closing bracket, blank (space or tab), "(" or ":".
+        if (match(s, /[] \t(:]/)) s = substr(s, 1, RSTART - 1)
         sub(/^[vV]/, "", s)
         if (s == "") next
         if (tolower(s) == "unreleased") next
@@ -223,6 +228,16 @@ self_test() {
 
 ##	[1.6.0] - 2026-01-15
 
+## 1.5.0	(2026-01-10)
+
+```markdown
+## [9.9.9] - an example inside a fence, not a release
+```
+
+~~~
+## [8.8.8] - tilde fence
+~~~
+
     ## [0.0.1] - code block, not a heading
 
 ## Not a version
@@ -230,7 +245,7 @@ self_test() {
 ## [UNRELEASED]
 '
     got=$(printf '%s\n' "$fixture" | extract_versions | tr '\n' ' ')
-    want='1.10.0 1.9.1 1.9.0 2.0.0-rc.1 1.8.0 1.7.0 1.6.0 '
+    want='1.10.0 1.9.1 1.9.0 2.0.0-rc.1 1.8.0 1.7.0 1.6.0 1.5.0 '
     [ "$got" = "$want" ] || { echo "heading parser produced '$got' (expected '$want')"; return 1; }
     got=$(printf '## [Unreleased]\n## [unreleased] - soon\n## 1.2\n## 1.2.3.4\n' | extract_versions)
     [ -z "$got" ] || { echo "heading parser accepted a non-release heading: $got"; return 1; }
