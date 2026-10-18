@@ -430,6 +430,14 @@ setup_ai_agents() {
             4)
                 echo "ℹ️  $agent config is curated (managed: false in .standards.yml) — left as is."
                 echo "   Review upstream template changes with diff-standards.sh."
+                # Record the curated file's hash so .standards-checksums has a
+                # baseline for it: doctor then inspects the file (labelling a
+                # later edit curated, not drifted) instead of never seeing it.
+                if [ "$DRY_RUN" = false ] && [ -f "$OUTPUT_PATH" ] && type compute_hash &>/dev/null; then
+                    local curated_hash
+                    curated_hash=$(compute_hash "$OUTPUT_PATH")
+                    NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$curated_hash" "$NEW_CHECKSUMS")
+                fi
                 ;;
         esac
 
@@ -824,6 +832,18 @@ DECLARED_HOOKS=""
 if declare -f read_standards_config >/dev/null 2>&1 && read_standards_config "$PROJECT_ROOT" 2>/dev/null; then
     DECLARED_HOOKS="${STD_HOOKS:-}"
 fi
+# Only a recognised external manager skips the native hook. An unrecognised
+# value (a typo, say) is reported and treated as undeclared — as doctor.sh
+# does — so a fresh project still gets a post-merge hook rather than none.
+UNRECOGNISED_HOOKS=""
+case "$DECLARED_HOOKS" in
+    ""|standards|lefthook|husky|custom) ;;
+    *) UNRECOGNISED_HOOKS="$DECLARED_HOOKS"; DECLARED_HOOKS="" ;;
+esac
+warn_unrecognised_hooks() {
+    [ -n "$UNRECOGNISED_HOOKS" ] || return 0
+    echo "⚠️  hooks: '$UNRECOGNISED_HOOKS' in .standards.yml is not recognised (expected standards, lefthook, husky or custom) — installing the native post-merge hook."
+}
 
 if ! install_git_extras; then
     echo "ℹ️  Skipping git hooks (explicit --agents). Run without --agents to install them."
@@ -836,9 +856,11 @@ elif [ ! -d "$GIT_HOOKS_DIR" ]; then
     echo "⚠️  Not a git repository. Skipping git hooks setup."
 elif [ "$DRY_RUN" = true ]; then
     echo "🪝 Setting up git hooks..."
+    warn_unrecognised_hooks
     echo "  [dry-run] Would write: $GIT_HOOKS_DIR/post-merge"
 else
     echo "🪝 Setting up git hooks..."
+    warn_unrecognised_hooks
     # Post-merge hook to sync standards
     cat > "$GIT_HOOKS_DIR/post-merge" << 'HOOK'
 #!/bin/bash

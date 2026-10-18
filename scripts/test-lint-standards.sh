@@ -2653,16 +2653,16 @@ if json_valid "$TMP_BASE/quote.sarif" && grep -q '"uri": "a%22b"' "$TMP_BASE/quo
 
 # --- #183: curated agent configs (doctor.sh, diff-standards.sh, yaml readers) --
 
-echo -n "Test 183: yaml_block_scalar reads literal blocks (interior blank kept, trailing dropped) and plain scalars... "
+echo -n "Test 183: yaml_block_scalar reads literal blocks (interior blank kept, trailing dropped) and plain scalars (a quoted # is data)... "
 yb="$TMP_BASE/yaml-block.yml"
-printf 'version: 1\nproject_overview: |\n  First paragraph.\n\n  Second paragraph.\n\nkey_commands: "make test"\nrole: service\n' > "$yb"
-out=$(bash -c "source '$REPO_ROOT/scripts/lib/checksums.sh'; yaml_block_scalar project_overview '$yb'; echo '<<'; yaml_block_scalar key_commands '$yb'; echo '<<'; yaml_block_scalar missing '$yb'; echo '<<'")
-expected=$(printf 'First paragraph.\n\nSecond paragraph.\n<<\nmake test\n<<\n<<')
+printf 'version: 1\nproject_overview: |\n  First paragraph.\n\n  Second paragraph.\n\nkey_commands: "make test # unit tests"   # trailing comment\nhooks: custom   # comment\nrole: '"'"'svc # one'"'"'\n' > "$yb"
+out=$(bash -c "source '$REPO_ROOT/scripts/lib/checksums.sh'; yaml_block_scalar project_overview '$yb'; echo '<<'; yaml_block_scalar key_commands '$yb'; echo '<<'; yaml_block_scalar hooks '$yb'; echo '<<'; yaml_block_scalar role '$yb'; echo '<<'; yaml_block_scalar missing '$yb'; echo '<<'")
+expected=$(printf 'First paragraph.\n\nSecond paragraph.\n<<\nmake test # unit tests\n<<\ncustom\n<<\nsvc # one\n<<\n<<')
 if [ "$out" = "$expected" ]; then pass; else fail "got: $(printf '%s' "$out" | tr '\n' '|')"; fi
 
 echo -n "Test 184: file_managed reads block and inline managed: maps by basename or relative path... "
 mp="$TMP_BASE/managed-block"; mkdir -p "$mp"
-printf 'version: 1\nmanaged:\n  CLAUDE.md: false   # curated\n  .github/copilot-instructions.md: "no"\n  AGENTS.md: true\n' > "$mp/.standards.yml"
+printf 'version: 1\nmanaged:\n  CLAUDE.md: false   # curated\n  .github/copilot-instructions.md: "no"   # quoted\n  AGENTS.md: true\n' > "$mp/.standards.yml"
 mi="$TMP_BASE/managed-inline"; mkdir -p "$mi"
 printf 'version: 1\nmanaged: { .cursorrules: false, AGENTS.md: true }\n' > "$mi/.standards.yml"
 out=$(bash -c "source '$REPO_ROOT/scripts/lib/checksums.sh'

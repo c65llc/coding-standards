@@ -878,6 +878,52 @@ printf 'version: 1\nlanguages:\n  - typescript\nagents:\n  - codex\nrole: servic
 (cd "$proj" && "$SETUP" >/dev/null 2>&1) || true
 if [ -f "$proj/.git/hooks/post-merge" ] && grep -q 'standards' "$proj/.git/hooks/post-merge"; then pass; else fail "native post-merge hook not installed"; fi
 
+echo -n "Test 65: an unrecognised hooks: value is reported and setup.sh still installs the native post-merge hook... "
+proj=$(make_project "hooks-bogus")
+fake_standards "$proj"
+printf 'version: 1\nlanguages:\n  - typescript\nagents:\n  - codex\nrole: service\nhooks: lefthoook\n' > "$proj/.standards.yml"
+setup_out=$(cd "$proj" && "$SETUP" 2>&1) || true
+errs=""
+[ -f "$proj/.git/hooks/post-merge" ]                                        || errs="$errs native-hook-missing"
+echo "$setup_out" | grep -q "hooks: 'lefthoook' in .standards.yml is not recognised" || errs="$errs not-warned"
+echo "$setup_out" | grep -q 'lefthoook declared in .standards.yml'           && errs="$errs treated-as-manager"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$setup_out" | grep -i 'hook' | head -3 | tr '\n' '|')"; fi
+
+echo -n "Test 66: a hand-written config declared managed: false before the first setup gets a checksum baseline (doctor PASS, file untouched)... "
+proj=$(make_project "curated-before-setup")
+fake_standards "$proj"
+printf 'version: 1\nlanguages:\n  - typescript\nagents:\n  - claude-code\nrole: service\nmanaged:\n  CLAUDE.md: false\n' > "$proj/.standards.yml"
+printf '# Hand-written CLAUDE.md\n\nEntirely project-owned.\n' > "$proj/CLAUDE.md"
+setup_out=$(cd "$proj" && "$SETUP" --agents claude-code --languages typescript 2>&1) || true
+doc_out=$(cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1) || true
+errs=""
+[ "$(cat "$proj/CLAUDE.md")" = "$(printf '# Hand-written CLAUDE.md\n\nEntirely project-owned.')" ] || errs="$errs file-changed"
+echo "$setup_out" | grep -q 'claude-code config is curated'                  || errs="$errs not-reported-curated"
+[ -f "$proj/.standards-checksums" ]                                         || errs="$errs checksums-missing"
+grep -q '^CLAUDE.md ' "$proj/.standards-checksums" 2>/dev/null              || errs="$errs baseline-missing"
+[ -d "$proj/.standards-pending" ]                                           && errs="$errs pending-staged"
+echo "$doc_out" | grep 'Checksums' | grep -q 'PASS'                          || errs="$errs doctor-checksums-not-pass"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$doc_out" | grep 'Checksums')"; fi
+
+echo -n "Test 67: setup/sync leave no *.pre-standards-setup copy of a config in the temp directory... "
+proj=$(make_project "tmp-backup-leak")
+fake_standards "$proj"
+write_standards_yml "$proj" claude-code
+leak_tmp="$TMPDIR_BASE/leak-tmp"; mkdir -p "$leak_tmp"
+# A manual config with no header (assembly case 2) ...
+printf '# Manual CLAUDE.md\n' > "$proj/CLAUDE.md"
+(cd "$proj" && TMPDIR="$leak_tmp" "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+# ... then a tracked config replaced wholesale (assembly case 1).
+rm -rf "$proj/.standards-pending" "$proj/CLAUDE.md"
+(cd "$proj" && TMPDIR="$leak_tmp" "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+printf '# Replaced wholesale, no header or sentinel\n' > "$proj/CLAUDE.md"
+sync_out=$(cd "$proj" && TMPDIR="$leak_tmp" "$SYNC" 2>&1) || true
+errs=""
+echo "$sync_out" | grep -q 'config customized'                               || errs="$errs case1-not-exercised"
+leaked=$(find "$leak_tmp" -name '*.pre-standards-setup' | wc -l | tr -d ' ')
+[ "$leaked" = "0" ]                                                         || errs="$errs leaked=$leaked"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

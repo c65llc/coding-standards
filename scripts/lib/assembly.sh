@@ -83,6 +83,11 @@ assemble_agent_config_guarded() {
             # since the last run (#183) — the file is current: report success
             # so the caller records the new baseline instead of staging a
             # pending copy identical to the file itself.
+            # A seeded file with neither assembly header nor sentinel (the
+            # config was replaced wholesale) makes the assembler write
+            # <tmp>.pre-standards-setup beside it; every exit path below
+            # removes that companion so no copy of the config lingers in the
+            # temp directory.
             local tmp
             tmp=$(mktemp)
             cp "$output_path" "$tmp"
@@ -90,15 +95,15 @@ assemble_agent_config_guarded() {
                 "$agent" "$blocks_dir" "$base_template" \
                 "$tmp" ${blocks[@]+"${blocks[@]}"} 2>/dev/null; then
                 if cmp -s "$tmp" "$output_path"; then
-                    rm -f "$tmp"
+                    rm -f "$tmp" "$tmp.pre-standards-setup"
                     return 0
                 fi
                 mkdir -p "$_pending_dir"
                 cp "$tmp" "$_pending_dir/$(basename "$output_path")"
-                rm -f "$tmp"
+                rm -f "$tmp" "$tmp.pre-standards-setup"
                 return 1
             else
-                rm -f "$tmp"
+                rm -f "$tmp" "$tmp.pre-standards-setup"
                 return 3
             fi
             ;;
@@ -106,6 +111,9 @@ assemble_agent_config_guarded() {
             # File exists with no assembly header and no stored hash — user-created file.
             # should_assemble already wrote a .bak copy; now also assemble the new content
             # into .standards-pending/ so the operator can review and merge.
+            # mktemp pre-creates an empty file, which the assembler treats as a
+            # manual config and backs up to <tmp>.pre-standards-setup: remove
+            # that companion with the temp file on every exit path.
             local tmp
             tmp=$(mktemp)
             if "$assemble_script" --project-root "$_project_root" \
@@ -113,10 +121,10 @@ assemble_agent_config_guarded() {
                 "$tmp" ${blocks[@]+"${blocks[@]}"} 2>/dev/null; then
                 mkdir -p "$_pending_dir"
                 cp "$tmp" "$_pending_dir/$(basename "$output_path")"
-                rm -f "$tmp"
+                rm -f "$tmp" "$tmp.pre-standards-setup"
                 return 2
             else
-                rm -f "$tmp"
+                rm -f "$tmp" "$tmp.pre-standards-setup"
                 return 3
             fi
             ;;

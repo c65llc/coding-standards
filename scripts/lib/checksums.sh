@@ -192,6 +192,26 @@ should_assemble() {
 # YAML Parsing Helpers (grep-based, no external deps)
 # ---------------------------------------------------------------------------
 
+# awk function shared by the scalar readers below: a quoted value keeps
+# everything up to its closing quote (a "#" inside quotes is data, not a
+# comment) and drops whatever follows; an unquoted value loses its trailing
+# comment and whitespace. Prepend to an awk program: awk "$_YAML_SCALAR_AWK"'...'
+# (a plain string, not a heredoc: bash 3.2 misparses a quote inside a heredoc
+# that sits in a command substitution; \047 is the single quote, for awk)
+_YAML_SCALAR_AWK='
+function yaml_scalar(s) {
+    sub(/^[[:space:]]+/, "", s)
+    if (s ~ /^"/) {
+        if (match(s, /^"([^"\\]|\\.)*"/)) return substr(s, 2, RLENGTH - 2)
+    } else if (s ~ /^\047/) {
+        if (match(s, /^\047[^\047]*\047/)) return substr(s, 2, RLENGTH - 2)
+    }
+    sub(/[[:space:]]+#.*$/, "", s)
+    sub(/[[:space:]]+$/, "", s)
+    return s
+}
+'
+
 # Read a simple scalar value from a YAML file
 # Usage: yaml_get "key" "file" → outputs value
 yaml_get() {
@@ -327,7 +347,7 @@ yaml_nested_list() {
 yaml_block_scalar() {
     local key="$1"
     local file="$2"
-    awk -v k="$key" '
+    awk -v k="$key" "$_YAML_SCALAR_AWK"'
         function flush() {
             while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--
             for (i = 1; i <= n; i++) print lines[i]
@@ -336,10 +356,9 @@ yaml_block_scalar() {
             rest = substr($0, length(k) + 2)
             sub(/^[[:space:]]+/, "", rest)
             if (rest ~ /^[|>][-+]?[[:space:]]*(#.*)?$/) { inb = 1; n = 0; indent = -1; next }
-            # plain scalar on the key line: trailing comment dropped, quotes stripped
-            sub(/[[:space:]]+#.*$/, "", rest)
-            sub(/[[:space:]]+$/, "", rest)
-            if (rest ~ /^".*"$/ || rest ~ /^\047.*\047$/) rest = substr(rest, 2, length(rest) - 2)
+            # plain scalar on the key line: quotes stripped, trailing comment
+            # dropped (a "#" inside the quotes is kept, see yaml_scalar)
+            rest = yaml_scalar(rest)
             if (rest != "") print rest
             exit
         }
@@ -387,7 +406,7 @@ yaml_map_value() {
     local parent="$1"
     local entry="$2"
     local file="$3"
-    awk -v p="$parent" -v want="$entry" '
+    awk -v p="$parent" -v want="$entry" "$_YAML_SCALAR_AWK"'
         function unq(s) {
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
             if (s ~ /^".*"$/ || s ~ /^\047.*\047$/) s = substr(s, 2, length(s) - 2)
@@ -397,8 +416,7 @@ yaml_map_value() {
             if (pair !~ /:/) return
             k = pair; sub(/:.*$/, "", k)
             v = pair; sub(/^[^:]*:/, "", v)
-            sub(/[[:space:]]+#.*$/, "", v)
-            if (unq(k) == want) { print unq(v); exit }
+            if (unq(k) == want) { print yaml_scalar(v); exit }
         }
         !inp && index($0, p ":") == 1 {
             rest = substr($0, length(p) + 2)
@@ -470,7 +488,7 @@ EOF
 yaml_map_entries() {
     local parent="$1"
     local file="$2"
-    awk -v p="$parent" '
+    awk -v p="$parent" "$_YAML_SCALAR_AWK"'
         function unq(s) {
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
             if (s ~ /^".*"$/ || s ~ /^\047.*\047$/) s = substr(s, 2, length(s) - 2)
@@ -480,9 +498,8 @@ yaml_map_entries() {
             if (pair !~ /:/) return
             k = pair; sub(/:.*$/, "", k)
             v = pair; sub(/^[^:]*:/, "", v)
-            sub(/[[:space:]]+#.*$/, "", v)
             k = unq(k)
-            if (k != "") printf "%s\t%s\n", k, unq(v)
+            if (k != "") printf "%s\t%s\n", k, yaml_scalar(v)
         }
         !inp && index($0, p ":") == 1 {
             rest = substr($0, length(p) + 2)
@@ -532,7 +549,7 @@ read_standards_config() {
         STD_PROJECT_OVERVIEW=$(yaml_block_scalar "project_overview" "$yml")
         STD_KEY_COMMANDS=$(yaml_block_scalar "key_commands" "$yml")
         # hooks: the git hook manager that owns post-merge/commit-msg (#183).
-        STD_HOOKS=$(yaml_get "hooks" "$yml" | sed 's/[[:space:]]*#.*$//' | sed 's/^["'"'"']//; s/["'"'"']$//')
+        STD_HOOKS=$(yaml_block_scalar "hooks" "$yml")
         # Defaults
         STD_ROLE="${STD_ROLE:-service}"
         STD_COVERAGE_MIN="${STD_COVERAGE_MIN:-95}"

@@ -271,7 +271,7 @@ The git hook manager that owns the post-merge standards-sync reminder and the Co
 | `husky` | Same for `.husky/` (a stray `lefthook.yml` is ignored). |
 | `custom` | The project's own manager (`make hooks`, a pre-commit framework, …). `setup.sh` leaves the native hook alone and `doctor.sh`'s `Git Hooks` check passes without inspecting it. |
 
-An unrecognised value is a `WARN` in `doctor.sh`, which then falls back to detection. `setup.sh` carries `hooks:`, `managed:`, `project_overview:` and `key_commands:` verbatim into the `.standards.yml` it regenerates.
+An unrecognised value is a `WARN` in `doctor.sh`, which then falls back to detection, and a warning in `setup.sh`, which then installs the native hook as if `hooks:` were absent. `setup.sh` carries `hooks:`, `managed:`, `project_overview:` and `key_commands:` verbatim into the `.standards.yml` it regenerates.
 
 ```yaml
 hooks: custom

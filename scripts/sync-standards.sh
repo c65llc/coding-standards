@@ -210,6 +210,12 @@ sync_ai_agents() {
             4)
                 echo "ℹ️  $agent config is curated (managed: false in .standards.yml) — not regenerated."
                 echo "   Review upstream template changes with diff-standards.sh."
+                # Keep a checksum baseline for the curated file (see setup.sh).
+                if [ "$DRY_RUN" = false ] && [ -f "$OUTPUT_PATH" ]; then
+                    local curated_hash
+                    curated_hash=$(compute_hash "$OUTPUT_PATH")
+                    NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$curated_hash" "$NEW_CHECKSUMS")
+                fi
                 ;;
         esac
 
