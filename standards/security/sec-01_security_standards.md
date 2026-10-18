@@ -379,8 +379,9 @@ override path around it.
 5. **The record is the label, the body block and the issue.** A nightly
    audit (third excerpt below) finds follow-ups by their marker in every
    state and fails on one that passed `Due:` with no `Reviewed:` comment from
-   the approver posted before it, one still open a day past `Matures:`, or
-   one closed before `Matures:` without a `Rolled back:` comment from the
+   the approver posted before it, one still open a day past `Matures:`, one
+   closed at or after `Matures:` by anyone other than the approver, or one
+   closed before `Matures:` without a `Rolled back:` comment from the
    approver posted by the close. Deadlines are recomputed from the PR's
    `mergedAt` and the approver from the label event, so editing the issue
    body or reassigning it changes nothing; a forgotten, late or prematurely
@@ -560,9 +561,10 @@ jobs:
 
 ```yaml
 # .github/workflows/dep-age-audit.yml (excerpt) — the nightly audit.
-# Red when a follow-up missed its 24 h review (no comment BY AN ASSIGNEE posted
-# BEFORE Due: — a bot comment or a late one does not count), is still open a
-# day past Matures:, or was closed before Matures: without an assignee's
+# Red when a follow-up missed its 24 h review (no "Reviewed:" comment BY THE
+# APPROVER posted BEFORE Due: — a bot comment or a late one does not count),
+# is still open a day past Matures:, was closed at maturity by anyone other
+# than the approver, or was closed before Matures: without the approver's
 # "Rolled back:" comment posted by the close.
 # Finds issues by marker across all states, not by label, so neither a label
 # removed in triage nor a premature close can hide one.
@@ -636,6 +638,15 @@ jobs:
               echo "::error::#$number missed its 24 h review: no 'Reviewed:' comment from @$approver before $due"; rc=1; fi
             if [ "$state" = "OPEN" ] && [ ! "$grace" \> "$now" ]; then
               echo "::error::#$number is still open a day past maturity ($matures)"; rc=1; fi
+            # A close at or after Matures: is the maturity confirmation only
+            # when the APPROVER performed it (the `closed` timeline event's
+            # actor); anyone else closing it is flagged, not trusted.
+            if [ "$state" = "CLOSED" ] && [ ! "$closed_at" \< "$matures" ]; then
+              closer=$(gh api "repos/$REPO/issues/$number/timeline" --paginate --slurp \
+                | jq -r '[.[][] | select(.event == "closed")] | last | .actor.login // empty')
+              [ "$closer" = "$approver" ] \
+                || { echo "::error::#$number was closed at maturity by @${closer:-unknown}, not by approver @$approver — reopen it; only the approver confirms maturity"; rc=1; }
+            fi
             if [ "$state" = "CLOSED" ] && [ "$closed_at" \< "$matures" ] && [ "$rolled_back" -eq 0 ]; then
               echo "::error::#$number was closed at $closed_at, before maturity $matures, with no 'Rolled back:' comment from @$approver — reopen it, or the approver records the rollback"; rc=1; fi
           done

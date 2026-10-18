@@ -187,7 +187,9 @@ manifest_version_cargo_toml() {
         if (match(line, /'"'"'[^'"'"']*'"'"'/)) return substr(line, RSTART + 1, RLENGTH - 2)
         return ""
     }
-    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]]/, "", sect); next }
+    # Section header, normalised: comment stripped, whitespace removed, and
+    # quoted table names (`["package"]`) unquoted so they compare like bare ones.
+    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]"'"'"']/, "", sect); next }
     (sect == "[package]" && /^[[:space:]]*version\.workspace[[:space:]]*=[[:space:]]*true/) ||
     (sect == "" && /^[[:space:]]*package\.version\.workspace[[:space:]]*=[[:space:]]*true/) { inherits = 1; next }
     # Bare or quoted key (`version = …` / `"version" = …`); strval strips to the `=`.
@@ -227,7 +229,7 @@ manifest_version_pyproject() {
         if (match(line, /'"'"'[^'"'"']*'"'"'/)) return substr(line, RSTART + 1, RLENGTH - 2)
         return ""
     }
-    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]]/, "", sect); next }
+    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]"'"'"']/, "", sect); next }
     (sect == "[project]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
     (sect == "" && /^[[:space:]]*project\.version[[:space:]]*=/) { if (proj == "") proj = strval($0); next }
     (sect == "[tool.poetry]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
@@ -398,6 +400,12 @@ release-1.0.2'
     printf 'package = { name = "app", "version" = "1.2.4" }\n' > "$tmp/Cargo.toml"
     got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
     [ "$got" = "1.2.4" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed a quoted key in an inline package table: '$got'"; return 1; }
+    printf '["package"]\nname = "app"\nversion = "1.2.6"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "1.2.6" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed a quoted table name: '$got'"; return 1; }
+    printf '["project"]\nname = "p"\nversion = "2.0.2"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "2.0.2" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed a quoted table name: '$got'"; return 1; }
     printf 'project.name = "p"\nproject.version = "4.5.8"\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "4.5.8" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed the dotted key project.version: '$got'"; return 1; }
