@@ -443,7 +443,9 @@ jobs:
       - name: Honor dep-age-override (privileged label + body block, both required)
         if: steps.age.outcome == 'failure'
         env:
-          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          # The label array as JSON — never a joined string, since a label
+          # name may itself contain the delimiter (`dep-age-override,anything`).
+          LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           BODY: ${{ github.event.pull_request.body }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
           PR: ${{ github.event.pull_request.number }}
@@ -451,8 +453,10 @@ jobs:
           APPROVERS: ${{ vars.DEP_AGE_APPROVERS }}  # repository variable: comma-separated handles
           GH_TOKEN: ${{ github.token }}
         run: |
-          # The label must be on the PR now (the follow-up job keys on it too) …
-          case ",$LABELS," in *,dep-age-override,*) ;; *) echo "age gate failed; no dep-age-override label"; exit 1 ;; esac
+          # The label must be on the PR now (the follow-up job keys on it too),
+          # tested as an exact array element …
+          printf '%s' "$LABELS_JSON" | jq -e 'index("dep-age-override") != null' >/dev/null \
+            || { echo "age gate failed; no dep-age-override label"; exit 1; }
           # … and the labels array does not say who applied it; the timeline does.
           actor=$(gh api "repos/$REPO/issues/$PR/timeline" --paginate --slurp \
             --jq '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override")] | last | .actor.login // empty')
@@ -568,6 +572,7 @@ on:
 jobs:
   overdue-follow-ups:
     runs-on: ubuntu-latest
+    timeout-minutes: 10   # a stalled API call must not hold a runner for hours (arch-08 §3.1)
     permissions:
       contents: read
       issues: read

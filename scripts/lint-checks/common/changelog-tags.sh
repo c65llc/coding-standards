@@ -198,7 +198,7 @@ manifest_version_cargo_toml() {
     # is not mistaken for it.
     sect == "" && /^[[:space:]]*package[[:space:]]*=[[:space:]]*\{/ {
         line = $0
-        if (match(line, /[{,][[:space:]]*version[[:space:]]*=[[:space:]]*("[^"]*"|'"'"'[^'"'"']*'"'"')/)) {
+        if (match(line, /[{,][[:space:]]*"?version"?[[:space:]]*=[[:space:]]*("[^"]*"|'"'"'[^'"'"']*'"'"')/)) {
             if (pkg == "") pkg = strval(substr(line, RSTART, RLENGTH))
         }
         next
@@ -395,6 +395,9 @@ release-1.0.2'
     printf 'package = { name = "app", rust-version = "1.85", edition = "2021", version = "1.2.3" }\n\n[dependencies]\nfoo = { version = "9.9.9" }\n' > "$tmp/Cargo.toml"
     got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
     [ "$got" = "1.2.3" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed an inline package table or took rust-version: '$got'"; return 1; }
+    printf 'package = { name = "app", "version" = "1.2.4" }\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "1.2.4" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed a quoted key in an inline package table: '$got'"; return 1; }
     printf 'project.name = "p"\nproject.version = "4.5.8"\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "4.5.8" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed the dotted key project.version: '$got'"; return 1; }
@@ -548,6 +551,19 @@ if [ "$IS_SHALLOW" = true ]; then
         local_tags=$(printf '%s\n' "$TAGS" | grep . | sort || true)
         [ "$remote_tags" = "$local_tags" ] && IS_SHALLOW=false
     fi
+elif [ "$(git -C "$PROJECT_ROOT" config --get remote.origin.tagOpt 2>/dev/null)" = "--no-tags" ]; then
+    # A FULL-history clone made with `git clone --no-tags` persists
+    # remote.origin.tagOpt=--no-tags, so no fetch ever brings the tags: every
+    # heading would look untagged. Treat it like a shallow clone — not
+    # fetched is not the same as not tagged — unless the remote agrees that
+    # there is nothing missing.
+    if remote_raw=$(git -C "$PROJECT_ROOT" ls-remote --tags --refs origin 2>/dev/null); then
+        remote_tags=$(printf '%s\n' "$remote_raw" | sed -n 's|.*refs/tags/||p' | sort)
+        local_tags=$(printf '%s\n' "$TAGS" | grep . | sort || true)
+        [ "$remote_tags" = "$local_tags" ] || IS_SHALLOW=true
+    else
+        IS_SHALLOW=true
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -581,7 +597,7 @@ if [ "$VERSION_COUNT" -eq 0 ]; then
 fi
 
 if [ "$TAG_COUNT" -eq 0 ] && [ "$IS_SHALLOW" = true ]; then
-    echo "WARN $CHECK_NAME $CHANGELOG_LABEL lists $VERSION_COUNT release heading(s) but this is a shallow clone with no tags fetched — cannot verify; use actions/checkout with fetch-depth: 0 or fetch-tags: true"
+    echo "WARN $CHECK_NAME $CHANGELOG_LABEL lists $VERSION_COUNT release heading(s) but this clone fetched no tags (shallow history or a --no-tags remote) — cannot verify; use actions/checkout with fetch-depth: 0 or fetch-tags: true, or git fetch --tags"
     exit 2
 fi
 
@@ -637,7 +653,7 @@ if [ "$MISSING_COUNT" -gt 0 ]; then
         # A depth-limited clone carries only the tags that point inside the
         # fetched history (e.g. the tip's tag), so an older release's tag may
         # exist beyond the boundary. Unverifiable, not untagged.
-        echo "WARN $CHECK_NAME $MISSING_COUNT of $VERSION_COUNT release heading(s) in $CHANGELOG_LABEL have no visible tag ($MISSING$more) but this is a shallow clone — tags outside the fetched history are invisible, cannot verify; use actions/checkout with fetch-depth: 0 or fetch-tags: true"
+        echo "WARN $CHECK_NAME $MISSING_COUNT of $VERSION_COUNT release heading(s) in $CHANGELOG_LABEL have no visible tag ($MISSING$more) but this clone did not fetch all tags (shallow history or a --no-tags remote) — not fetched is not untagged, cannot verify; use actions/checkout with fetch-depth: 0 or fetch-tags: true, or git fetch --tags"
         exit 2
     fi
     if [ "$TAG_PREFIX" = "__DEFAULT__" ]; then

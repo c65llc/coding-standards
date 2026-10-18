@@ -129,8 +129,11 @@ inside the fetched history (typically the tip's), so in a shallow clone a
 heading without a visible tag is reported as `WARN` (cannot verify) — never as
 a pass, and never as a `FAIL` the full history would contradict. With
 `fetch-tags: true` the history is still shallow but the tag namespace is
-complete; the check recognises that when the local tag count equals
-`git ls-remote --tags origin` and verifies normally.
+complete; the check recognises that when the local tag set equals
+`git ls-remote --tags origin` and verifies normally. The converse holds too: a
+full-history `git clone --no-tags` (which persists `remote.origin.tagOpt`) has
+every tag missing without being shallow, and is reported as unverifiable
+(`WARN`), not as untagged.
 
 ## File enumeration and exclusions
 

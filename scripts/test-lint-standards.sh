@@ -3038,6 +3038,17 @@ out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct4d" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL changelog-tags.*2 of 2' && ! echo "$out" | grep -q 'shallow'; then pass; else
     fail "expected FAIL for two untagged headings (remote has no tags, namespace complete), got: $out"; fi
 
+echo -n "Test 206e: changelog-tags WARNs (not FAILs) in a full-history 'git clone --no-tags' whose remote has the tags... "
+ct4esrc=$(make_project "ct-notags-clone-src")
+write_changelog "$ct4esrc/CHANGELOG.md" "## [1.0.0] - 2026-05-01"
+( cd "$ct4esrc" && git add CHANGELOG.md && git -c user.email="t@t.local" -c user.name="T" commit -q -m "docs: 1.0.0" )
+tag_all "$ct4esrc" v1.0.0
+ct4e="$TMP_BASE/ct-notags-clone"
+git clone -q --no-tags "file://$ct4esrc" "$ct4e" 2>/dev/null      # full history, remote.origin.tagOpt=--no-tags
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct4e" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN changelog-tags.*no-tags' && ! echo "$out" | grep -q '^FAIL'; then pass; else
+    fail "expected WARN about a --no-tags remote, got: $out"; fi
+
 echo -n "Test 207: changelog-tags WARNs when the root manifest version trails the latest released heading... "
 ct5=$(make_project "ct-manifest")
 write_changelog "$ct5/CHANGELOG.md" "## [0.1.5] - 2026-06-01" "## [0.1.3] - 2026-05-01"
