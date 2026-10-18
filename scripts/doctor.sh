@@ -37,6 +37,12 @@ if [ -f "$SCRIPT_DIR/lib/worktrees.sh" ]; then
     # shellcheck disable=SC1091
     source "$SCRIPT_DIR/lib/worktrees.sh"
 fi
+# Pre-1.2 shape detection (#184): shared with setup.sh --migrate.
+if [ -f "$SCRIPT_DIR/lib/migrate.sh" ]; then
+    # shellcheck source=scripts/lib/migrate.sh
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/lib/migrate.sh"
+fi
 
 # ---------------------------------------------------------------------------
 # Colors and formatting
@@ -131,6 +137,41 @@ IS_STANDARDS_REPO=false
 if [ -f "$PROJECT_ROOT/scripts/setup.sh" ] && [ -f "$PROJECT_ROOT/standards/shared/core-standards.md" ]; then
     IS_STANDARDS_REPO=true
 fi
+
+# ---------------------------------------------------------------------------
+# Check 0: pre-1.2 install (#184)
+#
+# A consumer set up before the 1.2 safe-setup has agent configs that cite
+# standards paths renamed in #21 or removed in #40 (and often a .codexrc,
+# which Codex no longer reads), usually with no .standards-checksums. Every
+# other check would then warn in its own way — missing config, no checksums,
+# drifted .aiderrc, … — while the one thing to do is run the migration. So
+# this check runs first and, when the shape matches, reports it as the single
+# finding and ends the report. A plain setup.sh may already have written
+# checksums without touching those artefacts; the shape is still reported
+# then (pre12_shape counts only what --migrate would change). Skipped in the
+# standards repo itself.
+# ---------------------------------------------------------------------------
+
+check_pre12_migration() {
+    [ "$IS_STANDARDS_REPO" = "true" ] && return 1
+    declare -f pre12_shape >/dev/null 2>&1 || return 1
+
+    local map=""
+    if declare -f rename_map_path >/dev/null 2>&1; then
+        map=$(rename_map_path "$PROJECT_ROOT/.standards" "$SCRIPT_DIR") || map=""
+    fi
+    local reasons
+    reasons=$(pre12_shape "$PROJECT_ROOT" "$map") || return 1
+    [ -n "$reasons" ] || return 1
+
+    local joined prefix="pre-1.2 install: no .standards-checksums"
+    [ -f "$PROJECT_ROOT/.standards-checksums" ] && prefix="pre-1.2 artefacts left by a plain setup"
+    joined=$(printf '%s\n' "$reasons" | paste -sd ';' - | sed 's/;/; /g')
+    check_fail "Migration" "$prefix; $joined" \
+        "Run: .standards/scripts/setup.sh --migrate  (rewrites the dead references from docs/reference/renamed-files.md, converts .codexrc to AGENTS.md, bootstraps .standards.yml and the checksum baseline, stages anything ambiguous to .standards-pending/ with a MERGE_PLAN; add --dry-run to preview)"
+    return 0
+}
 
 # ---------------------------------------------------------------------------
 # Check 1: Configuration file exists
@@ -229,7 +270,15 @@ check_checksums() {
 
         local file
         file=$(agent_file "$key")
-        [ -z "$file" ] && file="$key"
+        # Checksum keys are basenames; the configs that live in a
+        # subdirectory resolve through the agent that owns them.
+        if [ -z "$file" ]; then
+            case "$key" in
+                copilot-instructions.md) file=".github/copilot-instructions.md" ;;
+                GEMINI.md)               file=".gemini/GEMINI.md" ;;
+                *)                       file="$key" ;;
+            esac
+        fi
 
         local full_path="$PROJECT_ROOT/$file"
         [ ! -f "$full_path" ] && continue
@@ -870,6 +919,38 @@ EOF
 printf "\n%s\n" "${BOLD}Standards Health Check${NC}"
 printf "=======================================\n\n"
 
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+
+print_summary() {
+    printf "\n=======================================\n"
+
+    if [ "$TOTAL" -gt 0 ]; then
+        pct=$(( (PASS * 100) / TOTAL ))
+    else
+        pct=0
+    fi
+
+    printf "  ${BOLD}Score: %d/%d (%d%%)${NC}\n" "$PASS" "$TOTAL" "$pct"
+
+    if [ -n "$FIXES" ]; then
+        printf "\n  %s\n" "${BOLD}Fixes needed:${NC}"
+        printf '%s\n' "$FIXES" | while IFS= read -r fix; do
+            printf "    -> %s\n" "$fix"
+        done
+    fi
+
+    printf "\n"
+}
+
+# A pre-1.2 install gets one finding and one command, not the whole battery.
+if check_pre12_migration; then
+    printf "\n  %s\n" "The remaining checks are skipped until the migration has run: each would only restate the same gap."
+    print_summary
+    exit 1
+fi
+
 check_config
 check_members
 check_agents
@@ -882,28 +963,7 @@ check_postgres_mcp
 check_gitignore
 check_worktrees
 
-# ---------------------------------------------------------------------------
-# Summary
-# ---------------------------------------------------------------------------
-
-printf "\n=======================================\n"
-
-if [ "$TOTAL" -gt 0 ]; then
-    pct=$(( (PASS * 100) / TOTAL ))
-else
-    pct=0
-fi
-
-printf "  ${BOLD}Score: %d/%d (%d%%)${NC}\n" "$PASS" "$TOTAL" "$pct"
-
-if [ -n "$FIXES" ]; then
-    printf "\n  %s\n" "${BOLD}Fixes needed:${NC}"
-    printf '%s\n' "$FIXES" | while IFS= read -r fix; do
-        printf "    -> %s\n" "$fix"
-    done
-fi
-
-printf "\n"
+print_summary
 
 # Exit with failure if any hard FAILs
 if [ "$FAIL" -gt 0 ]; then

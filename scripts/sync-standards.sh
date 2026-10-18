@@ -97,6 +97,23 @@ if [ -f "$SCRIPT_DIR/lib/project-sections.sh" ]; then
     source "$SCRIPT_DIR/lib/project-sections.sh"
 fi
 
+# Pre-1.2 shape detection (#184): a consumer with no checksums and configs
+# citing renamed standards paths is told to run setup.sh --migrate, because a
+# sync alone skips every such file as "manually created" and fixes nothing.
+if [ -f "$SCRIPT_DIR/lib/migrate.sh" ]; then
+    # shellcheck source=lib/migrate.sh disable=SC1091
+    source "$SCRIPT_DIR/lib/migrate.sh"
+fi
+# .aiderrc refresh that keeps the project's `model =` line (install_aiderrc in
+# lib/migrate.sh); a plain copy when the lib is not shipped.
+_sync_install_aiderrc() {
+    if declare -f install_aiderrc >/dev/null 2>&1; then
+        install_aiderrc "$1" "$2"
+    else
+        cp "$1" "$2"
+    fi
+}
+
 # Function to sync AI agent configurations
 sync_ai_agents() {
     local STANDARDS_DIR="$1"
@@ -233,7 +250,10 @@ sync_ai_agents() {
                 fi
 
                 if [ ! -f "$PROJECT_ROOT/.aiderrc" ] || [ -z "$stored_rc_hash" ] || [ "$current_rc_hash" = "$stored_rc_hash" ]; then
-                    if cp "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+                    # The project's own `model =` line is carried forward
+                    # (install_aiderrc, lib/migrate.sh): the template no
+                    # longer pins a model and a sync never changes it (#184).
+                    if _sync_install_aiderrc "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
                         echo "   ✅ Aider .aiderrc synced"
                         local new_rc_hash
                         new_rc_hash=$(shasum -a 256 "$PROJECT_ROOT/.aiderrc" | awk '{print $1}')
@@ -245,7 +265,7 @@ sync_ai_agents() {
             else
                 # Fallback: no checksum library
                 if ! cmp -s "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
-                    if cp "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+                    if _sync_install_aiderrc "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
                         echo "   ✅ Aider .aiderrc synced"
                     fi
                 fi
@@ -550,6 +570,17 @@ if agent_enabled cursor && [ -n "$CURSOR_COMMANDS_SOURCE" ] && [ -d "$CURSOR_COM
         echo "⚠️  Please fully quit and restart Cursor to load new commands"
     else
         echo "⚠️  Failed to sync Cursor commands (non-fatal, continuing...)"
+    fi
+fi
+
+# Pre-1.2 install (#184): point at the migration before the per-file skips.
+if declare -f pre12_shape >/dev/null 2>&1; then
+    PRE12_MAP=$(rename_map_path "$STANDARDS_DIR" "$SCRIPT_DIR") || PRE12_MAP=""
+    if PRE12_REASONS=$(pre12_shape "$PROJECT_ROOT" "$PRE12_MAP") && [ -n "$PRE12_REASONS" ]; then
+        echo ""
+        echo "⚠️  Pre-1.2 install detected — a sync skips these files as manually created and fixes nothing:"
+        echo "$PRE12_REASONS" | sed 's/^/   - /'
+        echo "   Run: .standards/scripts/setup.sh --migrate  (rewrites the dead references, converts .codexrc, bootstraps .standards.yml and checksums)"
     fi
 fi
 

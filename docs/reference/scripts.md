@@ -14,7 +14,7 @@ All automation scripts live in the `scripts/` directory. They are written in Bas
 **Usage:**
 
 ```bash
-./scripts/setup.sh [--agents <list>|all|detect] [--languages <list>] [--role <role>] [--workflow] [--dry-run]
+./scripts/setup.sh [--agents <list>|all|detect] [--languages <list>] [--role <role>] [--workflow] [--migrate] [--dry-run]
 ./scripts/setup.sh --help
 ```
 
@@ -47,10 +47,21 @@ make setup
 | `--languages <list>` | Comma-separated languages; skips `detect-languages.sh`. |
 | `--role <role>` | Role content block to include (default `service`). |
 | `--workflow` | Also install the opt-in `standards-review.yml` and `trufflehog.yml` workflow templates. |
+| `--migrate` | Upgrade a pre-1.2 install (see below). Without it, a pre-1.2 shape is only reported, never rewritten. |
 | `--dry-run` | Print every write that would happen without modifying anything. |
 | `-h`, `--help` | Print usage and exit 0 without touching the project. |
 
 Unknown options print `Unknown option: <flag>` plus the usage text and exit 2 before anything is written. A value-taking option that is missing its value, given an empty `--flag=` form, or followed by another option (`--languages --help`) also exits 2.
+
+**Upgrading a pre-1.2 install (`--migrate`).** A consumer set up before the 1.2 safe-setup has agent configs copied from the old hand-rolled templates that cite standards paths renamed in #21 or removed in #40 (`00_project_standards_and_architecture.md`, `03_python_standards.md`, `arch-03_cursor_automation_standards.md`, …), often a `.codexrc` (Codex now reads `AGENTS.md`) and sometimes a legacy `.standards-config`. A plain sync skips every such file as "manually created", so the dead references never go away; `doctor.sh` reports the shape as a single `Migration` finding. `setup.sh --migrate`:
+
+1. Reads a legacy `.standards-config` for `role`, `languages` and `agents` (command-line flags win), seeds `.standards.yml` from it plus detection, and retires it as `.standards-config.pre-standards-setup`.
+2. Rewrites every renamed standards reference in `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `.aider-instructions.md` and `.aiderrc` in place, using [Renamed Files](renamed-files.md) as the map (whatever prefix the config used — `standards/…`, `.standards/standards/…` or a bare file name — is kept). A list item or comment that only cites a removed standard (at most followed by the description the old template attached to it) is dropped; a removed standard inside running text, or in a list item that goes on to say something project-specific, is left in place and listed in the merge plan. Each changed file is replaced atomically (through a symlink if it is one) and its original is kept as `<file>.pre-standards-setup` (gitignored); when several passes touch one file, the copy is the file before the first pass.
+3. In `.aiderrc`, raises the legacy 90%/80% coverage tiers to the 95% floor (`core-standards.md`; domain stays 100%) and drops a `model =` line that pins one of the models the old templates shipped — a project-chosen model stays. This is the only place a model line is ever removed: `aiderrc.template` pins no model, and when setup or sync refreshes a managed `.aiderrc` the project's existing `model =` line is carried into the new copy.
+4. Converts `.codexrc` to Markdown `AGENTS.md` (comment markers stripped, headings kept, references rewritten) and keeps the original as `.codexrc.pre-standards-setup`. If an `AGENTS.md` already exists it is not touched: the conversion is staged as `.standards-pending/AGENTS.md.from-codexrc` instead.
+5. Runs the normal safe setup: each migrated config is staged beside its freshly assembled version in `.standards-pending/`, `.standards-checksums` is written, and `MERGE_PLAN.md` gains a *Migration* section (what was rewritten, dropped lines, unresolved removed references). The checksum baseline of a staged file is the **staged assembled version**, so `sync-standards.sh` keeps staging a fresh assembly and never overwrites the migrated file until `/merge-standards` adopts or merges it, after which the checksum matches.
+
+`--migrate --dry-run` prints every rewrite and conversion without writing. On a project that is already migrated (checksums present) the flag is a no-op and a normal setup runs.
 
 ```bash
 # Codex-only project: AGENTS.md plus the standards-owned files
@@ -92,7 +103,7 @@ make sync-standards
 
 1. Refuses to run when the project root resolves to `.standards/` (i.e. you ran it from inside the submodule, as the old `make -C .standards sync-standards` wrapper did). Run it from the project root instead.
 2. If a `.standards` submodule exists, fetches from the remote and pulls if there are new commits. An unreachable remote is a warning, not a failure — the sync continues from the local checkout.
-3. Reads `agents:`, `languages:`, `role:` and `members:` from `.standards.yml` (falls back to the legacy `.standards-config`, then to all agents + language auto-detection). Members (declared, or auto-discovered `*/.standards.yml`) are listed with their languages, and their languages are added to the root's for the assembly step; a declared member that does not exist is a warning, not a failure.
+3. Reads `agents:`, `languages:`, `role:` and `members:` from `.standards.yml` (falls back to the legacy `.standards-config`, then to all agents + language auto-detection). A pre-1.2 install (no checksums, configs citing renamed standards paths, a `.codexrc`) is pointed at `setup.sh --migrate` first, because a sync alone skips those files as manually created. Members (declared, or auto-discovered `*/.standards.yml`) are listed with their languages, and their languages are added to the root's for the assembly step; a declared member that does not exist is a warning, not a failure.
 4. Re-assembles one config per declared agent (`CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `.aider-instructions.md`), filling `{{PROJECT_OVERVIEW}}` / `{{KEY_COMMANDS}}` from `project_overview:` / `key_commands:` in `.standards.yml`. Customized files are staged to `.standards-pending/` instead of being overwritten — unless the fresh assembly reproduces the installed file exactly (the project text was persisted since the last run), in which case the checksum baseline is recorded. A file declared `managed: false` is curated: never regenerated or staged, reported as such. When a customized config has a filled-in overview or commands the yml does not persist, the YAML to add is printed (see [Curated Agent Configs](../guides/customization.md#curated-agent-configs)).
 5. Installs agent-specific extras **only for declared agents**: Cursor custom commands (`cursor`), `.gemini/settings.json` (`gemini`, JSON-validated first), `.claude/settings.json` and the `/merge-standards` skill (`claude-code`).
 6. Syncs language-specific tool configs for detected languages.
@@ -184,6 +195,8 @@ make doctor
 ```
 
 The `Worktrees` check (proc-04 § Worktree Hygiene) passes when the worktree root (`worktree_dir:`, default `.claude/worktrees`) is gitignored and reports the repository's linked worktrees — count, oldest idle age, total size. It warns on an invalid `worktree_dir:`, a root that is not gitignored, worktrees nested inside another worktree, worktrees outside the root (`.worktrees/`, `.Codex/worktrees/`, …), and worktrees idle for more than 14 days or whose directory is gone, pointing at `make worktree-gc`.
+
+A pre-1.2 install (agent configs citing renamed or removed standards paths, a `.codexrc`, or a legacy `.standards-config` without `.standards.yml`) short-circuits the report: doctor prints one `Migration` finding naming the files and the single fix, `.standards/scripts/setup.sh --migrate`, and exits 1 without running the other checks (each would only restate the same gap). The detection is shared with `setup.sh` and `sync-standards.sh` (`scripts/lib/migrate.sh`, map in [Renamed Files](renamed-files.md)) and does not depend on `.standards-checksums`: a plain `setup.sh` run on such a project writes checksums for what it assembles but leaves `.codexrc` and the dead references alone, and the `--migrate` it recommends still finds them. Once checksums exist, only what `--migrate` would change counts — a removed standard the migration deliberately left in running text does not re-trigger the finding.
 
 The `Languages` check compares what `detect-languages.sh` finds with what `.standards.yml` declares, for the root (member directories skipped) and for each member (`Languages (server)`). It warns about a supported language that is detected but not declared, and about a declared key that has no standards document or lint checks: agent assembly and the linter silently ignore such a key. The `Members` check fails on a declared member whose directory is missing and warns on one without a `.standards.yml`.
 

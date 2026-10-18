@@ -1011,6 +1011,359 @@ echo "$setup_out" | grep -q 'Would append to: .*\.gitignore'                   |
 grep -q 'worktrees' "$proj/.gitignore"                                         && errs="$errs gitignore-written"
 if [ -z "$errs" ]; then pass; else fail "$errs"; fi
 
+# --- #184: setup.sh --migrate for pre-1.2 consumers ---------------------------
+#
+# Fixture: a consumer installed before the 1.2 safe-setup, with v1.0-era agent
+# configs copied from the old hand-rolled templates. They cite standards paths
+# no release has carried since the #21 renumbering (00_/03_/12_…), the
+# .cursorrules cites arch-03 (deleted in #40), Codex still has a .codexrc, the
+# .aiderrc carries the 100/90/80 coverage tiers and a pinned model, and there
+# is no .standards.yml, no .standards-checksums and no .standards-pending/.
+DOCTOR="$REPO_ROOT/scripts/doctor.sh"
+RENAME_MAP="$REPO_ROOT/docs/reference/renamed-files.md"
+
+make_pre12_project() {
+    local name="$1"
+    local proj
+    proj=$(make_project "$name")
+    fake_standards "$proj"
+    mkdir -p "$proj/.github"
+    printf '[project]\nname = "fixture"\n' > "$proj/pyproject.toml"
+    cat > "$proj/.aiderrc" <<'EOF'
+# Aider (Claude Code) Configuration
+# This file configures Aider to follow project standards
+
+# Model configuration
+model = claude-3-5-sonnet-20241022
+
+# Architecture rules
+architecture_rules = """
+Follow Clean Architecture principles.
+
+Reference: standards/architecture/00_project_standards_and_architecture.md
+"""
+
+# Language-specific standards
+language_standards = """
+Apply language-specific standards from:
+- Python: standards/languages/03_python_standards.md
+- TypeScript: standards/languages/08_typescript_standards.md
+"""
+
+# Testing requirements
+testing_standards = """
+- Domain: 100% test coverage
+- Application: 90%+ test coverage
+- Infrastructure: 80%+ test coverage
+"""
+
+# Documentation requirements
+documentation_standards = """
+Reference: standards/process/12_documentation_standards.md
+"""
+EOF
+    cat > "$proj/.codexrc" <<'EOF'
+# OpenAI Codex Configuration
+# This file configures Codex to follow project standards
+
+## Architecture Standards
+# Reference: standards/architecture/00_project_standards_and_architecture.md
+# - Follow Clean Architecture (Domain → Application → Infrastructure → Apps)
+
+## Language Standards
+# Apply language-specific standards from standards/languages/:
+# - Python: 03_python_standards.md
+# - TypeScript: 08_typescript_standards.md
+
+## Testing Standards
+# - Domain: 100% coverage
+# - Application: 90%+ coverage
+# - Infrastructure: 80%+ coverage
+
+## Process Standards
+# - Documentation: standards/process/12_documentation_standards.md
+# - Git workflow: standards/process/13_git_version_control_standards.md
+
+## Project Notes
+# - Deploy with `make release` only from the main branch.
+EOF
+    cat > "$proj/.github/copilot-instructions.md" <<'EOF'
+# GitHub Copilot Instructions
+
+## Core Standards
+
+### Architecture & Standards
+- `standards/architecture/00_project_standards_and_architecture.md` - Core architecture, SOLID principles, naming conventions
+- `standards/architecture/01_automation_standards.md` - Makefile targets and automation requirements
+
+### Language-Specific Standards
+- `standards/languages/03_python_standards.md` - Python (uv, ruff, mypy, pytest)
+- `standards/languages/08_typescript_standards.md` - TypeScript (pnpm, prettier, eslint, vitest, strict mode)
+
+### Process Standards
+- `standards/process/12_documentation_standards.md` - ADR, code docs, changelog, user docs
+- `standards/process/14_code_review_expectations.md` - Code review process and expectations
+EOF
+    cat > "$proj/.cursorrules" <<'EOF'
+# Cursor Rules
+
+1. **Always check relevant standards** before making changes:
+   - `standards/architecture/arch-01_project_standards_and_architecture.md` - Core architecture, SOLID principles, naming conventions
+   - `standards/architecture/arch-02_automation_standards.md` - Makefile targets and automation requirements
+   - `standards/architecture/arch-03_cursor_automation_standards.md` - Cursor-specific interaction modes (@new-feature, @refactor, @debug, @review)
+   - `standards/architecture/arch-03_cursor_automation_standards.md` — continue requiring @review before release
+   - `standards/languages/lang-01_python_standards.md` - Python (uv, ruff, mypy, pytest)
+
+2. **Follow interaction modes** from `standards/architecture/arch-03_cursor_automation_standards.md`:
+   - `@new-feature` - scaffold a feature
+   - `@refactor` - restructure without behaviour change
+EOF
+    echo "$proj"
+}
+
+echo -n "Test 75: docs/reference/renamed-files.md maps every #21 rename and the #40 deletion... "
+errs=""
+[ -f "$RENAME_MAP" ] || errs="$errs map-missing"
+for pair in \
+    "00_project_standards_and_architecture.md:arch-01_project_standards_and_architecture.md" \
+    "01_automation_standards.md:arch-02_automation_standards.md" \
+    "16_data_versioning_and_migration_standards.md:arch-04_data_versioning_and_migration_standards.md" \
+    "17_resilient_architecture_patterns.md:arch-05_resilient_architecture_patterns.md" \
+    "03_python_standards.md:lang-01_python_standards.md" \
+    "04_java_standards.md:lang-02_java_standards.md" \
+    "05_kotlin_standards.md:lang-03_kotlin_standards.md" \
+    "06_swift_standards.md:lang-04_swift_standards.md" \
+    "07_dart_standards.md:lang-05_dart_standards.md" \
+    "08_typescript_standards.md:lang-06_typescript_standards.md" \
+    "09_javascript_standards.md:lang-07_javascript_standards.md" \
+    "10_rust_standards.md:lang-08_rust_standards.md" \
+    "11_zig_standards.md:lang-09_zig_standards.md" \
+    "12_documentation_standards.md:proc-01_documentation_standards.md" \
+    "13_git_version_control_standards.md:proc-02_git_version_control_standards.md" \
+    "14_code_review_expectations.md:proc-03_code_review_expectations.md" \
+    "15_agent_workflow_standards.md:proc-04_agent_workflow_standards.md"; do
+    old="${pair%%:*}"; new="${pair#*:}"
+    grep -q "^| \`standards/[a-z]*/$old\` | \`standards/[a-z]*/$new\`" "$RENAME_MAP" 2>/dev/null || errs="$errs $old"
+done
+grep -q "^| \`standards/architecture/arch-03_cursor_automation_standards.md\` | (removed)" "$RENAME_MAP" 2>/dev/null || errs="$errs arch-03-not-removed"
+grep -q "^| \`standards/architecture/02_cursor_automation_standards.md\` | (removed)" "$RENAME_MAP" 2>/dev/null || errs="$errs 02_cursor-not-removed"
+# Every new path in the map must exist in this repo (a map entry to a missing file would rewrite one dead reference into another).
+map_out=$(bash -c "source '$REPO_ROOT/scripts/lib/migrate.sh' && load_rename_map '$RENAME_MAP'" 2>/dev/null) || errs="$errs loader-failed"
+while IFS="$(printf '\t')" read -r _old _new; do
+    [ -n "$_new" ] || continue
+    [ "$_new" = "-" ] && continue
+    [ -f "$REPO_ROOT/$_new" ] || errs="$errs target-missing:$_new"
+done <<EOF
+$map_out
+EOF
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 76: setup.sh --migrate rewrites dead standards references in place (.aiderrc, copilot-instructions.md, .cursorrules)... "
+proj=$(make_pre12_project "migrate-rewrite")
+mig_out=$(cd "$proj" && "$SETUP" --migrate 2>&1) || true
+errs=""
+for f in .aiderrc .github/copilot-instructions.md; do
+    grep -qE '(^|[^A-Za-z0-9_-])(00_project_standards_and_architecture|03_python_standards|08_typescript_standards|12_documentation_standards)\.md' "$proj/$f" && errs="$errs $f-still-dead"
+done
+grep -q 'standards/architecture/arch-01_project_standards_and_architecture.md' "$proj/.aiderrc"        || errs="$errs aiderrc-arch01"
+grep -q 'standards/languages/lang-01_python_standards.md' "$proj/.aiderrc"                              || errs="$errs aiderrc-lang01"
+grep -q 'standards/process/proc-01_documentation_standards.md' "$proj/.aiderrc"                         || errs="$errs aiderrc-proc01"
+grep -q '`standards/architecture/arch-02_automation_standards.md`' "$proj/.github/copilot-instructions.md" || errs="$errs copilot-arch02"
+grep -q '`standards/process/proc-03_code_review_expectations.md`' "$proj/.github/copilot-instructions.md"  || errs="$errs copilot-proc03"
+# Unchanged text survives the rewrite.
+grep -q 'Core architecture, SOLID principles, naming conventions' "$proj/.github/copilot-instructions.md" || errs="$errs copilot-text-lost"
+echo "$mig_out" | grep -q 'arch-01_project_standards_and_architecture.md'                               || errs="$errs not-reported"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$mig_out" | grep -i 'migrat\|rewr' | head -4 | tr '\n' '|')"; fi
+
+echo -n "Test 77: --migrate drops a bullet that only cites a removed standard; a bullet with project text after the citation and a prose reference are kept and reported as unresolved (.cursorrules arch-03)... "
+errs=""
+# The template bullet about arch-03 is gone; the project's own bullet, the surrounding bullets and the prose line stay.
+grep -q 'arch-03_cursor_automation_standards.md` - Cursor-specific interaction modes' "$proj/.cursorrules" && errs="$errs bullet-kept"
+grep -q 'arch-03_cursor_automation_standards.md` — continue requiring @review before release' "$proj/.cursorrules" || errs="$errs project-bullet-dropped"
+[ "$(grep -c '^  - `.cursorrules:[0-9]*: arch-03_cursor_automation_standards.md`' "$proj/.standards-pending/MERGE_PLAN.md" 2>/dev/null)" -ge 2 ] || errs="$errs plan-lacks-both-unresolved"
+grep -q 'arch-02_automation_standards.md` - Makefile targets' "$proj/.cursorrules"                          || errs="$errs neighbour-lost"
+grep -q 'Follow interaction modes\*\* from `standards/architecture/arch-03_cursor_automation_standards.md`' "$proj/.cursorrules" || errs="$errs prose-changed"
+[ -f "$proj/.standards-pending/MERGE_PLAN.md" ]                                                           || errs="$errs no-merge-plan"
+grep -q 'arch-03_cursor_automation_standards.md' "$proj/.standards-pending/MERGE_PLAN.md" 2>/dev/null     || errs="$errs plan-lacks-unresolved"
+grep -qi 'migrat' "$proj/.standards-pending/MERGE_PLAN.md" 2>/dev/null                                    || errs="$errs plan-lacks-migration-section"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 78: --migrate converts .codexrc to AGENTS.md (Markdown, dead refs rewritten, project notes kept, original backed up)... "
+errs=""
+[ -f "$proj/AGENTS.md" ]                                                        || errs="$errs agents-missing"
+[ -f "$proj/.codexrc" ]                                                         && errs="$errs codexrc-still-present"
+[ -f "$proj/.codexrc.pre-standards-setup" ]                                     || errs="$errs no-backup"
+grep -q '^## Architecture Standards' "$proj/AGENTS.md" 2>/dev/null              || errs="$errs heading-lost"
+grep -q '^- Deploy with `make release` only from the main branch.' "$proj/AGENTS.md" 2>/dev/null || errs="$errs notes-lost-or-still-commented"
+grep -q 'lang-01_python_standards.md' "$proj/AGENTS.md" 2>/dev/null             || errs="$errs refs-not-rewritten"
+grep -q '03_python_standards.md' "$proj/AGENTS.md" 2>/dev/null                  && errs="$errs dead-ref-kept"
+grep -q 'Application: 95%+ coverage' "$proj/AGENTS.md" 2>/dev/null              || errs="$errs tiers-not-raised"
+grep -q 'Converted from .codexrc' "$proj/AGENTS.md" 2>/dev/null                 || errs="$errs provenance-missing"
+[ -f "$proj/.standards-pending/AGENTS.md" ]                                     || errs="$errs assembled-not-staged"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 79: --migrate raises .aiderrc coverage tiers to the 95% floor and drops the pinned model; aiderrc.template has no model line... "
+errs=""
+grep -q 'Application: 95%+ test coverage' "$proj/.aiderrc"     || errs="$errs application-tier"
+grep -q 'Infrastructure: 95%+ test coverage' "$proj/.aiderrc"  || errs="$errs infrastructure-tier"
+grep -q 'Domain: 100% test coverage' "$proj/.aiderrc"          || errs="$errs domain-tier-changed"
+grep -q '^model = ' "$proj/.aiderrc"                           && errs="$errs model-kept"
+grep -q '^model' "$REPO_ROOT/standards/agents/aider/aiderrc.template" && errs="$errs template-has-model"
+[ -f "$proj/.standards-pending/.aiderrc" ]                     || errs="$errs template-not-staged"
+# Two passes rewrote .aiderrc (references, then tiers/model); the backup is the file before the first one.
+grep -q '03_python_standards.md' "$proj/.aiderrc.pre-standards-setup" 2>/dev/null                  || errs="$errs backup-is-intermediate"
+grep -q '^model = claude-3-5-sonnet-20241022' "$proj/.aiderrc.pre-standards-setup" 2>/dev/null     || errs="$errs backup-lacks-model"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 80: --migrate bootstraps .standards.yml from detection plus existing configs and writes .standards-checksums... "
+errs=""
+[ -f "$proj/.standards.yml" ]                                     || errs="$errs yml-missing"
+for a in cursor copilot codex aider; do
+    grep -q "^  - $a\$" "$proj/.standards.yml" 2>/dev/null        || errs="$errs agent-$a"
+done
+grep -q '^  - python$' "$proj/.standards.yml" 2>/dev/null         || errs="$errs lang-python"
+[ -f "$proj/.standards-checksums" ]                                || errs="$errs checksums-missing"
+for k in .cursorrules copilot-instructions.md AGENTS.md .aiderrc; do
+    grep -q "^$k " "$proj/.standards-checksums" 2>/dev/null        || errs="$errs checksum-$k"
+done
+[ -f "$proj/.standards-pending/.cursorrules" ]                     || errs="$errs cursorrules-not-staged"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(cat "$proj/.standards-checksums" 2>/dev/null | tr '\n' '|')"; fi
+
+echo -n "Test 81: after --migrate, sync-standards stages the configs as customized (no 'manually created' skip, no clobber) and doctor no longer asks to migrate... "
+sync_out=$(cd "$proj" && "$SYNC" 2>&1) || true
+doc_out=$(cd "$proj" && bash "$DOCTOR" 2>&1) || true
+errs=""
+echo "$sync_out" | grep -q 'manually created'                                   && errs="$errs manually-created"
+echo "$sync_out" | grep -q 'config customized'                                  || errs="$errs not-staged-as-customized"
+grep -q 'Follow interaction modes' "$proj/.cursorrules"                         || errs="$errs cursorrules-clobbered"
+echo "$doc_out" | grep -q -- '--migrate'                                        && errs="$errs doctor-still-asks-migrate"
+echo "$doc_out" | grep 'Configuration' | grep -q 'PASS'                         || errs="$errs doctor-config-not-pass"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$sync_out" | grep -i 'config' | head -4 | tr '\n' '|')"; fi
+
+echo -n "Test 82: doctor recognises the pre-1.2 shape and prints the single migration command instead of the per-check warnings (exit 1)... "
+proj=$(make_pre12_project "migrate-doctor")
+doc_rc=0
+doc_out=$(cd "$proj" && bash "$DOCTOR" 2>&1) || doc_rc=$?
+errs=""
+[ "$doc_rc" -eq 1 ]                                                        || errs="$errs rc=$doc_rc"
+[ "$(echo "$doc_out" | grep -c -- 'setup.sh --migrate')" -ge 1 ]            || errs="$errs no-migrate-command"
+echo "$doc_out" | grep -q 'make setup-agents'                               && errs="$errs per-agent-warnings"
+echo "$doc_out" | grep -q 'Checksums'                                       && errs="$errs checksums-check-ran"
+echo "$doc_out" | grep -q 'Git Hooks'                                       && errs="$errs hooks-check-ran"
+echo "$doc_out" | grep -q '\.codexrc'                                       || errs="$errs codexrc-not-named"
+echo "$doc_out" | grep -q '\.aiderrc'                                       || errs="$errs dead-ref-files-not-named"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$doc_out" | grep -i 'migrat' | head -3 | tr '\n' '|')"; fi
+
+echo -n "Test 83: setup.sh without --migrate on a pre-1.2 project points at --migrate and leaves the dead references alone... "
+set_out=$(cd "$proj" && "$SETUP" --agents aider 2>&1) || true
+errs=""
+echo "$set_out" | grep -q -- 'setup.sh --migrate'                          || errs="$errs no-hint"
+grep -q '03_python_standards.md' "$proj/.aiderrc"                          || errs="$errs rewrote-without-migrate"
+[ -f "$proj/.codexrc" ]                                                    || errs="$errs converted-without-migrate"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 84: --migrate --dry-run reports every rewrite and conversion but modifies nothing... "
+proj=$(make_pre12_project "migrate-dry")
+before=$(cd "$proj" && find . -path ./.git -prune -o -type f -print | sort | xargs shasum -a 256 | shasum -a 256)
+dry_out=$(cd "$proj" && "$SETUP" --migrate --dry-run 2>&1) || true
+after=$(cd "$proj" && find . -path ./.git -prune -o -type f -print | sort | xargs shasum -a 256 | shasum -a 256)
+errs=""
+[ "$before" = "$after" ]                                                   || errs="$errs files-changed"
+[ -f "$proj/.standards.yml" ]                                              && errs="$errs yml-written"
+[ -d "$proj/.standards-pending" ]                                          && errs="$errs pending-written"
+echo "$dry_out" | grep -q 'Would rewrite'                                  || errs="$errs no-rewrite-report"
+echo "$dry_out" | grep -q 'Would convert .codexrc'                         || errs="$errs no-convert-report"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$dry_out" | grep -i 'would' | head -4 | tr '\n' '|')"; fi
+
+echo -n "Test 85: --migrate with an existing AGENTS.md leaves it alone and stages the converted .codexrc beside the merge plan... "
+proj=$(make_pre12_project "migrate-agents-exists")
+printf '# AGENTS.md\n\nHand-written Codex instructions that must survive.\n' > "$proj/AGENTS.md"
+mig_out=$(cd "$proj" && "$SETUP" --migrate 2>&1) || true
+errs=""
+grep -q 'must survive' "$proj/AGENTS.md"                                   || errs="$errs agents-changed"
+[ -f "$proj/.codexrc" ]                                                    || errs="$errs codexrc-removed"
+[ -f "$proj/.standards-pending/AGENTS.md.from-codexrc" ]                   || errs="$errs converted-not-staged"
+grep -q 'lang-01_python_standards.md' "$proj/.standards-pending/AGENTS.md.from-codexrc" 2>/dev/null || errs="$errs converted-not-rewritten"
+grep -q 'AGENTS.md.from-codexrc' "$proj/.standards-pending/MERGE_PLAN.md" 2>/dev/null                || errs="$errs plan-lacks-entry"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$mig_out" | grep -i 'codexrc' | head -3 | tr '\n' '|')"; fi
+
+echo -n "Test 86: --migrate reads a legacy .standards-config for role and languages and retires it... "
+proj=$(make_pre12_project "migrate-legacy-config")
+printf 'STANDARDS_ROLE=library\nSTANDARDS_LANGUAGES=python,typescript\nSTANDARDS_AGENTS=aider\n' > "$proj/.standards-config"
+(cd "$proj" && "$SETUP" --migrate >/dev/null 2>&1) || true
+errs=""
+grep -q '^role: library$' "$proj/.standards.yml" 2>/dev/null               || errs="$errs role"
+grep -q '^  - typescript$' "$proj/.standards.yml" 2>/dev/null              || errs="$errs lang-typescript"
+grep -q '^  - python$' "$proj/.standards.yml" 2>/dev/null                  || errs="$errs lang-python"
+[ -f "$proj/.standards-config" ]                                           && errs="$errs legacy-kept"
+[ -f "$proj/.standards-config.pre-standards-setup" ]                       || errs="$errs legacy-backup-missing"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(grep -E '^(role|  - )' "$proj/.standards.yml" 2>/dev/null | tr '\n' '|')"; fi
+
+echo -n "Test 87: --migrate on an already-migrated project is a no-op for migration and runs a normal setup... "
+proj=$(make_pre12_project "migrate-twice")
+(cd "$proj" && "$SETUP" --migrate >/dev/null 2>&1) || true
+snap=$(cat "$proj/.aiderrc" "$proj/AGENTS.md" "$proj/.cursorrules" | shasum -a 256)
+second=$(cd "$proj" && "$SETUP" --migrate 2>&1) || true
+errs=""
+[ "$snap" = "$(cat "$proj/.aiderrc" "$proj/AGENTS.md" "$proj/.cursorrules" | shasum -a 256)" ] || errs="$errs files-changed"
+echo "$second" | grep -qi 'nothing to migrate\|no pre-1.2'                 || errs="$errs not-reported-noop"
+echo "$second" | grep -q 'Setup complete'                                  || errs="$errs setup-not-run"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$second" | grep -i 'migrat' | head -3 | tr '\n' '|')"; fi
+
+echo -n "Test 88: a plain setup.sh first (checksums written, artefacts untouched) does not hide the pre-1.2 shape: doctor still asks to migrate and --migrate still rewrites and converts... "
+proj=$(make_pre12_project "migrate-after-plain-setup")
+(cd "$proj" && "$SETUP" --agents claude-code --languages python >/dev/null 2>&1) || true
+errs=""
+[ -f "$proj/.standards-checksums" ]                                        || errs="$errs plain-setup-wrote-no-checksums"
+doc_out=$(cd "$proj" && bash "$DOCTOR" 2>&1) || true
+echo "$doc_out" | grep -q -- 'setup.sh --migrate'                          || errs="$errs doctor-silent"
+echo "$doc_out" | grep -q 'left by a plain setup'                          || errs="$errs doctor-wrong-prefix"
+mig_out=$(cd "$proj" && "$SETUP" --migrate 2>&1) || true
+echo "$mig_out" | grep -qi 'nothing to migrate'                            && errs="$errs nothing-to-migrate"
+grep -q '03_python_standards.md' "$proj/.aiderrc"                          && errs="$errs aiderrc-still-dead"
+[ -f "$proj/.codexrc" ]                                                    && errs="$errs codexrc-kept"
+[ -f "$proj/AGENTS.md" ]                                                   || errs="$errs agents-missing"
+doc_out=$(cd "$proj" && bash "$DOCTOR" 2>&1) || true
+echo "$doc_out" | grep -q -- '--migrate'                                   && errs="$errs doctor-still-asks-after-migrate"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$mig_out" | grep -i 'migrat' | head -3 | tr '\n' '|')"; fi
+
+echo -n "Test 89: sync-standards refreshing a managed .aiderrc (checksum matches) carries the project's model = line into the new template copy... "
+proj=$(make_project "aiderrc-model-kept")
+fake_standards "$proj"
+write_standards_yml "$proj" aider
+(cd "$proj" && "$SETUP" >/dev/null 2>&1) || true
+# A consumer on the previous template: same settings, a pinned model, and a checksum that matches.
+tmpl="$REPO_ROOT/standards/agents/aider/aiderrc.template"
+{ sed -n '1,3p' "$tmpl"; echo; echo "model = claude-sonnet-4-6"; sed -n '/^read = /,$p' "$tmpl"; } > "$proj/.aiderrc"
+h=$(shasum -a 256 "$proj/.aiderrc" | awk '{print $1}')
+{ grep -v '^\.aiderrc ' "$proj/.standards-checksums" 2>/dev/null; echo ".aiderrc $h"; } > "$proj/.standards-checksums.new" && mv "$proj/.standards-checksums.new" "$proj/.standards-checksums"
+sync_out=$(cd "$proj" && "$SYNC" 2>&1) || true
+errs=""
+echo "$sync_out" | grep -q 'Aider .aiderrc synced'                         || errs="$errs not-synced"
+echo "$sync_out" | grep -q '.aiderrc customized'                           && errs="$errs treated-as-customized"
+grep -q 'The template pins no model' "$proj/.aiderrc"                      || errs="$errs template-not-refreshed"
+grep -q '^model = claude-sonnet-4-6$' "$proj/.aiderrc"                     || errs="$errs model-lost"
+[ "$(grep -c '^model' "$proj/.aiderrc")" = "1" ]                           || errs="$errs model-duplicated"
+h2=$(shasum -a 256 "$proj/.aiderrc" | awk '{print $1}')
+grep -q "^\.aiderrc $h2\$" "$proj/.standards-checksums"                    || errs="$errs checksum-stale"
+(cd "$proj" && "$SYNC" >/dev/null 2>&1) || true
+[ "$h2" = "$(shasum -a 256 "$proj/.aiderrc" | awk '{print $1}')" ]         || errs="$errs not-idempotent"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$sync_out" | grep -i 'aider' | head -3 | tr '\n' '|')"; fi
+
+echo -n "Test 90: --migrate rewrites a symlinked config through the link (link and mode kept, no temp file left) and backs up the original once... "
+proj=$(make_pre12_project "migrate-symlink")
+mkdir -p "$proj/config" && mv "$proj/.aiderrc" "$proj/config/aiderrc" && chmod 640 "$proj/config/aiderrc" && ln -s config/aiderrc "$proj/.aiderrc"
+(cd "$proj" && "$SETUP" --migrate >/dev/null 2>&1) || true
+errs=""
+[ -L "$proj/.aiderrc" ]                                                    || errs="$errs link-replaced"
+grep -q 'lang-01_python_standards.md' "$proj/config/aiderrc"               || errs="$errs target-not-rewritten"
+grep -q '^model = ' "$proj/config/aiderrc"                                 && errs="$errs model-kept"
+if stat -c %a / >/dev/null 2>&1; then mode=$(stat -c %a "$proj/config/aiderrc"); else mode=$(stat -f %Lp "$proj/config/aiderrc"); fi   # GNU, then BSD
+[ "$mode" = "640" ]                                                        || errs="$errs mode=$mode"
+[ "$(find "$proj/config" -mindepth 1 ! -name aiderrc | wc -l | tr -d ' ')" = "0" ] || errs="$errs temp-left:$(find "$proj/config" -mindepth 1 ! -name aiderrc -exec basename {} \; | tr '\n' ',')"
+grep -q '03_python_standards.md' "$proj/.aiderrc.pre-standards-setup" 2>/dev/null || errs="$errs backup-not-original"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"
