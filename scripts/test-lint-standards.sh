@@ -2969,9 +2969,15 @@ ct2c=$(make_project "ct-release-older-untagged")
 write_changelog "$ct2c/CHANGELOG.md" "## [0.2.0] - 2026-06-01" "## [0.1.0] - 2026-05-01"
 tag_all "$ct2c" v0.2.0
 out_older=$(bash "$CHECKS/common/changelog-tags.sh" "$ct2c" 2>/dev/null || true)
+ct2d=$(make_project "ct-release-misprefixed")
+printf 'version: 1\nrelease:\n  tag_prefix: release-\n' > "$ct2d/.standards.yml"
+write_changelog "$ct2d/CHANGELOG.md" "## [0.2.0] - 2026-06-01" "## [0.1.0] - 2026-05-01"
+tag_all "$ct2d" release-0.1.0 prod-0.2.0   # newest tagged under a foreign prefix: misnamed, not in flight
+out_mis=$(bash "$CHECKS/common/changelog-tags.sh" "$ct2d" 2>/dev/null || true)
 if echo "$out_flight" | grep -q '^WARN changelog-tags.*0.2.0.*in flight' && echo "$out_flight" | grep -q 'rc=2' \
-   && echo "$out_older" | grep -q '^FAIL changelog-tags.*0.1.0'; then pass; else
-    fail "in-flight: $out_flight | older-missing: $out_older"; fi
+   && echo "$out_older" | grep -q '^FAIL changelog-tags.*0.1.0' \
+   && echo "$out_mis" | grep -q '^FAIL changelog-tags.*release-0.2.0'; then pass; else
+    fail "in-flight: $out_flight | older-missing: $out_older | misprefixed: $out_mis"; fi
 
 echo -n "Test 205: changelog-tags accepts bare tags, '## 1.2.3 (date)' headings, prereleases and [YANKED]... "
 ct3=$(make_project "ct-forms")
@@ -3070,9 +3076,10 @@ tag_all "$ct9" v1.0.0
 n=$(grep -c '"check": "changelog-tags"' "$TMP_BASE/ct-members.json" || true)
 if [ "$n" -eq 1 ]; then pass; else fail "expected exactly 1 changelog-tags result, got $n"; fi
 
-echo -n "Test 212: this repo's own CHANGELOG headings all have tags (dogfood; tolerates a tagless shallow CI clone)... "
+echo -n "Test 212: this repo's own CHANGELOG headings all have tags (dogfood; tolerates a tagless shallow clone and a release in flight)... "
 out=$(bash "$CHECKS/common/changelog-tags.sh" "$REPO_ROOT" 2>/dev/null || true)
-if echo "$out" | grep -q '^PASS changelog-tags' || echo "$out" | grep -q '^WARN changelog-tags.*shallow'; then pass; else fail "got: $out"; fi
+if echo "$out" | grep -q '^PASS changelog-tags' || echo "$out" | grep -q '^WARN changelog-tags.*shallow' \
+   || echo "$out" | grep -q '^WARN changelog-tags.*in flight'; then pass; else fail "got: $out"; fi
 
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"

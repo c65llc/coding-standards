@@ -166,9 +166,13 @@ manifest_version_cargo_toml() {
     # `version.workspace = true` member defers to the workspace and prints nothing.
     awk '
     /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]]/, "", sect); next }
-    (sect == "[package]" || sect == "[workspace.package]") && /^[[:space:]]*version[[:space:]]*=/ {
+    # `version = …` inside the section, or the dotted-key spelling of the same
+    # table: top-level `package.version = …`, or `package.version = …` under
+    # `[workspace]` (TOML dotted keys define the same nested table).
+    ((sect == "[package]" || sect == "[workspace.package]") && /^[[:space:]]*version[[:space:]]*=/) ||
+    ((sect == "" || sect == "[workspace]") && /^[[:space:]]*package\.version[[:space:]]*=/) {
         line = $0
-        sub(/^[[:space:]]*version[[:space:]]*=[[:space:]]*/, "", line)
+        sub(/^[^=]*=[[:space:]]*/, "", line)
         # TOML basic ("…") and literal ('"'"'…'"'"') strings are both legal here.
         if (match(line, /"[^"]*"/)) { print substr(line, RSTART + 1, RLENGTH - 2); exit }
         if (match(line, /'"'"'[^'"'"']*'"'"'/)) { print substr(line, RSTART + 1, RLENGTH - 2); exit }
@@ -180,9 +184,14 @@ manifest_version_pyproject() {
     # projects have no static version and print nothing.
     awk '
     /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]]/, "", sect); next }
-    (sect == "[project]" || sect == "[tool.poetry]") && /^[[:space:]]*version[[:space:]]*=/ {
+    # `version = …` inside the section, or the dotted-key spelling: top-level
+    # `project.version` / `tool.poetry.version`, or `poetry.version` under
+    # `[tool]`.
+    ((sect == "[project]" || sect == "[tool.poetry]") && /^[[:space:]]*version[[:space:]]*=/) ||
+    (sect == "" && /^[[:space:]]*(project|tool\.poetry)\.version[[:space:]]*=/) ||
+    (sect == "[tool]" && /^[[:space:]]*poetry\.version[[:space:]]*=/) {
         line = $0
-        sub(/^[[:space:]]*version[[:space:]]*=[[:space:]]*/, "", line)
+        sub(/^[^=]*=[[:space:]]*/, "", line)
         if (match(line, /"[^"]*"/)) { print substr(line, RSTART + 1, RLENGTH - 2); exit }
         if (match(line, /'"'"'[^'"'"']*'"'"'/)) { print substr(line, RSTART + 1, RLENGTH - 2); exit }
     }' "$1"
@@ -301,6 +310,18 @@ release-1.0.2'
     printf '[project]   # metadata\nname = "p"\nversion = "4.5.7"\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "4.5.7" ] || { rm -rf "$tmp"; echo "pyproject.toml reader lost a section header with a trailing comment: '$got'"; return 1; }
+    printf 'package.name = "m"\npackage.version = "0.9.2"\n\n[dependencies]\nfoo = { version = "9.9.9" }\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "0.9.2" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed the dotted key package.version: '$got'"; return 1; }
+    printf '[workspace]\nmembers = ["a"]\npackage.version = "0.9.3"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "0.9.3" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed package.version under [workspace]: '$got'"; return 1; }
+    printf 'project.name = "p"\nproject.version = "4.5.8"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "4.5.8" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed the dotted key project.version: '$got'"; return 1; }
+    printf '[tool]\npoetry.name = "p"\npoetry.version = "4.5.9"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "4.5.9" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed poetry.version under [tool]: '$got'"; return 1; }
     printf '[build-system]\nrequires = ["hatchling"]\n\n[project]\nname = "p"\nversion = '"'"'4.5.6'"'"'\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "4.5.6" ] || { rm -rf "$tmp"; echo "pyproject.toml reader returned '$got'"; return 1; }
@@ -448,8 +469,14 @@ LATEST=$(printf '%s\n' "$VERSIONS" | newest_version)
 if [ "$MISSING_COUNT" -gt 0 ]; then
     more=""
     if [ "$MISSING_COUNT" -gt "$MAX_LISTED" ]; then more=" (+$((MISSING_COUNT - MAX_LISTED)) more)"; fi
+    # A tag under ANY prefix that ends in the version (`prod-2.0.0`, `v2.0.0`,
+    # `2.0.0`) means the release was tagged, just not as declared: misnamed,
+    # not in flight. The version is regex-escaped before the suffix match, and
+    # a digit or dot directly before it is rejected so `v12.0.0` is not a tag
+    # for `2.0.0`.
+    latest_ere=$(printf '%s' "$LATEST" | sed 's/[][\.*^$+?(){}|\\]/\\&/g')
     if [ "$MISSING_COUNT" -eq 1 ] && [ "$MISSING" = "$LATEST" ] \
-        && ! tag_for "$LATEST" "$TAGS" __DEFAULT__ >/dev/null; then
+        && ! printf '%s\n' "$TAGS" | grep -Eq -- "(^|[^0-9.])${latest_ere}\$"; then
         # A release in flight: the release PR promotes [Unreleased] to a
         # numbered heading and the tag is cut after the merge (proc-02 §5), so
         # between those two steps exactly the newest heading has no tag at all.

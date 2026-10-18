@@ -1,13 +1,21 @@
 # .gitleaks.toml — shape-based allowlist for Gitleaks. Copy to .gitleaks.toml.
 #
+# Requires Gitleaks >= 8.21 (October 2024). The file uses the `[[allowlists]]`
+# array-of-tables form throughout: Gitleaks refuses a config that mixes it with
+# the legacy single `[allowlist]` table, and only the plural form can AND a
+# path condition with a shape. On an older release, rename the first block to
+# `[allowlist]`, delete the `condition = "AND"` blocks, and mark their fixture
+# lines inline instead.
+#
 # sec-01 §3 "Scanner False Positives on Test Fixtures". Test fixtures trip
 # secret scanners for predictable reasons: UUIDv7 ids look like tokens, a
 # redaction test needs a plausible password to redact, a fake credential in a
 # `*_test` file is the whole point of the test. The usual response — a second
 # and third allowlist round, each excluding one more PATH — ends with whole
-# trees unscanned. Allowlist the SHAPE of the false positive instead: a regex
-# that matches the fixture's form and nothing a real secret would take. Path
-# excludes are the last resort, and every entry here states why it exists.
+# trees unscanned. Allowlist the SHAPE of the false positive instead, and when
+# the shape is one a real secret can also take, require the fixture LOCATION
+# as well. Path excludes are the last resort, and every entry states why it
+# exists.
 #
 # Two mechanisms, finest granularity first:
 #   1. Inline, on the exact line:   `… // gitleaks:allow`  (Gitleaks)
@@ -15,15 +23,19 @@
 #      Put BOTH markers on a line that trips both scanners. The marker
 #      documents the false positive where a reader meets it and keeps the rest
 #      of the file scanned. Prefer this for one-off constants.
-#   2. This file, for a shape that recurs across many fixtures. Each regex
-#      below is anchored to the shape and names the fixture family it covers.
+#   2. This file, for a shape that recurs across many fixtures.
 #
-# The single `[allowlist]` form below works on every 8.x release. The
-# `[[allowlists]]` block at the END of the file (Gitleaks ≥ 8.21) ANDs a path
-# condition with a shape, which is how a shape that a real secret can also
-# take (a UUID) is confined to fixture locations instead of being allowlisted
-# globally. Keep it last: TOML assigns every key after an array-of-tables
-# header to that element.
+# Blocks below, in increasing reach:
+#   A. Global shapes — regexes that match ONLY a form no real secret takes.
+#   B. Fixture path AND shape — forms a real secret CAN take (a UUID, a token
+#      that happens to contain "example"), suppressed only inside test paths.
+#      Not a path exclude: a non-matching secret in a test file is reported.
+#   C. Path excludes — all-noise paths, last resort.
+# No block sets `regexTarget`, so Gitleaks tests the regexes against the
+# extracted SECRET (the rule's capture group), which is what anchored shapes
+# expect — `password = "test-foo"` is suppressed because `test-foo` matches,
+# and a real secret sharing a line with a fixture is still reported.
+# Regexes are Go RE2: no backreferences, no lookaround.
 
 title = "project gitleaks config"
 
@@ -31,20 +43,12 @@ title = "project gitleaks config"
 # Start from the built-in rule set; this file only adds allowlist entries.
 useDefault = true
 
-[allowlist]
-description = "Shape-based allowlist for test fixtures (sec-01 §3)"
-# No `regexTarget`: Gitleaks then tests these regexes against the extracted
-# SECRET (the rule's capture group). That is what the anchored shapes below
-# expect — `password = "test-foo"` is suppressed because the secret
-# `test-foo` matches, and a real secret that shares a line with a fixture is
-# still reported. `regexTarget = "match"` would test the rule's whole match
-# (key name and `=` included) and `"line"` the entire line; neither fits an
-# anchored shape. Regexes are Go RE2: no backreferences, no lookaround.
-
+# ---------------------------------------------------------------------------
+# A. Global shapes — forms no real secret takes, anywhere in the repository
+# ---------------------------------------------------------------------------
+[[allowlists]]
+description = "Shapes no real secret takes (sec-01 §3)"
 regexes = [
-  # (UUID-shaped values are NOT allowlisted here: many services issue API
-  # keys that are UUIDs, so a global UUID shape would silently drop a real
-  # finding. UUID fixtures are handled by the scoped block further down.)
   # Fake passwords by naming convention: a value that announces itself
   # (test-, fake-, dummy-, example-, not-a-real-, changeme) is a fixture, not
   # a credential. Keep the convention and the scanner stays quiet.
@@ -58,46 +62,15 @@ regexes = [
   '''(?i)^(0{16,}|1{16,}|9{16,}|a{16,}|f{16,}|x{16,}|z{16,})$''',
 ]
 
-# Stopwords are matched against the secret itself (case-insensitive). A token
-# that contains one of these is a fixture by construction.
-stopwords = [
-  "example",
-  "fixture",
-  "placeholder",
-  "not-a-real",
-  "redacted",
-]
-
-# Path excludes — the LAST resort. Each one covers a path that is all-noise by
-# construction (lockfile hashes, generated bundles). Never exclude `tests/` or
-# `fixtures/` wholesale: the regexes above cover the fixture shapes, and a
-# real secret pasted into a test file must still be caught.
-paths = [
-  '''(^|/)pnpm-lock\.yaml$''',
-  '''(^|/)package-lock\.json$''',
-  '''(^|/)yarn\.lock$''',
-  '''(^|/)Cargo\.lock$''',
-  '''(^|/)poetry\.lock$''',
-  '''(^|/)Package\.resolved$''',
-  '''\.min\.(js|css)$''',
-  '''(^|/)dist/''',
-]
-
 # ---------------------------------------------------------------------------
-# Everything above belongs to the global [allowlist] table. Array-of-table
-# blocks come LAST: in TOML every key after a `[[allowlists]]` header belongs
-# to that element, so a global key placed below it would be mis-assigned (and
-# a duplicate `paths` would make the file unparseable).
+# B. Fixture path AND shape — both conditions must hold (`condition = "AND"`
+#    spans every condition a block declares, so the UUID shapes and the
+#    stopwords sit in separate blocks: a UUID need not also contain a word).
 # ---------------------------------------------------------------------------
-
-# UUID fixtures (Gitleaks ≥ 8.21). A UUID is a shape a real API key can take,
-# so the shape alone does not make a value safe. This block suppresses a
-# UUID-shaped secret ONLY when it sits in a test or fixture path — both
-# conditions must hold (`condition = "AND"`). It is not a path exclude: a
-# non-UUID secret in a test file is still reported. On Gitleaks < 8.21 the
-# table is ignored; mark UUID fixture lines inline (`// gitleaks:allow`).
 [[allowlists]]
 description = "UUID-shaped ids in test fixtures only (sec-01 §3)"
+# A UUID is a shape many services issue API keys in, so the shape alone does
+# not make a value safe; it is accepted only inside a test or fixture path.
 condition = "AND"
 paths = [
   '''(^|/)(tests?|__tests__|spec|fixtures)/''',
@@ -108,4 +81,42 @@ regexes = [
   '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$''',
   # Any RFC 4122 UUID (v1–v5) for fixtures that are not time-ordered.
   '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$''',
+]
+
+[[allowlists]]
+description = "Fixture stopwords in test paths only (sec-01 §3)"
+# Stopwords are a case-insensitive SUBSTRING match on the secret, so a real
+# credential such as `prod-example-customer-key` would also contain one.
+# Confined to test paths, a token that contains one is a fixture by
+# construction; elsewhere it is still reported.
+condition = "AND"
+paths = [
+  '''(^|/)(tests?|__tests__|spec|fixtures)/''',
+  '''(_test|\.test|\.spec|_spec)\.[A-Za-z0-9]+$''',
+]
+stopwords = [
+  "example",
+  "fixture",
+  "placeholder",
+  "not-a-real",
+  "redacted",
+]
+
+# ---------------------------------------------------------------------------
+# C. Path excludes — the LAST resort. Each one covers a path that is all-noise
+#    by construction (lockfile hashes, generated bundles). Never exclude
+#    `tests/` or `fixtures/` wholesale: block B covers the fixture shapes, and a
+#    real secret pasted into a test file must still be caught.
+# ---------------------------------------------------------------------------
+[[allowlists]]
+description = "All-noise paths (sec-01 §3, last resort)"
+paths = [
+  '''(^|/)pnpm-lock\.yaml$''',
+  '''(^|/)package-lock\.json$''',
+  '''(^|/)yarn\.lock$''',
+  '''(^|/)Cargo\.lock$''',
+  '''(^|/)poetry\.lock$''',
+  '''(^|/)Package\.resolved$''',
+  '''\.min\.(js|css)$''',
+  '''(^|/)dist/''',
 ]

@@ -186,9 +186,9 @@ signal high.
   review.
 
 Ship-with-standards template: [`templates/.gitleaks.toml.example`](../../templates/.gitleaks.toml.example)
-(shape regexes for naming-convention fakes, redaction output and
-repeated-character padding; a path-AND-shape block for UUID fixtures;
-stopwords; a last-resort path list). TruffleHog
+(Gitleaks ≥ 8.21: global shape regexes for naming-convention fakes, redaction
+output and repeated-character padding; path-AND-shape blocks for UUID fixtures
+and fixture stopwords; a last-resort path list). TruffleHog
 takes only path excludes (`.trufflehog-ignore`), so its per-finding
 suppression is the inline `trufflehog:ignore` marker. The scanner workflow
 itself is in §9.
@@ -376,6 +376,10 @@ jobs:
       pull-requests: read
     steps:
       - uses: actions/checkout@<pinned-sha> # vN
+        with:
+          # The checker diffs lockfiles against the PR base; the default
+          # single-commit checkout has no base to diff against.
+          fetch-depth: 0
       - name: Dependency age gate (72 h)
         id: age
         # CONSUMER-SUPPLIED. Contract: exit 0 when every dependency version
