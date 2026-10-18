@@ -465,6 +465,9 @@ if [ "$shallow_answer" = "true" ]; then
 elif [ -z "$shallow_answer" ] || [ "$shallow_answer" = "--is-shallow-repository" ]; then
     # git < 2.15 echoes the unknown flag back; fall back to the marker file.
     git_dir=$(git -C "$PROJECT_ROOT" rev-parse --git-dir 2>/dev/null || true)
+    # A relative answer (`.git`) is relative to the repository, not to the
+    # caller's directory; anchor it before testing for the marker file.
+    case "$git_dir" in ''|/*) ;; *) git_dir="$PROJECT_ROOT/$git_dir" ;; esac
     [ -n "$git_dir" ] && [ -f "$git_dir/shallow" ] && IS_SHALLOW=true
 fi
 # A shallow HISTORY with a complete TAG namespace (actions/checkout with

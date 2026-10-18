@@ -562,6 +562,7 @@ jobs:
     steps:
       - env:
           REPO: ${{ github.repository }}
+          APPROVERS: ${{ vars.DEP_AGE_APPROVERS }}  # the same list the gate checks
           GH_TOKEN: ${{ github.token }}
         run: |
           now=$(date -u +%Y-%m-%dT%H:%M:%SZ); rc=0
@@ -570,22 +571,34 @@ jobs:
           # Bounded set, not a fixed historical cap: every OPEN follow-up, plus
           # those CLOSED in the last 8 days (an early closure is re-flagged
           # nightly, so one older than that has already been reported 8 times).
+          # Both enumerations fail CLOSED: an empty list from an API error must
+          # not become a green night.
           since=$(date -u -d '8 days ago' +%Y-%m-%d)
-          for number in $(gh issue list --repo "$REPO" --state open --limit 1000 \
-                            --search 'dep-age-follow-up-for-pr- in:body author:app/github-actions' --json number --jq '.[].number'
-                          gh issue list --repo "$REPO" --state closed --limit 1000 \
-                            --search "dep-age-follow-up-for-pr- in:body author:app/github-actions closed:>=$since" --json number --jq '.[].number'); do
+          open_ids=$(gh issue list --repo "$REPO" --state open --limit 1000 \
+            --search 'dep-age-follow-up-for-pr- in:body author:app/github-actions' --json number --jq '.[].number') \
+            || { echo "::error::could not enumerate open follow-ups"; exit 1; }
+          closed_ids=$(gh issue list --repo "$REPO" --state closed --limit 1000 \
+            --search "dep-age-follow-up-for-pr- in:body author:app/github-actions closed:>=$since" --json number --jq '.[].number') \
+            || { echo "::error::could not enumerate recently closed follow-ups"; exit 1; }
+          for number in $open_ids $closed_ids; do
             gh issue view "$number" --repo "$REPO" --json state,closedAt,body,comments \
               --jq '{state, closedAt, body, cs: [.comments[] | {a: .author.login, t: .createdAt, b: .body}]}' > "issue.json"
             # Deadlines and approver come from IMMUTABLE data, not the editable
             # issue body: the PR number is in the marker, its mergedAt is fixed,
             # and the approver is the actor of the `labeled` timeline event.
             pr=$(jq -r .body issue.json | sed -n 's/^dep-age-follow-up-for-pr-\([0-9]*\)$/\1/p' | head -1)
-            merged_at=$(gh pr view "$pr" --repo "$REPO" --json mergedAt --jq '.mergedAt // empty')
+            merged_at=$(gh pr view "$pr" --repo "$REPO" --json mergedAt,author --jq '.mergedAt // empty')
+            author=$(gh pr view "$pr" --repo "$REPO" --json author --jq '.author.login // empty')
+            # The approver is frozen at merge: the last `labeled` event AT OR
+            # BEFORE mergedAt. A label removed and re-applied on the closed PR
+            # afterwards does not change it. Re-validate against the approver
+            # list and the author, as the gate did, in case either changed.
             approver=$(gh api "repos/$REPO/issues/$pr/timeline" --paginate --slurp \
-              --jq '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override")] | last | .actor.login // empty')
+              | jq -r --arg merged "$merged_at" '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override" and .created_at <= $merged)] | last | .actor.login // empty')
             [ -n "$pr" ] && [ -n "$merged_at" ] && [ -n "$approver" ] \
               || { echo "::error::#$number cannot be tied to a merged, label-approved PR (marker/mergedAt/approver missing)"; rc=1; continue; }
+            case ",$APPROVERS," in *,"$approver",*) ;; *) echo "::error::#$number: approver @$approver is not in DEP_AGE_APPROVERS"; rc=1; continue ;; esac
+            [ "$approver" != "$author" ] || { echo "::error::#$number: PR #$pr was approved by its own author @$author"; rc=1; continue; }
             due=$(date -u -d "$merged_at + 24 hours" +%Y-%m-%dT%H:%M:%SZ)
             matures=$(date -u -d "$merged_at + 72 hours" +%Y-%m-%dT%H:%M:%SZ)
             state=$(jq -r .state issue.json); closed_at=$(jq -r '.closedAt // ""' issue.json)
