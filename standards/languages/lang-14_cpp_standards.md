@@ -11,7 +11,8 @@ wrapping side itself lives in
 * **Baseline: C++20.** `target_compile_features(<target> PUBLIC cxx_std_20)` on every target; never set `CMAKE_CXX_STANDARD` globally in a library that others consume.
 * **Floor: C++17** where a platform toolchain lags (an older NDK, an embedded vendor compiler, a distro's system GCC). A project that must honour the floor says so in its `README` build matrix and in an ADR, and CI runs one lane on the floor compiler so the floor is real, not aspirational.
 * **Extensions off.** `CMAKE_CXX_EXTENSIONS OFF` (`-std=c++20`, not `-std=gnu++20`). `/permissive-` on MSVC. Code that compiles on one compiler only is a bug.
-* **C++20 features to rely on:** `<span>`, `<concepts>`, `<ranges>` (views only; avoid actions), designated initialisers, `constexpr` containers and algorithms, `std::format` (clang 17+/gcc 13+/MSVC 19.29+; use `fmt::format` from `{fmt}` when the floor applies), `<bit>`, `std::endian`, `[[likely]]`/`[[unlikely]]`, three-way comparison, `std::jthread`/`std::stop_token`.
+* **C++20 features to rely on:** `<span>`, `<concepts>`, `<ranges>` (views only; avoid actions), designated initialisers, `constexpr` containers and algorithms, `<bit>`, `std::endian`, `[[likely]]`/`[[unlikely]]`, three-way comparison, `std::jthread`/`std::stop_token`.
+* **Formatting:** `fmt::format` from `{fmt}` behind a project alias (`core::format`) by default. `std::format` needs libc++ 17, libstdc++ 13 or MSVC 19.29, which is newer than the §2 minimums (Clang 16, GCC 12): a project may switch the alias to `std::format` only when every compiler in *its* matrix ships it, and the matrix in its `README` says so.
 * **Not yet:** C++20 modules (§7), coroutines in public APIs (the ABI of a coroutine frame is compiler-specific), `std::execution` policies on libc++. These are allowed inside a single translation unit when the whole compiler matrix supports them and an ADR records the decision.
 * **C++23:** `std::expected` is the preferred result type (§9). On a C++20 toolchain use `tl::expected` behind a project alias so the switch is one header.
 
@@ -27,7 +28,7 @@ Every project names its supported compilers in the `README` and CI builds on all
 
 ### Warning sets
 
-Warnings are declared once, on an `INTERFACE` target (`project_warnings`) that every target links. Copy [`templates/cpp/ProjectWarnings.cmake`](../../templates/cpp/ProjectWarnings.cmake); the sets it carries are:
+Warnings are declared once, on an `INTERFACE` target named after the project (`${PROJECT_NAME}_warnings`, alias `${PROJECT_NAME}::warnings` — a fixed name would collide when two libraries built the same way meet in one build) that every target the project owns links. Copy [`templates/cpp/ProjectWarnings.cmake`](../../templates/cpp/ProjectWarnings.cmake); it also carries the `cxx_std_20` requirement (§1) and the coverage, clang-tidy and hardening switches the presets flip (§3). The sets it carries are:
 
 | Compiler | Baseline set |
 | --- | --- |
@@ -42,7 +43,7 @@ Warnings are declared once, on an `INTERFACE` target (`project_warnings`) that e
 * **CI builds** fail on any warning: the `ci` preset sets `CMAKE_COMPILE_WARNING_AS_ERROR=ON` (CMake 3.24+), which adds `-Werror` / `/WX` to every target the project owns. Pass `-Werror` explicitly on toolchains older than 3.24.
 * **Never hard-code `-Werror` in `CMakeLists.txt`** without an `option()` guard (`<PROJECT>_WARNINGS_AS_ERRORS`, default `OFF`). A consumer that adds your library with `FetchContent` on a compiler you did not test must not see their build break on a warning in your code. Same rule as Rust's `#![deny(warnings)]` (lang-08 §21.3) and for the same reason.
 * Vendored code is exempt (§16): it is included as `SYSTEM` and has `COMPILE_WARNING_AS_ERROR OFF`.
-* Enforced by `lint-checks/cpp/warnings-as-errors`: PASS when a CI definition, or a preset/CMake file the CI build runs, enables `-Werror`, `/WX` or `COMPILE_WARNING_AS_ERROR`; WARN when only the build configuration enables it and no CI runs it; FAIL otherwise. `-Werror=<one-warning>` does not count.
+* Enforced by `lint-checks/cpp/warnings-as-errors`: PASS when a CI command enables `-Werror`, `/WX` or `COMPILE_WARNING_AS_ERROR`, when the preset CI selects with `--preset` (or one it inherits) enables it, or when `CMakeLists.txt`/`cmake/*.cmake` enables it and a CI step runs the build; WARN when the build configuration enables it but no CI step builds the project or CI selects a different preset; FAIL otherwise. `-Werror=<one-warning>` does not count.
 
 ## 3. Build System
 
@@ -67,7 +68,7 @@ Warnings are declared once, on an `INTERFACE` target (`project_warnings`) that e
 ## 4. Code Style
 
 * **Formatter:** `clang-format` (version pinned in the README; the matrix's Clang version). `.clang-format` at the project root is the single style file; copy [`templates/cpp/.clang-format`](../../templates/cpp/.clang-format). Commit only formatted code. CI runs `clang-format --dry-run --Werror $(git ls-files '*.cpp' '*.hpp' ...)` (or `cmake --build --target format-check`). Enforced by `lint-checks/cpp/clang-format-config`: PASS when a root `.clang-format` exists with content, WARN when it is empty or lives only in a subdirectory, FAIL when missing.
-* **Static analysis:** `clang-tidy` with the committed [`templates/cpp/.clang-tidy`](../../templates/cpp/.clang-tidy) (bugprone, cert, cppcoreguidelines, modernize, performance, portability, readability, with the noisy checks turned off deliberately, not wholesale). `WarningsAsErrors: '*'` in CI via `CMAKE_CXX_CLANG_TIDY` in the `ci` preset or a dedicated `clang-tidy` job over `compile_commands.json`. Suppressions are `// NOLINT(check-name): <reason>`, never a bare `// NOLINT`.
+* **Static analysis:** `clang-tidy` with the committed [`templates/cpp/.clang-tidy`](../../templates/cpp/.clang-tidy) (bugprone, cert, cppcoreguidelines, modernize, performance, portability, readability, with the noisy checks turned off deliberately, not wholesale). `--warnings-as-errors='*'` in CI: the `ci` preset sets `<PROJECT>_ENABLE_CLANG_TIDY=ON`, which `ProjectWarnings.cmake` turns into `CMAKE_CXX_CLANG_TIDY` for the targets the project owns, or a dedicated `clang-tidy` job runs over `compile_commands.json`. Suppressions are `// NOLINT(check-name): <reason>`, never a bare `// NOLINT`.
 * **Line length 100**, 4-space indent, no tabs, braces on the same line (`Attach`), `east const` is **not** used (`const T&`, left-aligned pointers `T* p`).
 * **Includes** are grouped and sorted by clang-format: the matching header first, then project headers, then third-party, then the standard library; `"project/..."` for the project's own headers, `<...>` for everything else.
 * **`auto`** where the type is obvious from the right-hand side or is an iterator/lambda; spell the type out when it is a domain type the reader needs to see.
@@ -160,7 +161,7 @@ The C facade (`bindings/c/`) is the only thing Swift, Kotlin/JNI, C#, Python and
 ### 10.1 Shape of the API
 
 * **`extern "C"`, C99-compatible header.** `bindings/c/<project>_c.h` compiles as C and as C++ (`#ifdef __cplusplus extern "C" {`). It includes only `<stdint.h>`, `<stddef.h>`, `<stdbool.h>` and the project's export header.
-* **Opaque handles.** `typedef struct <prefix>_mesh* <prefix>_mesh_handle;` — the struct is never defined in the header. No C++ class, no STL type, no reference, no `bool` in a struct layout (use `uint8_t`/`int32_t`), no `enum` without an explicit `int32_t` underlying type, no bitfields.
+* **Opaque handles.** `typedef struct <prefix>_mesh* <prefix>_mesh_handle;` — the struct is never defined in the header. No C++ class, no STL type, no reference, no `bool` in a struct layout (use `uint8_t`/`int32_t`), no `enum` as a parameter, return or field type (a status or flag type is `typedef int32_t <prefix>_status` with its values named by an anonymous `enum` — C99 has no fixed underlying type for `enum`, and C23's `enum e : int32_t` does not compile under the header's C99 floor), no bitfields.
 * **Fixed-width scalars only:** `int32_t`, `uint64_t`, `double`, `size_t` for byte counts, `const char*` UTF-8 NUL-terminated for strings. Never `long`, `wchar_t`, `size_t` in a struct that is persisted, or `std::size_t` in the header.
 * **Naming:** `<prefix>_<noun>_<verb>` (`dust3d_mesh_create`, `dust3d_mesh_destroy`, `dust3d_mesh_vertex_count`). The prefix is the project's and never changes.
 * **Symbol visibility:** `-fvisibility=hidden` (`CMAKE_CXX_VISIBILITY_PRESET hidden`, `CMAKE_VISIBILITY_INLINES_HIDDEN ON`) on every target; only functions annotated `<PREFIX>_EXPORT` (`__attribute__((visibility("default")))` / `__declspec(dllexport)`) are visible. Nothing in `src/` is exported.
@@ -180,7 +181,11 @@ The C facade (`bindings/c/`) is the only thing Swift, Kotlin/JNI, C#, Python and
 
 ```c
 /* bindings/c/dust3d_c.h */
-typedef enum dust3d_status : int32_t {
+/* The status type is a fixed-width integer, not an enum: C99 has no way to fix
+   an enum's underlying type (C23 does, but this header compiles as C99). The
+   anonymous enum only names the values. */
+typedef int32_t dust3d_status;
+enum {
     DUST3D_OK = 0,
     DUST3D_ERR_INVALID_HANDLE = 1,
     DUST3D_ERR_INVALID_ARGUMENT = 2,
@@ -188,7 +193,7 @@ typedef enum dust3d_status : int32_t {
     DUST3D_ERR_PARSE = 4,
     DUST3D_ERR_OUT_OF_MEMORY = 5,
     DUST3D_ERR_INTERNAL = 99   /* a C++ exception reached the boundary; see dust3d_last_error */
-} dust3d_status;
+};
 
 /* Copies the last diagnostic for the calling thread into buf (always NUL-terminated,
    truncated to buf_len - 1); returns the length that would have been needed. */
@@ -282,9 +287,10 @@ Sanitizers find the bugs the warnings cannot. They run the **test suite**, not j
 
 * Environment in CI: `ASAN_OPTIONS=detect_leaks=1:strict_string_checks=1:check_initialization_order=1` (`detect_leaks=0` on macOS, where LSan is unavailable), `UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1`, `TSAN_OPTIONS=halt_on_error=1 second_deadlock_stack=1`.
 * ASan and TSan are **separate builds**; they cannot be combined in one binary.
+* Sanitizer lanes build with the §17 hardening flags **off**: `_FORTIFY_SOURCE` and AddressSanitizer interfere, and the lane measures the sanitizer. On MSVC, `/fsanitize=address` is incompatible with `/RTC1` and incremental linking, so the `ci-msvc-asan` preset replaces the default Debug flags (`/MDd /Zi /Ob0 /Od`, `/INCREMENTAL:NO`).
 * Hardened standard library in Debug and sanitizer builds: `-D_GLIBCXX_ASSERTIONS` (libstdc++) or `-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE` (libc++ 18+) so `operator[]` is bounds-checked where the sanitizer cannot see.
 * A finding in a sanitizer lane is a bug, not a flake; suppressions (`-fsanitize-blacklist`, `ASAN_OPTIONS=suppressions=`) name a third-party library and an issue number, never project code.
-* Enforced by `lint-checks/cpp/sanitizer-lane`: PASS when a CI step passes `-fsanitize=`/`/fsanitize=` or selects a sanitizer-named CMake preset that sets it; WARN when a sanitizer preset or option exists but no CI lane runs it; FAIL when CI has no sanitizer lane.
+* Enforced by `lint-checks/cpp/sanitizer-lane`: PASS when a CI step passes `-fsanitize=`/`/fsanitize=`, or selects a CMake preset that (itself or through `inherits`) sets it, **and** CI runs the tests (`ctest`, a `cmake --workflow` whose preset has a test step, `make test`); WARN when the sanitizer build never runs the tests, when CI selects a sanitizer-named preset that sets no flag, or when a sanitizer preset or option exists but no CI lane runs it; FAIL when CI has no sanitizer lane.
 
 ## 14. Cross-Platform Rules
 

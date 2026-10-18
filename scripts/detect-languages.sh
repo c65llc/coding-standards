@@ -176,17 +176,39 @@ detect_in_dir() {
         echo "elixir"
     fi
 
-    # cpp (lang-14): a CMake project, a clang-format config, or C++ sources at
-    # the root or under the conventional source roots. A Swift package or
-    # Android app that carries a C++ core under Sources/ or src/ is detected
-    # here as well, so the C ABI rules reach the project that owns the engine.
-    if [ -f "$dir/CMakeLists.txt" ] || [ -f "$dir/.clang-format" ] || [ -f "$dir/_clang-format" ]; then
+    # cpp (lang-14): a CMake project that enables C++, or C++ sources anywhere
+    # in the first few levels. A Swift package or Android app that carries a
+    # C++ core under Sources/ or src/ is detected here as well, so the C ABI
+    # rules reach the project that owns the engine. A pure-C CMake project
+    # (`project(x LANGUAGES C)`) and a `.clang-format` on its own (clang-format
+    # also formats C, Java, JavaScript, Objective-C and protobuf) are not
+    # evidence: declaring cpp attaches lang-14 and its mandatory checks.
+    if [ -f "$dir/CMakeLists.txt" ] && cmake_enables_cxx "$dir/CMakeLists.txt"; then
         echo "cpp"
-    elif find "$dir" -maxdepth 1 \( -name "*.cpp" -o -name "*.cc" -o -name "*.cxx" -o -name "*.hpp" -o -name "*.hh" -o -name "*.hxx" \) 2>/dev/null | head -1 | grep -q .; then
-        echo "cpp"
-    elif find "$dir/src" "$dir/include" "$dir/lib" "$dir/Sources" -maxdepth 3 \( -name "*.cpp" -o -name "*.cc" -o -name "*.cxx" -o -name "*.hpp" -o -name "*.hh" -o -name "*.hxx" \) 2>/dev/null | head -1 | grep -q .; then
+    elif has_cpp_sources "$dir"; then
         echo "cpp"
     fi
+}
+
+# cmake_enables_cxx <CMakeLists.txt>: true when the project compiles C++ —
+# CXX named anywhere (project(x CXX), LANGUAGES C CXX, enable_language(CXX),
+# CMAKE_CXX_*, cxx_std_NN), or a project() call with no language list, which
+# enables C and CXX by default.
+cmake_enables_cxx() {
+    local f="$1" calls
+    grep -vE '^[[:space:]]*#' "$f" 2>/dev/null | grep -qE '(^|[^[:alnum:]_])(CXX|cxx_std_[0-9]+)([^[:alnum:]_]|$)|CMAKE_CXX_' && return 0
+    calls=$(grep -vE '^[[:space:]]*#' "$f" 2>/dev/null | tr '\n' ' ' | grep -oE 'project[[:space:]]*\([^)]*\)')
+    [ -n "$calls" ] || return 1
+    printf '%s\n' "$calls" | grep -qvE '(^|[[:space:](])(LANGUAGES|C|Fortran|ASM[A-Za-z_-]*|CUDA|HIP|ISPC|OBJC|OBJCXX|CSharp|Swift)([[:space:])]|$)'
+}
+
+# has_cpp_sources <dir>: true when a C++ source or header lives within four
+# levels of <dir>, outside hidden directories, package caches, build output
+# and vendored code (third_party/ is not the project's own C++).
+has_cpp_sources() {
+    find "$1" -mindepth 1 -maxdepth 4 \
+        \( -type d \( -name '.*' -o -name node_modules -o -name build -o -name third_party -o -name vendor -o -name external -o -name DerivedData -o -name target \) -prune \) -o \
+        -type f \( -name "*.cpp" -o -name "*.cc" -o -name "*.cxx" -o -name "*.hpp" -o -name "*.hh" -o -name "*.hxx" \) -print 2>/dev/null | head -1 | grep -q .
 }
 
 # skipped <root-relative dir>: true when it is, or lies under, a --skip entry.

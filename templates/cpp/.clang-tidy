@@ -4,8 +4,10 @@
 # clang-tidy release adds coverage instead of silently losing it.
 #
 # Locally: findings are warnings. In CI: the `ci` preset sets
-# `-DCMAKE_CXX_CLANG_TIDY=clang-tidy` (or a dedicated run-clang-tidy job over
-# compile_commands.json) and CI passes `--warnings-as-errors='*'`.
+# `PROJECT_ENABLE_CLANG_TIDY=ON`, and ProjectWarnings.cmake turns that into
+# `CMAKE_CXX_CLANG_TIDY=clang-tidy;--warnings-as-errors=*` for every target
+# the project owns (or run a dedicated run-clang-tidy job over
+# compile_commands.json with the same flag).
 #
 # Suppressions are `// NOLINT(check-name): <reason>`; a bare `// NOLINT` is
 # rejected in review.

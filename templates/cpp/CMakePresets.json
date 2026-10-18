@@ -8,8 +8,6 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
-        "CMAKE_CXX_STANDARD": "20",
-        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
         "CMAKE_CXX_EXTENSIONS": "OFF",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_CXX_VISIBILITY_PRESET": "hidden",
@@ -29,24 +27,26 @@
     },
     {
       "name": "ci",
-      "displayName": "CI (RelWithDebInfo, warnings as errors, clang-tidy, coverage)",
+      "displayName": "CI (RelWithDebInfo, warnings as errors, clang-tidy, coverage, hardening)",
       "inherits": "base",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_COMPILE_WARNING_AS_ERROR": "ON",
         "PROJECT_WARNINGS_AS_ERRORS": "ON",
         "PROJECT_ENABLE_COVERAGE": "ON",
-        "PROJECT_ENABLE_CLANG_TIDY": "ON"
+        "PROJECT_ENABLE_CLANG_TIDY": "ON",
+        "PROJECT_HARDENING_FLAGS": "ON"
       }
     },
     {
       "name": "ci-asan-ubsan",
-      "displayName": "CI sanitizer lane: AddressSanitizer + UndefinedBehaviorSanitizer",
+      "displayName": "CI sanitizer lane: AddressSanitizer + UndefinedBehaviorSanitizer (hardening off: FORTIFY and ASan interfere)",
       "inherits": "ci",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "PROJECT_ENABLE_COVERAGE": "OFF",
         "PROJECT_ENABLE_CLANG_TIDY": "OFF",
+        "PROJECT_HARDENING_FLAGS": "OFF",
         "PROJECT_HARDENED_STDLIB": "ON",
         "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all",
         "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined",
@@ -66,6 +66,7 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "PROJECT_ENABLE_COVERAGE": "OFF",
         "PROJECT_ENABLE_CLANG_TIDY": "OFF",
+        "PROJECT_HARDENING_FLAGS": "OFF",
         "CMAKE_CXX_FLAGS": "-fsanitize=thread -fno-omit-frame-pointer",
         "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=thread",
         "CMAKE_SHARED_LINKER_FLAGS": "-fsanitize=thread"
@@ -77,14 +78,18 @@
     },
     {
       "name": "ci-msvc-asan",
-      "displayName": "CI sanitizer lane: MSVC AddressSanitizer",
+      "displayName": "CI sanitizer lane: MSVC AddressSanitizer (Debug without /RTC1 and incremental linking, which ASan does not support)",
       "inherits": "ci",
       "generator": "Visual Studio 17 2022",
       "architecture": "x64",
       "cacheVariables": {
         "PROJECT_ENABLE_COVERAGE": "OFF",
         "PROJECT_ENABLE_CLANG_TIDY": "OFF",
-        "CMAKE_CXX_FLAGS": "/fsanitize=address /Zi"
+        "PROJECT_HARDENING_FLAGS": "OFF",
+        "CMAKE_CXX_FLAGS": "/fsanitize=address",
+        "CMAKE_CXX_FLAGS_DEBUG": "/MDd /Zi /Ob0 /Od",
+        "CMAKE_EXE_LINKER_FLAGS_DEBUG": "/debug /INCREMENTAL:NO",
+        "CMAKE_SHARED_LINKER_FLAGS_DEBUG": "/debug /INCREMENTAL:NO"
       },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
     },
