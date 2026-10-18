@@ -193,9 +193,11 @@ signal high.
   review.
 
 Ship-with-standards template: [`templates/.gitleaks.toml.example`](../../templates/.gitleaks.toml.example)
-(Gitleaks ≥ 8.25: one global shape for redaction output; path-AND-shape blocks
-for naming-convention fakes, repeated-character padding, UUID fixtures and
-fixture stopwords; no path excludes, with a commented per-artifact example).
+(Gitleaks ≥ 8.25: one global shape for redaction output; a path-AND-shape
+block for naming-convention fakes, repeated-character padding and UUID
+fixtures; no stopwords — a substring match would drop a real
+`prod-example-…` secret — and no path excludes, with a commented per-artifact
+example).
 TruffleHog
 takes only path excludes (`.trufflehog-ignore`), so its per-finding
 suppression is the inline `trufflehog:ignore` marker. The scanner workflow
@@ -347,8 +349,11 @@ override path around it.
    actor, and requires that actor to be listed in the `DEP_AGE_APPROVERS`
    repository variable (the security owner and team leads), to differ from
    the PR author, and to be the handle named in `Approved-by:`. The approver
-   applies the label themselves — that act is the approval; a body block the
-   author wrote naming someone who never touched the PR fails.
+   applies the label themselves — that act is the approval, and it must
+   postdate the PR's last commit (a push after approval can change which
+   versions are young, so the approver removes and re-applies the label for
+   the new head); a body block the author wrote naming someone who never
+   touched the PR fails.
 3. **Merging opens the follow-up.** A second, trusted workflow runs when the
    PR is merged (`pull_request_target` on `closed`, base-repository context,
    nothing from the PR checked out or executed) and creates an issue
@@ -459,9 +464,15 @@ jobs:
           printf '%s' "$LABELS_JSON" | jq -e 'index("dep-age-override") != null' >/dev/null \
             || { echo "age gate failed; no dep-age-override label"; exit 1; }
           # … and the labels array does not say who applied it; the timeline does.
+          # The approval must POSTDATE the PR's last commit: a push after the
+          # label can change which versions the checker rejects, so it needs a
+          # fresh label event (remove and re-apply). Body-only edits cannot
+          # change the offender set — that comes from the lockfile diff.
+          last_commit=$(gh pr view "$PR" --repo "$REPO" --json commits --jq '.commits | last | .committedDate') \
+            || { echo "could not read the PR's commits"; exit 1; }
           actor=$(gh api "repos/$REPO/issues/$PR/timeline" --paginate --slurp \
-            --jq '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override")] | last | .actor.login // empty')
-          [ -n "$actor" ] || { echo "dep-age-override label has no labeled event"; exit 1; }
+            | jq -r --arg since "$last_commit" '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override" and .created_at > $since)] | last | .actor.login // empty')
+          [ -n "$actor" ] || { echo "no dep-age-override label event after the last commit ($last_commit) — an approver must re-apply the label for the current head"; exit 1; }
           case ",$APPROVERS," in *,"$actor",*) ;; *) echo "dep-age-override was applied by @$actor, who is not in DEP_AGE_APPROVERS"; exit 1 ;; esac
           [ "$actor" != "$AUTHOR" ] || { echo "the PR author cannot approve their own override"; exit 1; }
           # The body must cover EVERY offender the checker named — one

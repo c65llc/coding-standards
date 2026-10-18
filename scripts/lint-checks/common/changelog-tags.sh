@@ -232,6 +232,14 @@ manifest_version_pyproject() {
     /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]"'"'"']/, "", sect); next }
     (sect == "[project]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
     (sect == "" && /^[[:space:]]*project\.version[[:space:]]*=/) { if (proj == "") proj = strval($0); next }
+    # Inline table: `project = { name = "demo", version = "1.2.3" }`.
+    sect == "" && /^[[:space:]]*project[[:space:]]*=[[:space:]]*\{/ {
+        line = $0
+        if (match(line, /[{,][[:space:]]*"?version"?[[:space:]]*=[[:space:]]*("[^"]*"|'"'"'[^'"'"']*'"'"')/)) {
+            if (proj == "") proj = strval(substr(line, RSTART, RLENGTH))
+        }
+        next
+    }
     (sect == "[tool.poetry]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
     (sect == "" && /^[[:space:]]*tool\.poetry\.version[[:space:]]*=/) ||
     (sect == "[tool]" && /^[[:space:]]*poetry\.version[[:space:]]*=/) { if (poetry == "") poetry = strval($0); next }
@@ -406,6 +414,9 @@ release-1.0.2'
     printf '["project"]\nname = "p"\nversion = "2.0.2"\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "2.0.2" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed a quoted table name: '$got'"; return 1; }
+    printf 'project = { name = "demo", requires-python = ">=3.12", version = "2.0.3" }\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "2.0.3" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed an inline project table: '$got'"; return 1; }
     printf 'project.name = "p"\nproject.version = "4.5.8"\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "4.5.8" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed the dotted key project.version: '$got'"; return 1; }
@@ -557,7 +568,10 @@ if [ "$IS_SHALLOW" = true ]; then
     if remote_raw=$(git -C "$PROJECT_ROOT" ls-remote --tags --refs origin 2>/dev/null); then
         remote_tags=$(printf '%s\n' "$remote_raw" | sed -n 's|.*refs/tags/||p' | sort)
         local_tags=$(printf '%s\n' "$TAGS" | grep . | sort || true)
-        [ "$remote_tags" = "$local_tags" ] && IS_SHALLOW=false
+        # Complete when every REMOTE tag is present locally (remote ⊆ local);
+        # a local-only scratch tag cannot hide a missing remote one.
+        missing_remote=$(comm -13 <(printf '%s\n' "$local_tags") <(printf '%s\n' "$remote_tags") | grep -c . || true)
+        [ "$missing_remote" -eq 0 ] && IS_SHALLOW=false
     fi
 elif [ "$(git -C "$PROJECT_ROOT" config --get remote.origin.tagOpt 2>/dev/null)" = "--no-tags" ]; then
     # A FULL-history clone made with `git clone --no-tags` persists
@@ -568,7 +582,8 @@ elif [ "$(git -C "$PROJECT_ROOT" config --get remote.origin.tagOpt 2>/dev/null)"
     if remote_raw=$(git -C "$PROJECT_ROOT" ls-remote --tags --refs origin 2>/dev/null); then
         remote_tags=$(printf '%s\n' "$remote_raw" | sed -n 's|.*refs/tags/||p' | sort)
         local_tags=$(printf '%s\n' "$TAGS" | grep . | sort || true)
-        [ "$remote_tags" = "$local_tags" ] || IS_SHALLOW=true
+        missing_remote=$(comm -13 <(printf '%s\n' "$local_tags") <(printf '%s\n' "$remote_tags") | grep -c . || true)
+        [ "$missing_remote" -eq 0 ] || IS_SHALLOW=true
     else
         IS_SHALLOW=true
     fi

@@ -66,8 +66,7 @@ regexes = [
 # ---------------------------------------------------------------------------
 # B. Fixture path AND shape — both conditions must hold (`condition = "AND"`
 #    spans every condition TYPE a block declares: the path must match AND one
-#    of the regexes must match. Stopwords sit in a separate block so a UUID
-#    need not also contain a word).
+#    of the regexes must match).
 # ---------------------------------------------------------------------------
 [[allowlists]]
 description = "Fixture-shaped values in test paths only (sec-01 §3)"
@@ -92,24 +91,12 @@ regexes = [
   '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$''',
 ]
 
-[[allowlists]]
-description = "Fixture stopwords in test paths only (sec-01 §3)"
-# Stopwords are a case-insensitive SUBSTRING match on the secret, so a real
-# credential such as `prod-example-customer-key` would also contain one.
-# Confined to test paths, a token that contains one is a fixture by
-# construction; elsewhere it is still reported.
-condition = "AND"
-paths = [
-  '''(^|/)(tests?|__tests__|spec|fixtures)/''',
-  '''(_test|\.test|\.spec|_spec)\.[A-Za-z0-9]+$''',
-]
-stopwords = [
-  "example",
-  "fixture",
-  "placeholder",
-  "not-a-real",
-  "redacted",
-]
+# No `stopwords` block, on purpose. Stopwords are a case-insensitive SUBSTRING
+# match on the secret, so a real credential such as `prod-example-customer-key`
+# pasted into a test file would be dropped for containing "example" — which
+# contradicts the rule that a real secret in a test file is still caught. The
+# anchored naming-convention regex above (`^(test|fake|example|…)-…$`) covers
+# the fixture convention precisely; anything else gets an inline marker.
 
 # ---------------------------------------------------------------------------
 # C. Path excludes — the LAST resort, and this template ships NONE. A path
