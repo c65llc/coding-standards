@@ -343,11 +343,14 @@ override path around it.
    PR is merged (`pull_request_target` on `closed`, base-repository context,
    nothing from the PR checked out or executed) and creates an issue
    `dep-age follow-up: <package>@<version>`, labelled `dep-age-follow-up`,
-   assigned to the approver, with a `Due:` line 24 h after `merged_at`, and a
-   stable marker `dep-age-follow-up-for-pr-<n>` so a rerun finds the existing
-   issue instead of opening a duplicate. It closes only when a reviewer
-   confirms the version has passed 72 h with no yank or advisory, or the
-   dependency was rolled back. The split is deliberate: the gate's
+   assigned to the approver, with two checkpoints computed from `merged_at`
+   and a stable marker `dep-age-follow-up-for-pr-<n>` so a rerun finds the
+   existing issue instead of opening a duplicate. `Due:` (24 h) is the review:
+   the assignee comments that the advisory still stands and the version shows
+   no yank or new advisory so far. `Matures:` (72 h) is the close condition:
+   the version has aged past the gate with no yank or advisory, or it was
+   rolled back. Two dates because a one-hour-old emergency pin cannot be
+   confirmed mature at the 24 h mark. The split is deliberate: the gate's
    `pull_request` run holds a read-only token on Dependabot and fork PRs (no
    `permissions:` grant changes that for forks), and the 24 h clock must not
    start while the PR is still open. The job declares `issues: write` and
@@ -362,9 +365,10 @@ override path around it.
    transitive advisory that would otherwise wedge every merge; it does not
    waive the age gate for the pin that fixes it. The pin waits 72 h or goes
    through the label.
-5. **The record is the label, the body block and the issue.** The nightly
-   audit job lists open `dep-age-follow-up` issues whose `Due:` line has
-   passed as failures, so a forgotten follow-up surfaces on its own.
+5. **The record is the label, the body block and the issue.** A nightly
+   audit (third excerpt below) finds open follow-ups by their marker and
+   fails on one that passed `Due:` with no review comment, or that is still
+   open a day past `Matures:`, so a forgotten follow-up surfaces on its own.
 
 ```yaml
 # .github/workflows/dep-age-gate.yml (excerpt) — the gate, on the PR.
@@ -427,8 +431,9 @@ jobs:
           case ",$APPROVERS," in *,"$actor",*) ;; *) echo "dep-age-override was applied by @$actor, who is not in DEP_AGE_APPROVERS"; exit 1 ;; esac
           [ "$actor" != "$AUTHOR" ] || { echo "the PR author cannot approve their own override"; exit 1; }
           subject=$(printf '%s\n' "$BODY" | sed -n 's/^Dep-age override:[[:space:]]*//p' | head -1)
-          printf '%s\n' "$subject" | grep -q '[^[:space:]]@[^[:space:]].*[^[:space:]]' \
-            || { echo "PR body needs 'Dep-age override: <package>@<version> — <advisory>' with a real subject and justification"; exit 1; }
+          # `<package>@<version>` token, then whitespace, then the advisory / justification text.
+          printf '%s\n' "$subject" | grep -Eq '^[^[:space:]@]+@[^[:space:]]+[[:space:]]+[^[:space:]]' \
+            || { echo "PR body needs 'Dep-age override: <package>@<version> — <advisory>': a version alone is not a justification"; exit 1; }
           approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
           [ "$approver" = "$actor" ] || { echo "Approved-by: @$approver does not match the label's actor @$actor"; exit 1; }
           echo "override honored for $subject (approved by @$actor); the follow-up issue opens at merge"
@@ -461,18 +466,54 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           marker="dep-age-follow-up-for-pr-$PR"
-          existing=$(gh issue list --repo "$REPO" --label dep-age-follow-up --state all \
+          # Search by the marker alone (any state, any label): an issue whose
+          # label was removed in triage must still count as existing.
+          existing=$(gh issue list --repo "$REPO" --state all \
             --search "$marker in:body" --json number --jq 'length')
           [ "$existing" -eq 0 ] || { echo "follow-up for #$PR already exists (marker $marker)"; exit 0; }
           approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
           subject=$(printf '%s\n' "$BODY" | sed -n 's/^Dep-age override:[[:space:]]*//p' | head -1)
-          due=$(date -u -d "$MERGED_AT + 24 hours" +%Y-%m-%dT%H:%MZ)   # GNU date (ubuntu runner)
+          due=$(date -u -d "$MERGED_AT + 24 hours" +%Y-%m-%dT%H:%MZ)      # GNU date (ubuntu runner)
+          matures=$(date -u -d "$MERGED_AT + 72 hours" +%Y-%m-%dT%H:%MZ)
           # `gh issue create --label` only applies an existing label; --force makes this idempotent.
           gh label create dep-age-follow-up --repo "$REPO" --color D93F0B --force \
-            --description "Dependency age-gate override awaiting its 24 h follow-up (sec-01 §5)"
+            --description "Dependency age-gate override awaiting its follow-up (sec-01 §5)"
           gh issue create --repo "$REPO" --label dep-age-follow-up --assignee "$approver" \
             --title "dep-age follow-up: $subject" \
-            --body "$(printf '%s\n\nDue: %s (24 h after merge at %s).\nConfirm no yank or advisory after 72 h, or roll back. PR: %s\n' "$marker" "$due" "$MERGED_AT" "$PR_URL")"
+            --body "$(printf '%s\n\nDue: %s — 24 h review: comment here that the advisory still stands and the version shows no yank or new advisory so far.\nMatures: %s — 72 h after merge at %s: confirm no yank or advisory and close, or roll back and close.\nPR: %s\n' "$marker" "$due" "$matures" "$MERGED_AT" "$PR_URL")"
+```
+
+```yaml
+# .github/workflows/dep-age-audit.yml (excerpt) — the nightly audit.
+# Red when a follow-up missed its 24 h review (no comment by Due:) or is still
+# open a day past Matures:. Finds issues by marker, not label, so a label
+# removed in triage cannot hide one.
+on:
+  schedule:
+    - cron: "17 4 * * *"
+jobs:
+  overdue-follow-ups:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - env:
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          now=$(date -u +%Y-%m-%dT%H:%MZ); rc=0
+          while IFS=$'\t' read -r number comments body; do
+            due=$(printf '%s' "$body" | sed -n 's/.*Due: \([0-9T:Z-]*\).*/\1/p' | head -1)
+            matures=$(printf '%s' "$body" | sed -n 's/.*Matures: \([0-9T:Z-]*\).*/\1/p' | head -1)
+            grace=$(date -u -d "${matures/Z/:00Z} + 24 hours" +%Y-%m-%dT%H:%MZ 2>/dev/null || echo "$matures")
+            if [ -n "$due" ] && [ ! "$due" \> "$now" ] && [ "$comments" -eq 0 ]; then
+              echo "::error::#$number missed its 24 h review (due $due, no comment)"; rc=1; fi
+            if [ -n "$grace" ] && [ ! "$grace" \> "$now" ]; then
+              echo "::error::#$number is still open a day past maturity ($matures)"; rc=1; fi
+          done < <(gh issue list --repo "$REPO" --state open --search 'dep-age-follow-up-for-pr- in:body' \
+                     --json number,comments,body --jq '.[] | [.number, (.comments | length), (.body | gsub("\n"; " "))] | @tsv')
+          exit "$rc"
 ```
 
 | Language | Registry / Publish Date Source |

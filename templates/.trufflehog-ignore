@@ -16,23 +16,20 @@
 # shape regex to .gitleaks.toml (see templates/.gitleaks.toml.example and
 # sec-01 §3 "Scanner False Positives on Test Fixtures").
 #
-# Common all-noise paths worth excluding (uncomment/add as they apply to your
-# repo — regexes, so `\.` escapes a literal dot):
+# This file ships EMPTY on purpose. A path exclude drops every finding in the
+# file whatever its value, so it is only right for a file that cannot carry a
+# credential at all — and the usual candidates can:
+#   - lockfiles (`package-lock.json`, `yarn.lock`, `Cargo.lock`, …) carry the
+#     registry URLs the package manager wrote, token and all, when someone
+#     installed from a private URL; their hash noise is for the detector's own
+#     verification/entropy filters, not a path exclude;
+#   - committed bundles (`dist/`, `*.min.js`) are where a build-time-injected
+#     credential lands;
+#   - `tests/`, `__tests__/`, `fixtures/`, `examples/` hold the fixtures the
+#     inline marker and the Gitleaks shape allowlist exist for.
 #
-# Lockfiles (hash checksums trip generic detectors):
-# (^|/)pnpm-lock\.yaml$
-# (^|/)package-lock\.json$
-# (^|/)yarn\.lock$
-# (^|/)Cargo\.lock$
-# (^|/)poetry\.lock$
+# Exclude a specific artifact only when it is provably credential-free, and
+# name that artifact, never the tree (regexes, so `\.` escapes a dot):
 #
-# Checksums / SBOM / minified vendor bundles:
-# \.checksums$
-# (^|/)dist/
-# \.min\.(js|css)$
-#
-# (No `tests/`, `__tests__/`, `fixtures/` or `examples/` entry on purpose:
-# fixture noise is shape-shaped, not path-shaped — see the note above.)
-#
-# Binary/asset data that base64-decodes to non-secrets (fonts, image URIs):
-# \.(woff2?|ttf|eot|png|jpe?g|gif|ico)$
+# ^public/vendor/highlight\.min\.js$          # upstream build, no config injected
+# ^assets/fonts/[^/]+\.(woff2?|ttf|eot)$      # binary font files in one directory

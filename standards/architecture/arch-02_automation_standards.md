@@ -301,3 +301,23 @@ SWIFT_BUILD_FLAGS += --build-system native
 ```
 
 `make verify` (§2) runs a `check-workarounds` step that greps for `workaround-expiry:` markers, evaluates each condition (the date is in the past, or the installed tool reports a version at or above the threshold) and fails naming the marker and its `TODO(#issue)`. A marker with no `TODO(#issue)` within the two preceding lines fails outright: an expiry with no owner is not tracked. A workaround that is still needed when it expires gets a *new* expiry and a comment on the issue saying why — the re-decision is the point, not the deadline.
+
+The checker is **consumer-supplied** (this repository ships the marker grammar, not the script, because the version half depends on which tools the project runs and how each reports its version). Its contract: exit non-zero when any marker's condition holds or any marker lacks a `TODO(#issue)` within two lines above it, naming each offender with file, line and the TODO text. The date half is a few lines of shell and is enough to start with:
+
+```bash
+# scripts/check-workarounds.sh (date markers only; add `version <tool> <min>` per tool)
+today=$(date -u +%Y-%m-%d)
+rc=0
+# `done < <(…)` keeps the loop in this shell so rc survives; a `grep | while`
+# pipeline would run the loop in a subshell and always exit 0.
+while IFS=: read -r file line text; do
+  due=$(printf '%s' "$text" | sed -n 's/.*workaround-expiry: date \([0-9][0-9]*-[0-9][0-9]-[0-9][0-9]\).*/\1/p')
+  todo=$(sed -n "$((line > 2 ? line - 2 : 1)),${line}p" "$file" | grep -o 'TODO(#[0-9]*)' | head -1)
+  [ -n "$todo" ] || { echo "FAIL $file:$line workaround-expiry without TODO(#issue)"; rc=1; }
+  [ -n "$due" ] || { echo "FAIL $file:$line malformed date marker (want YYYY-MM-DD)"; rc=1; continue; }
+  if [ ! "$due" \> "$today" ]; then echo "FAIL $file:$line workaround expired $due ($todo)"; rc=1; fi
+done < <(git grep -n 'workaround-expiry: date ' -- . ':!scripts/check-workarounds.sh')
+exit "$rc"
+```
+
+A `version <tool> <min>` marker compares `<tool> --version` (normalised to `major.minor.patch`) against `<min>` with the same numeric component ordering the changelog-tags check uses; a tool that is not installed in CI is reported as "cannot evaluate", never as passed.

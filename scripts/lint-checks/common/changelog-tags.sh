@@ -57,7 +57,8 @@ extract_versions() {
         # four would be a code block, so at most three are stripped.
         h = $0; sub(/^ /, "", h); sub(/^ /, "", h); sub(/^ /, "", h)
     }
-    h ~ /^## / {
+    h ~ /^##[[:blank:]]/ {
+        # A space or a tab may follow the `##` (CommonMark).
         s = substr(h, 4)
         sub(/^[[:space:]]+/, "", s)
         sub(/^\[/, "", s)
@@ -141,7 +142,8 @@ manifest_version_cargo_toml() {
     (sect == "[package]" && /^[[:space:]]*version[[:space:]]*=/) ||
     (sect == "" && /^[[:space:]]*package\.version[[:space:]]*=/) { if (pkg == "") pkg = strval($0); next }
     (sect == "[workspace.package]" && /^[[:space:]]*version[[:space:]]*=/) ||
-    (sect == "[workspace]" && /^[[:space:]]*package\.version[[:space:]]*=/) { if (ws == "") ws = strval($0); next }
+    (sect == "[workspace]" && /^[[:space:]]*package\.version[[:space:]]*=/) ||
+    (sect == "" && /^[[:space:]]*workspace\.package\.version[[:space:]]*=/) { if (ws == "") ws = strval($0); next }
     END {
         if (pkg != "" && !inherits) print pkg
         else if (ws != "") print ws
@@ -219,6 +221,8 @@ self_test() {
 
    ## [1.7.0] - 2026-02-01
 
+##	[1.6.0] - 2026-01-15
+
     ## [0.0.1] - code block, not a heading
 
 ## Not a version
@@ -226,7 +230,7 @@ self_test() {
 ## [UNRELEASED]
 '
     got=$(printf '%s\n' "$fixture" | extract_versions | tr '\n' ' ')
-    want='1.10.0 1.9.1 1.9.0 2.0.0-rc.1 1.8.0 1.7.0 '
+    want='1.10.0 1.9.1 1.9.0 2.0.0-rc.1 1.8.0 1.7.0 1.6.0 '
     [ "$got" = "$want" ] || { echo "heading parser produced '$got' (expected '$want')"; return 1; }
     got=$(printf '## [Unreleased]\n## [unreleased] - soon\n## 1.2\n## 1.2.3.4\n' | extract_versions)
     [ -z "$got" ] || { echo "heading parser accepted a non-release heading: $got"; return 1; }
@@ -288,6 +292,9 @@ release-1.0.2'
     printf '[workspace.package]\nversion = "2.0.0"\n\n[package]\nname = "root"\nversion.workspace = true\n' > "$tmp/Cargo.toml"
     got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
     [ "$got" = "2.0.0" ] || { rm -rf "$tmp"; echo "Cargo.toml reader ignored version.workspace = true inheritance: '$got'"; return 1; }
+    printf 'workspace.members = ["a"]\nworkspace.package.version = "2.0.1"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "2.0.1" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed the fully dotted workspace.package.version: '$got'"; return 1; }
     printf 'project.name = "p"\nproject.version = "4.5.8"\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "4.5.8" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed the dotted key project.version: '$got'"; return 1; }
