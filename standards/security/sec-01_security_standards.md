@@ -312,69 +312,119 @@ main", and no record of who agreed or when the pin was re-examined.
 
 1. **Label *and* body block, both required.** The age-gate job honors a failure
    only when the PR carries the `dep-age-override` label **and** the PR body
-   contains a `Dep-age override:` block naming the advisory and the approver
-   (`Approved-by: @security-owner`). Either half alone keeps the gate red.
-   Nobody sets `continue-on-error`, deletes the job, or merges on red.
-2. **The label is privileged.** Only the security owner or team leads may apply
-   it (a label-permission bot or a `labeled`-event check on the actor); a label
-   the PR author applied to their own PR does not count.
-3. **The gate opens the follow-up.** When the override is honored, the job
-   creates an issue `dep-age follow-up: <package>@<version>`, labelled
-   `dep-age-follow-up`, assigned to the approver, due 24 h later, and links it
-   from the PR. It closes only when a reviewer confirms the version has passed
-   72 h with no yank or advisory, or the dependency was rolled back. Two
-   things make this step work on the day it is needed: the job declares
-   `permissions: issues: write` (the default `GITHUB_TOKEN` on a Dependabot or
-   fork `pull_request` run is read-only, and `gh issue create` fails with
-   "Resource not accessible by integration"), and the `dep-age-follow-up`
-   label exists (`gh issue create --label` only applies an existing label).
-   Provision both labels once (`gh label create dep-age-override`,
-   `gh label create dep-age-follow-up`) and let the step re-assert the
-   follow-up label idempotently, as the excerpt does.
+   contains a `Dep-age override: <package>@<version> — <advisory>` block with
+   an `Approved-by: @security-owner` line. Either half alone keeps the gate
+   red. Nobody sets `continue-on-error`, deletes the job, or merges on red.
+2. **The label is privileged, and the gate checks who applied it.** Anyone
+   with triage access can apply a label, so the label's presence proves
+   nothing; the gate reads the PR timeline for the `labeled` event, takes its
+   actor, and requires that actor to be listed in the `DEP_AGE_APPROVERS`
+   repository variable (the security owner and team leads), to differ from
+   the PR author, and to be the handle named in `Approved-by:`. The approver
+   applies the label themselves — that act is the approval; a body block the
+   author wrote naming someone who never touched the PR fails.
+3. **Merging opens the follow-up.** A second, trusted workflow runs when the
+   PR is merged (`pull_request_target` on `closed`, base-repository context,
+   nothing from the PR checked out or executed) and creates an issue
+   `dep-age follow-up: <package>@<version>`, labelled `dep-age-follow-up`,
+   assigned to the approver, with a `Due:` line 24 h after `merged_at`, and a
+   stable marker `dep-age-follow-up-for-pr-<n>` so a rerun finds the existing
+   issue instead of opening a duplicate. It closes only when a reviewer
+   confirms the version has passed 72 h with no yank or advisory, or the
+   dependency was rolled back. The split is deliberate: the gate's
+   `pull_request` run holds a read-only token on Dependabot and fork PRs (no
+   `permissions:` grant changes that for forks), and the 24 h clock must not
+   start while the PR is still open. The job declares `issues: write` and
+   re-asserts the `dep-age-follow-up` label with `gh label create --force`
+   before `gh issue create`, which only applies an existing label.
 4. **A red advisory lane is not an override.** Moving the CVE audit from the
    required gate to a nightly job (arch-08 §2) is the right response to a
    transitive advisory that would otherwise wedge every merge; it does not
    waive the age gate for the pin that fixes it. The pin waits 72 h or goes
    through the label.
 5. **The record is the label, the body block and the issue.** The nightly
-   audit job lists open `dep-age-follow-up` issues older than 24 h as
-   failures, so a forgotten follow-up surfaces on its own.
+   audit job lists open `dep-age-follow-up` issues whose `Due:` line has
+   passed as failures, so a forgotten follow-up surfaces on its own.
 
 ```yaml
-# .github/workflows/dep-age-gate.yml (excerpt) — the override path
+# .github/workflows/dep-age-gate.yml (excerpt) — the gate, on the PR.
+# Read-only on purpose: a Dependabot or fork pull_request run never gets a
+# write token, and this job does not need one.
+on:
+  pull_request:
 jobs:
   dep-age:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read
-      # Dependabot- and fork-triggered pull_request runs get a read-only
-      # GITHUB_TOKEN by default; the follow-up issue needs this grant.
-      issues: write
     steps:
       - uses: actions/checkout@<pinned-sha> # vN
       - name: Dependency age gate (72 h)
         id: age
         run: ./scripts/dep-age-check.sh --max-age-hours 72 --report age-report.json
         continue-on-error: true
-      - name: Honor dep-age-override (label + body block, both required)
+      - name: Honor dep-age-override (privileged label + body block, both required)
         if: steps.age.outcome == 'failure'
         env:
-          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           BODY: ${{ github.event.pull_request.body }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          APPROVERS: ${{ vars.DEP_AGE_APPROVERS }}  # repository variable: comma-separated handles
           GH_TOKEN: ${{ github.token }}
         run: |
-          case ",$LABELS," in *,dep-age-override,*) ;; *) echo "age gate failed; no dep-age-override label"; exit 1 ;; esac
+          # The labels array does not say who applied a label; the timeline does.
+          actor=$(gh api "repos/$REPO/issues/$PR/timeline" --paginate --slurp \
+            --jq '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override")] | last | .actor.login // empty')
+          [ -n "$actor" ] || { echo "age gate failed; no dep-age-override label"; exit 1; }
+          case ",$APPROVERS," in *,"$actor",*) ;; *) echo "dep-age-override was applied by @$actor, who is not in DEP_AGE_APPROVERS"; exit 1 ;; esac
+          [ "$actor" != "$AUTHOR" ] || { echo "the PR author cannot approve their own override"; exit 1; }
           printf '%s\n' "$BODY" | grep -q '^Dep-age override:' || { echo "label present, PR body has no 'Dep-age override:' block"; exit 1; }
           approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
-          [ -n "$approver" ] || { echo "override block names no approver (Approved-by: @handle)"; exit 1; }
+          [ "$approver" = "$actor" ] || { echo "Approved-by: @$approver does not match the label's actor @$actor"; exit 1; }
+          echo "override honored (approved by @$actor); the follow-up issue opens at merge"
+```
+
+```yaml
+# .github/workflows/dep-age-follow-up.yml (excerpt) — the follow-up, at merge.
+# pull_request_target runs in the base repository's context with a
+# write-capable token even for a fork PR. That is safe here only because the
+# job checks out nothing and executes nothing from the PR: it reads event
+# metadata and calls the API.
+on:
+  pull_request_target:
+    types: [closed]
+jobs:
+  follow-up:
+    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'dep-age-override')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Open the 24 h follow-up (idempotent)
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          PR: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          MERGED_AT: ${{ github.event.pull_request.merged_at }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          marker="dep-age-follow-up-for-pr-$PR"
+          existing=$(gh issue list --repo "$REPO" --label dep-age-follow-up --state all \
+            --search "$marker in:body" --json number --jq 'length')
+          [ "$existing" -eq 0 ] || { echo "follow-up for #$PR already exists (marker $marker)"; exit 0; }
+          approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
+          subject=$(printf '%s\n' "$BODY" | sed -n 's/^Dep-age override:[[:space:]]*//p' | head -1)
+          due=$(date -u -d "$MERGED_AT + 24 hours" +%Y-%m-%dT%H:%MZ)   # GNU date (ubuntu runner)
           # `gh issue create --label` only applies an existing label; --force makes this idempotent.
-          gh label create dep-age-follow-up --color D93F0B --force \
+          gh label create dep-age-follow-up --repo "$REPO" --color D93F0B --force \
             --description "Dependency age-gate override awaiting its 24 h follow-up (sec-01 §5)"
-          gh issue create --label dep-age-follow-up --assignee "$approver" \
-            --title "dep-age follow-up: $(jq -r '.youngest' age-report.json)" \
-            --body "Review within 24 h of merge: confirm no yank/advisory after 72 h, or roll back. PR: $PR_URL"
+          gh issue create --repo "$REPO" --label dep-age-follow-up --assignee "$approver" \
+            --title "dep-age follow-up: $subject" \
+            --body "$(printf '%s\n\nDue: %s (24 h after merge at %s).\nConfirm no yank or advisory after 72 h, or roll back. PR: %s\n' "$marker" "$due" "$MERGED_AT" "$PR_URL")"
 ```
 
 | Language | Registry / Publish Date Source |

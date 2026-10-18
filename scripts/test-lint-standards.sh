@@ -3005,6 +3005,16 @@ out_ok=$(bash "$CHECKS/common/changelog-tags.sh" "$ct5b" 2>/dev/null || true)
 if echo "$out" | grep -q '^WARN changelog-tags.*package.json.*0.1.3.*0.1.5' && echo "$out_ok" | grep -q '^PASS changelog-tags'; then pass; else
     fail "drift: $out | ok: $out_ok"; fi
 
+echo -n "Test 207b: changelog-tags checks every root manifest (a current package.json does not hide a stale Cargo.toml)... "
+ct5c=$(make_project "ct-manifest-polyglot")
+write_changelog "$ct5c/CHANGELOG.md" "## [0.1.5] - 2026-06-01"
+tag_all "$ct5c" v0.1.5
+printf '{"name":"demo","version":"0.1.5","private":true}\n' > "$ct5c/package.json"   # compact one-line JSON
+printf '[package]\nname = "demo"\nversion = "0.1.4"\n' > "$ct5c/Cargo.toml"
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct5c" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN changelog-tags.*Cargo.toml version 0.1.4.*0.1.5' && ! echo "$out" | grep -q 'package.json version'; then pass; else
+    fail "expected WARN naming only Cargo.toml, got: $out"; fi
+
 echo -n "Test 208: changelog-tags FAILs closed when .standards.yml declares a missing release.changelog... "
 ct6=$(make_project "ct-declared-missing")
 printf 'version: 1\nrelease:\n  changelog: docs/CHANGES.md\n' > "$ct6/.standards.yml"

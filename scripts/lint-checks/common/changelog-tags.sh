@@ -17,9 +17,10 @@
 #   - Location: CHANGELOG.md / CHANGELOG / CHANGES.md / HISTORY.md at the root,
 #     or `release.changelog` in .standards.yml (a declared file that is missing
 #     fails closed).
-#   - Manifest drift (WARN): when a root package.json / Cargo.toml /
-#     pyproject.toml carries a version that is not the latest released heading,
-#     the manifest was not bumped in the release commit.
+#   - Manifest drift (WARN): when any root package.json / Cargo.toml /
+#     pyproject.toml carries a version that is not the latest released heading
+#     (SemVer precedence), the manifest was not bumped in the release commit.
+#     Every root manifest with a static version is checked, not just the first.
 #   - Shallow clone (WARN, never PASS or FAIL on a missing tag): a `--depth`
 #     clone only carries the tags that point inside the fetched history, so a
 #     heading without a visible tag is unverifiable rather than untagged. The
@@ -68,6 +69,15 @@ extract_versions() {
 newest_version() {
     awk '
     function isnum(s) { return s ~ /^[0-9]+$/ }
+    # cmpnum(a, b): compare two digit strings as integers of any size — strip
+    # leading zeros, then shorter is smaller, then lexical. No float coercion,
+    # so components beyond 2^53 stay distinct.
+    function cmpnum(a, b) {
+        sub(/^0+/, "", a); sub(/^0+/, "", b)
+        if (length(a) != length(b)) return (length(a) < length(b)) ? -1 : 1
+        if (a == b) return 0
+        return (a "" < b "") ? -1 : 1
+    }
     # parse(v, out): out[1..3] = core components, out["pre"] = prerelease or ""
     function parse(v, out,    d) {
         sub(/\+.*$/, "", v)
@@ -76,16 +86,16 @@ newest_version() {
         else { split(v, out, "."); out["pre"] = "" }
     }
     # cmpver(a, b): negative when a < b, 0 when equal, positive when a > b
-    function cmpver(a, b,    A, B, i, na, nb, pa, pb, an, bn) {
+    function cmpver(a, b,    A, B, i, na, nb, pa, pb, an, bn, r) {
         parse(a, A); parse(b, B)
-        for (i = 1; i <= 3; i++) if (A[i] + 0 != B[i] + 0) return (A[i] + 0 < B[i] + 0) ? -1 : 1
+        for (i = 1; i <= 3; i++) { r = cmpnum(A[i], B[i]); if (r != 0) return r }
         if (A["pre"] == "" && B["pre"] == "") return 0
         if (A["pre"] == "") return 1
         if (B["pre"] == "") return -1
         na = split(A["pre"], pa, "."); nb = split(B["pre"], pb, ".")
         for (i = 1; i <= na && i <= nb; i++) {
             an = isnum(pa[i]); bn = isnum(pb[i])
-            if (an && bn) { if (pa[i] + 0 != pb[i] + 0) return (pa[i] + 0 < pb[i] + 0) ? -1 : 1 }
+            if (an && bn) { r = cmpnum(pa[i], pb[i]); if (r != 0) return r }
             else if (an) return -1
             else if (bn) return 1
             else if (pa[i] != pb[i]) return (pa[i] "" < pb[i] "") ? -1 : 1
@@ -114,10 +124,21 @@ tag_for() {
 # Manifest readers — root manifests only; each prints a version or nothing.
 # ---------------------------------------------------------------------------
 manifest_version_package_json() {
-    # First "version": "x.y.z" at the top level of the object. The root
-    # object's own "version" is conventionally near the top; a nested
-    # dependency table comes later and never uses "version" as a key.
-    sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" | head -1
+    # First `"version": "x.y.z"` anywhere in the file, so a compacted
+    # one-line manifest reads the same as a pretty-printed one. The root
+    # object's own "version" is conventionally near the top; package.json's
+    # dependency tables map names to ranges and never use "version" as a key
+    # (that is package-lock.json, which is not read here).
+    awk '
+    {
+        if (match($0, /"version"[[:space:]]*:[[:space:]]*"[^"]*"/)) {
+            s = substr($0, RSTART, RLENGTH)
+            sub(/^"version"[[:space:]]*:[[:space:]]*"/, "", s)
+            sub(/"$/, "", s)
+            print s
+            exit
+        }
+    }' "$1"
 }
 
 manifest_version_cargo_toml() {
@@ -145,21 +166,22 @@ manifest_version_pyproject() {
     }' "$1"
 }
 
-# root_manifest_version <root> → "<file> <version>" for the first root manifest
-# that carries a static version, or nothing
-root_manifest_version() {
+# root_manifest_versions <root> → one "<file> <version>" line per root manifest
+# that carries a static version (a polyglot root may have several; every one
+# is checked, so a stale Cargo.toml is not hidden by a current package.json)
+root_manifest_versions() {
     local root="$1" v
     if [ -f "$root/package.json" ]; then
         v=$(manifest_version_package_json "$root/package.json")
-        [ -n "$v" ] && { printf 'package.json %s\n' "$v"; return 0; }
+        [ -n "$v" ] && printf 'package.json %s\n' "$v"
     fi
     if [ -f "$root/Cargo.toml" ]; then
         v=$(manifest_version_cargo_toml "$root/Cargo.toml")
-        [ -n "$v" ] && { printf 'Cargo.toml %s\n' "$v"; return 0; }
+        [ -n "$v" ] && printf 'Cargo.toml %s\n' "$v"
     fi
     if [ -f "$root/pyproject.toml" ]; then
         v=$(manifest_version_pyproject "$root/pyproject.toml")
-        [ -n "$v" ] && { printf 'pyproject.toml %s\n' "$v"; return 0; }
+        [ -n "$v" ] && printf 'pyproject.toml %s\n' "$v"
     fi
     return 0
 }
@@ -208,6 +230,10 @@ self_test() {
     [ "$got" = "1.0.0-alpha.1" ] || { echo "newest_version did not rank the longer identifier list higher: $got"; return 1; }
     got=$(printf '1.0.0+build.2\n1.0.0-rc.1+build.9\n' | newest_version)
     [ "$got" = "1.0.0+build.2" ] || { echo "newest_version let build metadata affect precedence: $got"; return 1; }
+    got=$(printf '9007199254740993.0.0\n9007199254740992.0.0\n' | newest_version)
+    [ "$got" = "9007199254740993.0.0" ] || { echo "newest_version collapsed integers beyond 2^53: $got"; return 1; }
+    got=$(printf '1.0.0-rc.9007199254740993\n1.0.0-rc.9007199254740992\n' | newest_version)
+    [ "$got" = "1.0.0-rc.9007199254740993" ] || { echo "newest_version collapsed prerelease integers beyond 2^53: $got"; return 1; }
 
     tags='v1.0.0
 1.0.1
@@ -224,6 +250,14 @@ release-1.0.2'
     printf '{\n  "name": "x",\n  "version": "0.1.3",\n  "dependencies": { "left-pad": "1.3.0" }\n}\n' > "$tmp/package.json"
     got=$(manifest_version_package_json "$tmp/package.json")
     [ "$got" = "0.1.3" ] || { rm -rf "$tmp"; echo "package.json reader returned '$got'"; return 1; }
+    printf '{"name":"x","version":"0.2.0","dependencies":{"left-pad":"1.3.0"}}' > "$tmp/package.json"
+    got=$(manifest_version_package_json "$tmp/package.json")
+    [ "$got" = "0.2.0" ] || { rm -rf "$tmp"; echo "package.json reader missed a compact one-line manifest: '$got'"; return 1; }
+    printf '{\n  "name": "x",\n  "version": "0.3.0"\n}\n' > "$tmp/package.json"
+    printf '[package]\nname = "x"\nversion = "0.2.9"\n' > "$tmp/Cargo.toml"
+    got=$(root_manifest_versions "$tmp" | tr '\n' ' ')
+    [ "$got" = "package.json 0.3.0 Cargo.toml 0.2.9 " ] || { rm -rf "$tmp"; echo "root_manifest_versions stopped at the first manifest: '$got'"; return 1; }
+    rm -f "$tmp/Cargo.toml"
     printf '[workspace]\nmembers = ["a"]\n\n[workspace.package]\nversion = "2.3.4"\n\n[workspace.dependencies]\nserde = { version = "1.0" }\n' > "$tmp/Cargo.toml"
     got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
     [ "$got" = "2.3.4" ] || { rm -rf "$tmp"; echo "Cargo.toml reader returned '$got' (expected 2.3.4 from [workspace.package])"; return 1; }
@@ -398,15 +432,23 @@ fi
 # Manifest drift (advisory)
 # ---------------------------------------------------------------------------
 LATEST=$(printf '%s\n' "$VERSIONS" | newest_version)
-MANIFEST=$(root_manifest_version "$PROJECT_ROOT")
-if [ -n "$MANIFEST" ] && [ -n "$LATEST" ]; then
-    manifest_file="${MANIFEST%% *}"
-    manifest_version="${MANIFEST#* }"
-    manifest_version="${manifest_version#v}"
-    if [ "$manifest_version" != "$LATEST" ]; then
-        echo "WARN $CHECK_NAME all $VERSION_COUNT release heading(s) in $CHANGELOG_LABEL are tagged, but $manifest_file version $manifest_version is not the latest release $LATEST — bump the manifest in the release commit (proc-02 §5)"
-        exit 2
-    fi
+DRIFT=""
+if [ -n "$LATEST" ]; then
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        manifest_file="${line%% *}"
+        manifest_version="${line#* }"
+        manifest_version="${manifest_version#v}"
+        if [ "$manifest_version" != "$LATEST" ]; then
+            DRIFT="${DRIFT}${DRIFT:+, }$manifest_file version $manifest_version"
+        fi
+    done <<EOF
+$(root_manifest_versions "$PROJECT_ROOT")
+EOF
+fi
+if [ -n "$DRIFT" ]; then
+    echo "WARN $CHECK_NAME all $VERSION_COUNT release heading(s) in $CHANGELOG_LABEL are tagged, but $DRIFT is not the latest release $LATEST — bump the manifest in the release commit (proc-02 §5)"
+    exit 2
 fi
 
 echo "PASS $CHECK_NAME $VERSION_COUNT release heading(s) in $CHANGELOG_LABEL each have a matching tag ($PREFIX_LABEL)"
