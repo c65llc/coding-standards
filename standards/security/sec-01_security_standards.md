@@ -328,9 +328,12 @@ override path around it.
 
 1. **Label *and* body block, both required.** The age-gate job honors a failure
    only when the PR carries the `dep-age-override` label **and** the PR body
-   contains a `Dep-age override: <package>@<version> — <advisory>` block with
-   an `Approved-by: @security-owner` line. Either half alone keeps the gate
-   red. Nobody sets `continue-on-error`, deletes the job, or merges on red.
+   contains a `Dep-age override: <package>@<version> — <advisory>` line for
+   **every** version the checker rejected (a grouped bump with three young
+   versions needs three lines; a line naming some other package covers
+   nothing), plus an `Approved-by: @security-owner` line. Either half alone
+   keeps the gate red. Nobody sets `continue-on-error`, deletes the job, or
+   merges on red.
 2. **The label is privileged, and the gate checks who applied it.** Anyone
    with triage access can apply a label, so the label's presence proves
    nothing; the gate reads the PR timeline for the `labeled` event, takes its
@@ -366,9 +369,11 @@ override path around it.
    waive the age gate for the pin that fixes it. The pin waits 72 h or goes
    through the label.
 5. **The record is the label, the body block and the issue.** A nightly
-   audit (third excerpt below) finds open follow-ups by their marker and
-   fails on one that passed `Due:` with no review comment, or that is still
-   open a day past `Matures:`, so a forgotten follow-up surfaces on its own.
+   audit (third excerpt below) finds follow-ups by their marker in every
+   state and fails on one that passed `Due:` with no assignee comment posted
+   before it, one still open a day past `Matures:`, or one closed before
+   `Matures:` without a "rolled back" note, so a forgotten, late or
+   prematurely closed follow-up surfaces on its own.
 
 ```yaml
 # .github/workflows/dep-age-gate.yml (excerpt) — the gate, on the PR.
@@ -396,11 +401,12 @@ jobs:
         id: age
         # CONSUMER-SUPPLIED. Contract: exit 0 when every dependency version
         # added or upgraded by this PR (lockfile diff against the base) was
-        # published >= 72 h ago, exit 1 otherwise, naming the offenders. The
-        # registry field per ecosystem is in the table below this excerpt;
-        # a short script per ecosystem that reads the lockfile diff and that
-        # field is enough. Nothing else in the gate depends on its output.
-        run: ./scripts/dep-age-check.sh --max-age-hours 72
+        # published >= 72 h ago; otherwise exit 1 and write the offenders, one
+        # `<package>@<version>` per line, to the `--offenders` path. The
+        # registry field per ecosystem is in the table below this excerpt; a
+        # short script per ecosystem that reads the lockfile diff and that
+        # field is enough. The override step reads only the offenders file.
+        run: ./scripts/dep-age-check.sh --max-age-hours 72 --offenders age-offenders.txt
         continue-on-error: true
       - name: Refuse a stale dep-age-override label
         # The merge-time job opens the follow-up whenever the label is present,
@@ -430,13 +436,23 @@ jobs:
           [ -n "$actor" ] || { echo "dep-age-override label has no labeled event"; exit 1; }
           case ",$APPROVERS," in *,"$actor",*) ;; *) echo "dep-age-override was applied by @$actor, who is not in DEP_AGE_APPROVERS"; exit 1 ;; esac
           [ "$actor" != "$AUTHOR" ] || { echo "the PR author cannot approve their own override"; exit 1; }
-          subject=$(printf '%s\n' "$BODY" | sed -n 's/^Dep-age override:[[:space:]]*//p' | head -1)
-          # `<package>@<version>` token, then whitespace, then the advisory / justification text.
-          printf '%s\n' "$subject" | grep -Eq '^[^[:space:]@]+@[^[:space:]]+[[:space:]]+[^[:space:]]' \
-            || { echo "PR body needs 'Dep-age override: <package>@<version> — <advisory>': a version alone is not a justification"; exit 1; }
+          # The body must cover EVERY offender the checker named — one
+          # `Dep-age override: <package>@<version> <advisory text>` line each,
+          # matched literally (so `@scope/pkg@1.2.3` works) and followed by a
+          # justification. A grouped bump with three young versions needs
+          # three lines; a body naming some other package proves nothing.
+          [ -s age-offenders.txt ] || { echo "the age checker failed without naming offenders; cannot honor an override"; exit 1; }
+          rc=0
+          while IFS= read -r offender; do
+            [ -n "$offender" ] || continue
+            lit=$(printf '%s' "$offender" | sed 's/[][\.*^$+?(){}|\\/]/\\&/g')
+            printf '%s\n' "$BODY" | grep -Eq "^Dep-age override:[[:space:]]*${lit}[[:space:]]+[^[:space:]]" \
+              || { echo "no 'Dep-age override: $offender — <advisory>' line for an offender the checker named"; rc=1; }
+          done < age-offenders.txt
+          [ "$rc" -eq 0 ] || exit 1
           approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
           [ "$approver" = "$actor" ] || { echo "Approved-by: @$approver does not match the label's actor @$actor"; exit 1; }
-          echo "override honored for $subject (approved by @$actor); the follow-up issue opens at merge"
+          echo "override honored for $(tr '\n' ' ' < age-offenders.txt)(approved by @$actor); the follow-up issue opens at merge"
 ```
 
 ```yaml
@@ -473,8 +489,8 @@ jobs:
           [ "$existing" -eq 0 ] || { echo "follow-up for #$PR already exists (marker $marker)"; exit 0; }
           approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
           subject=$(printf '%s\n' "$BODY" | sed -n 's/^Dep-age override:[[:space:]]*//p' | head -1)
-          due=$(date -u -d "$MERGED_AT + 24 hours" +%Y-%m-%dT%H:%MZ)      # GNU date (ubuntu runner)
-          matures=$(date -u -d "$MERGED_AT + 72 hours" +%Y-%m-%dT%H:%MZ)
+          due=$(date -u -d "$MERGED_AT + 24 hours" +%Y-%m-%dT%H:%M:%SZ)      # GNU date (ubuntu runner)
+          matures=$(date -u -d "$MERGED_AT + 72 hours" +%Y-%m-%dT%H:%M:%SZ)  # same format as the API's timestamps
           # `gh issue create --label` only applies an existing label; --force makes this idempotent.
           gh label create dep-age-follow-up --repo "$REPO" --color D93F0B --force \
             --description "Dependency age-gate override awaiting its follow-up (sec-01 §5)"
@@ -485,9 +501,11 @@ jobs:
 
 ```yaml
 # .github/workflows/dep-age-audit.yml (excerpt) — the nightly audit.
-# Red when a follow-up missed its 24 h review (no comment by Due:) or is still
-# open a day past Matures:. Finds issues by marker, not label, so a label
-# removed in triage cannot hide one.
+# Red when a follow-up missed its 24 h review (no comment BY AN ASSIGNEE posted
+# BEFORE Due: — a bot comment or a late one does not count), is still open a
+# day past Matures:, or was closed before Matures: without a rollback note.
+# Finds issues by marker across all states, not by label, so neither a label
+# removed in triage nor a premature close can hide one.
 on:
   schedule:
     - cron: "17 4 * * *"
@@ -502,17 +520,26 @@ jobs:
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          now=$(date -u +%Y-%m-%dT%H:%MZ); rc=0
-          while IFS=$'\t' read -r number comments body; do
-            due=$(printf '%s' "$body" | sed -n 's/.*Due: \([0-9T:Z-]*\).*/\1/p' | head -1)
-            matures=$(printf '%s' "$body" | sed -n 's/.*Matures: \([0-9T:Z-]*\).*/\1/p' | head -1)
-            grace=$(date -u -d "${matures/Z/:00Z} + 24 hours" +%Y-%m-%dT%H:%MZ 2>/dev/null || echo "$matures")
-            if [ -n "$due" ] && [ ! "$due" \> "$now" ] && [ "$comments" -eq 0 ]; then
-              echo "::error::#$number missed its 24 h review (due $due, no comment)"; rc=1; fi
-            if [ -n "$grace" ] && [ ! "$grace" \> "$now" ]; then
+          now=$(date -u +%Y-%m-%dT%H:%M:%SZ); rc=0
+          for number in $(gh issue list --repo "$REPO" --state all --limit 200 \
+                            --search 'dep-age-follow-up-for-pr- in:body' --json number --jq '.[].number'); do
+            gh issue view "$number" --repo "$REPO" --json state,closedAt,body,assignees,comments \
+              --jq '{state, closedAt, body, as: [.assignees[].login],
+                     cs: [.comments[] | {a: .author.login, t: .createdAt, b: .body}]}' > "issue.json"
+            due=$(jq -r .body issue.json | sed -n 's/^Due: \([0-9T:Z-]*\).*/\1/p' | head -1)
+            matures=$(jq -r .body issue.json | sed -n 's/^Matures: \([0-9T:Z-]*\).*/\1/p' | head -1)
+            [ -n "$due" ] && [ -n "$matures" ] || { echo "::error::#$number has no Due:/Matures: lines"; rc=1; continue; }
+            state=$(jq -r .state issue.json); closed_at=$(jq -r '.closedAt // ""' issue.json)
+            grace=$(date -u -d "$matures + 24 hours" +%Y-%m-%dT%H:%M:%SZ)
+            reviewed=$(jq -r --arg due "$due" '.as as $as | [.cs[] | select(($as | index(.a)) != null and .t <= $due)] | length' issue.json)
+            rolled_back=$(jq -r '[.cs[] | select(.b | test("rolled back"; "i"))] | length' issue.json)
+            if [ ! "$due" \> "$now" ] && [ "$reviewed" -eq 0 ]; then
+              echo "::error::#$number missed its 24 h review: no assignee comment before $due"; rc=1; fi
+            if [ "$state" = "OPEN" ] && [ ! "$grace" \> "$now" ]; then
               echo "::error::#$number is still open a day past maturity ($matures)"; rc=1; fi
-          done < <(gh issue list --repo "$REPO" --state open --search 'dep-age-follow-up-for-pr- in:body' \
-                     --json number,comments,body --jq '.[] | [.number, (.comments | length), (.body | gsub("\n"; " "))] | @tsv')
+            if [ "$state" = "CLOSED" ] && [ "$closed_at" \< "$matures" ] && [ "$rolled_back" -eq 0 ]; then
+              echo "::error::#$number was closed at $closed_at, before maturity $matures, with no 'rolled back' note — reopen it or record the rollback"; rc=1; fi
+          done
           exit "$rc"
 ```
 
@@ -665,18 +692,21 @@ merge** per the P0 hardcoded-credentials rule above.
 - **Suppress false positives at the finest granularity that works.** Prefer an
   inline `// trufflehog:ignore` comment on the exact offending line so the rest
   of the file is still scanned (`// gitleaks:allow` is the Gitleaks
-  equivalent; use both when both scanners run). Reserve a committed
+  equivalent; use both when both scanners run). A committed
   `.trufflehog-ignore` path-exclude file (consumed via `--exclude-paths`, one
-  path **regex** per line) for paths that are inherently all-noise. Never
-  exclude a whole tree just to silence one finding — that hides future real
-  secrets. Fixture-shaped noise (UUIDs, `test-`-prefixed fakes, redaction
-  output) is handled by the shape-based allowlist in §3, not by excluding
-  `tests/`.
-- **Common all-noise sources:** lockfiles and `*.checksums` (SHA/MD5 hashes trip
-  generic detectors), minified/vendored `dist/` bundles, test fixtures and
-  example/placeholder tokens, and binary assets that base64-decode to non-secret
-  data (fonts, image data URIs). Hex color codes and UUID constants are better
-  handled with an inline `trufflehog:ignore` where they appear.
+  path **regex** per line) names a single artifact that provably cannot carry
+  a credential; the shipped template is empty. Never exclude a whole tree
+  just to silence one finding — that hides future real secrets.
+  Fixture-shaped noise (UUIDs, `test-`-prefixed fakes, redaction output) is
+  handled by the shape-based allowlist in §3, not by excluding `tests/`.
+- **The usual exclusion candidates are where real secrets hide.** Lockfiles
+  carry the registry URLs the package manager wrote, token and all; committed
+  `dist/` and minified bundles are where a build-time-injected credential
+  lands; test fixtures are where a pasted real credential goes unnoticed. All
+  three stay scanned (§3). Their noise — lockfile hashes, hex colour codes,
+  base64 font or image data — is handled by the detector's verification and
+  entropy filters or an inline `trufflehog:ignore` where it appears, never by
+  a path exclude.
 
 Ship-with-standards templates: [`templates/.trufflehog-ignore`](../../templates/.trufflehog-ignore)
 (allowlist with format docs) and [`templates/trufflehog.yml.example`](../../templates/trufflehog.yml.example)

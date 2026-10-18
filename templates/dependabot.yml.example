@@ -115,6 +115,13 @@ updates:
           - "minor"
           - "patch"
           - "major"
+      # Security updates are a separate update class — a group covers one
+      # class only — so without this a vulnerable action lands as its own PR.
+      # Catch-all, like the npm and Cargo security groups.
+      github-actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # Other ecosystems (pip, bundler, gradle, swift, pub, gomod, mix, …) follow
   # the same shape: a `groups:` entry with at least a minor+patch batch, plus a

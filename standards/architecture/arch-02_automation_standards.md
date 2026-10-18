@@ -314,7 +314,9 @@ while IFS=: read -r file line text; do
   due=$(printf '%s' "$text" | sed -n 's/.*workaround-expiry: date \([0-9][0-9]*-[0-9][0-9]-[0-9][0-9]\).*/\1/p')
   todo=$(sed -n "$((line > 2 ? line - 2 : 1)),${line}p" "$file" | grep -o 'TODO(#[0-9]*)' | head -1)
   [ -n "$todo" ] || { echo "FAIL $file:$line workaround-expiry without TODO(#issue)"; rc=1; }
-  [ -n "$due" ] || { echo "FAIL $file:$line malformed date marker (want YYYY-MM-DD)"; rc=1; continue; }
+  # A real calendar date, not just the shape: `9999-99-99` would sort as "future" forever.
+  [ -n "$due" ] && [ "$(date -u -d "$due" +%Y-%m-%d 2>/dev/null)" = "$due" ] \
+    || { echo "FAIL $file:$line malformed date marker '$due' (want a real YYYY-MM-DD)"; rc=1; continue; }
   if [ ! "$due" \> "$today" ]; then echo "FAIL $file:$line workaround expired $due ($todo)"; rc=1; fi
 done < <(git grep -n 'workaround-expiry: date ' -- . ':!scripts/check-workarounds.sh')
 exit "$rc"

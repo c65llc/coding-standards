@@ -251,8 +251,11 @@ jobs:
       - name: Assert every CHANGELOG release heading has a tag
         # Repo-wide proc-02 §5 gate; the checkout above fetches tags so the
         # check verifies rather than WARNs about a shallow clone. Exit 2 (WARN)
-        # is advisory and passes: between merging a `chore(release)` PR and
-        # `gh release create` the newest heading legitimately has no tag yet.
+        # is advisory and passes here: between merging a `chore(release)` PR
+        # and `gh release create` the newest heading legitimately has no tag
+        # yet, on the PR and on the push to main alike. A forgotten tag cannot
+        # hide behind that: changelog-tags-nightly.yml runs the same check on a
+        # schedule and treats the in-flight WARN as a failure.
         # Exit 1 (FAIL: two untagged headings, an older one untagged) fails.
         run: |
           ./scripts/lint-checks/common/changelog-tags.sh . && exit 0
