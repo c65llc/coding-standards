@@ -315,7 +315,9 @@ while IFS=: read -r file line text; do
   todo=$(sed -n "$((line > 2 ? line - 2 : 1)),${line}p" "$file" | grep -o 'TODO(#[0-9][0-9]*)' | head -1)   # at least one digit: `TODO(#)` is not an owner
   [ -n "$todo" ] || { echo "FAIL $file:$line workaround-expiry without TODO(#issue)"; rc=1; }
   # A real calendar date, not just the shape: `9999-99-99` would sort as "future" forever.
-  [ -n "$due" ] && [ "$(date -u -d "$due" +%Y-%m-%d 2>/dev/null)" = "$due" ] \
+  # GNU date (`-d`) on Linux CI, BSD date (`-j -f`) on macOS — `make verify` runs on both.
+  parsed=$(date -u -d "$due" +%Y-%m-%d 2>/dev/null || date -u -j -f %Y-%m-%d "$due" +%Y-%m-%d 2>/dev/null || true)
+  [ -n "$due" ] && [ "$parsed" = "$due" ] \
     || { echo "FAIL $file:$line malformed date marker '$due' (want a real YYYY-MM-DD)"; rc=1; continue; }
   if [ ! "$due" \> "$today" ]; then echo "FAIL $file:$line workaround expired $due ($todo)"; rc=1; fi
 # Markers live next to the workaround (Makefile, scripts, CI, lockfile

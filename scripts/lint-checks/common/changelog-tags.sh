@@ -30,7 +30,10 @@
 #     clone only carries the tags that point inside the fetched history, so a
 #     heading without a visible tag is unverifiable rather than untagged. The
 #     check says so — actions/checkout needs `fetch-depth: 0` or
-#     `fetch-tags: true`. Tags that ARE visible still verify their headings.
+#     `fetch-tags: true`. With `fetch-tags: true` the history is still shallow
+#     but the tag namespace is complete; the check detects that by comparing
+#     the local tag count with `git ls-remote --tags origin` and then verifies
+#     normally. Tags that ARE visible always verify their headings.
 #
 # Gate rules (proc-05 § 7, scripts/lint-checks/README.md "Writing a gate"):
 #   - self-tests the heading parser, the tag matcher and the manifest readers
@@ -59,9 +62,22 @@ extract_versions() {
     }
     # Fenced code blocks (``` or ~~~, three or more, same character to close):
     # a `## [9.9.9]` inside an example is code, not a release heading.
-    !infence && h ~ /^(```|~~~)/ { fence = substr(h, 1, 1); infence = 1; next }
-    infence && ((fence == "`" && h ~ /^```/) || (fence == "~" && h ~ /^~~~/)) { infence = 0; next }
-    infence { next }
+    # The closer must use the same character, be at least as long as the
+    # opener, and carry nothing but whitespace — so a three-backtick line
+    # inside a four-backtick fence is content, not a close.
+    !infence && h ~ /^(```|~~~)/ {
+        fence = substr(h, 1, 1); flen = 0
+        while (substr(h, flen + 1, 1) == fence) flen++
+        infence = 1; next
+    }
+    infence {
+        if (substr(h, 1, 1) == fence) {
+            n = 0
+            while (substr(h, n + 1, 1) == fence) n++
+            if (n >= flen && substr(h, n + 1) ~ /^[[:space:]]*$/) infence = 0
+        }
+        next
+    }
     h ~ /^##[[:blank:]]/ {
         # A space or a tab may follow the `##` (CommonMark).
         s = substr(h, 4)
@@ -238,6 +254,14 @@ self_test() {
 ## [8.8.8] - tilde fence
 ~~~
 
+````markdown
+```
+## [7.7.7] - three backticks inside a four-backtick fence do not close it
+```
+````
+
+## [1.4.0] - 2026-01-05
+
     ## [0.0.1] - code block, not a heading
 
 ## Not a version
@@ -245,7 +269,7 @@ self_test() {
 ## [UNRELEASED]
 '
     got=$(printf '%s\n' "$fixture" | extract_versions | tr '\n' ' ')
-    want='1.10.0 1.9.1 1.9.0 2.0.0-rc.1 1.8.0 1.7.0 1.6.0 1.5.0 '
+    want='1.10.0 1.9.1 1.9.0 2.0.0-rc.1 1.8.0 1.7.0 1.6.0 1.5.0 1.4.0 '
     [ "$got" = "$want" ] || { echo "heading parser produced '$got' (expected '$want')"; return 1; }
     got=$(printf '## [Unreleased]\n## [unreleased] - soon\n## 1.2\n## 1.2.3.4\n' | extract_versions)
     [ -z "$got" ] || { echo "heading parser accepted a non-release heading: $got"; return 1; }
@@ -438,6 +462,16 @@ elif [ -z "$shallow_answer" ] || [ "$shallow_answer" = "--is-shallow-repository"
     # git < 2.15 echoes the unknown flag back; fall back to the marker file.
     git_dir=$(git -C "$PROJECT_ROOT" rev-parse --git-dir 2>/dev/null || true)
     [ -n "$git_dir" ] && [ -f "$git_dir/shallow" ] && IS_SHALLOW=true
+fi
+# A shallow HISTORY with a complete TAG namespace (actions/checkout with
+# `fetch-tags: true` and a positive depth) is verifiable: when the local tag
+# count equals the remote's, a heading with no tag is genuinely untagged, not
+# hidden beyond the fetch boundary. No remote or no network → stays shallow.
+if [ "$IS_SHALLOW" = true ] && [ "$TAG_COUNT" -gt 0 ]; then
+    remote_tag_count=$(git -C "$PROJECT_ROOT" ls-remote --tags --refs origin 2>/dev/null | grep -c . || true)
+    if [ -n "$remote_tag_count" ] && [ "$remote_tag_count" -eq "$TAG_COUNT" ]; then
+        IS_SHALLOW=false
+    fi
 fi
 
 # ---------------------------------------------------------------------------

@@ -224,7 +224,8 @@ Format: `MAJOR.MINOR.PATCH` (e.g., `1.2.3`)
   version is not the latest release, and when a shallow CI clone cannot see a
   heading's tag (use `fetch-depth: 0` or `fetch-tags: true`; a `--depth` clone
   only carries the tags inside the fetched history, so that case is
-  unverifiable rather than a failure). Declare `release.changelog` and
+  unverifiable rather than a failure — unless the tag namespace is complete,
+  which the check confirms against the remote). Declare `release.changelog` and
   `release.tag_prefix` in `.standards.yml` when the file or the prefix differ.
 
 ### Release Process

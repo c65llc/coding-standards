@@ -3010,6 +3010,18 @@ out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct4b" 2>/dev/null || true)
 if echo "$out" | grep -q '^WARN changelog-tags.*1.0.0.*shallow' && ! echo "$out" | grep -q '^FAIL'; then pass; else
     fail "expected WARN naming 1.0.0 as unverifiable in a shallow clone, got: $out"; fi
 
+echo -n "Test 206c: changelog-tags FAILs (not WARNs) in a shallow clone whose tag namespace is complete (fetch-tags: true)... "
+ct4csrc=$(make_project "ct-shallow-complete-src")
+write_changelog "$ct4csrc/CHANGELOG.md" "## [2.0.0] - 2026-06-01" "## [1.0.0] - 2026-05-01"
+( cd "$ct4csrc" && git add CHANGELOG.md && git -c user.email="t@t.local" -c user.name="T" commit -q -m "docs: 2.0.0" )
+tag_all "$ct4csrc" v2.0.0                    # 1.0.0 was never tagged anywhere
+ct4c="$TMP_BASE/ct-shallow-complete"
+git clone -q --depth 1 "file://$ct4csrc" "$ct4c" 2>/dev/null
+( cd "$ct4c" && git fetch -q --tags origin 2>/dev/null )   # shallow history, complete tags
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct4c" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL changelog-tags.*1.0.0' && ! echo "$out" | grep -q 'shallow'; then pass; else
+    fail "expected FAIL naming 1.0.0 (tags complete despite shallow history), got: $out"; fi
+
 echo -n "Test 207: changelog-tags WARNs when the root manifest version trails the latest released heading... "
 ct5=$(make_project "ct-manifest")
 write_changelog "$ct5/CHANGELOG.md" "## [0.1.5] - 2026-06-01" "## [0.1.3] - 2026-05-01"

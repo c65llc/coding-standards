@@ -1,8 +1,11 @@
 # TruffleHog secret scanning — copy to .github/workflows/trufflehog.yml
 #
 # Scans pushes and PRs for committed secrets. Unignored findings BLOCK the
-# check (P0 per sec-01 §3). Verification is intentionally OFF (no
-# --only-verified): we do not send detected secrets to third-party endpoints.
+# check (P0 per sec-01 §3). Verification is intentionally OFF via
+# `--no-verification` (TruffleHog verifies by default; merely omitting
+# --only-verified does not turn it off): we do not send detected secrets to
+# third-party endpoints. With verification off every detection is
+# "unverified", so --results must include it or the scan reports nothing.
 # Noisy *paths* are excluded via the committed .trufflehog-ignore file
 # (--exclude-paths, path regexes). Suppress an individual false positive with an
 # inline `// trufflehog:ignore` comment on the offending line instead.
@@ -40,6 +43,7 @@ jobs:
         with:
           # Scan the whole checkout. On PRs, TruffleHog auto-scopes to the diff.
           path: ./
-          # extra_args: no --only-verified (verification off by default);
+          # --no-verification: never call provider APIs with a detected secret;
+          # --results must then include `unverified` (all detections are);
           # --exclude-paths respects the committed allowlist.
-          extra_args: --results=verified,unknown --exclude-paths=.trufflehog-ignore
+          extra_args: --no-verification --results=unverified,unknown --exclude-paths=.trufflehog-ignore

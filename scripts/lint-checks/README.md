@@ -123,7 +123,10 @@ In CI the checkout must carry the tags: `actions/checkout` with `fetch-depth: 0`
 (or `fetch-tags: true`). A `--depth` clone only carries the tags that point
 inside the fetched history (typically the tip's), so in a shallow clone a
 heading without a visible tag is reported as `WARN` (cannot verify) — never as
-a pass, and never as a `FAIL` the full history would contradict.
+a pass, and never as a `FAIL` the full history would contradict. With
+`fetch-tags: true` the history is still shallow but the tag namespace is
+complete; the check recognises that when the local tag count equals
+`git ls-remote --tags origin` and verifies normally.
 
 ## File enumeration and exclusions
 

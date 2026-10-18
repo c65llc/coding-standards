@@ -182,7 +182,7 @@ Flaky and slow tests, change-scoped suites, and gates that can pass without runn
 
 ### Automated Dependency Updates
 
-- Bot updates (Dependabot, Renovate) are **grouped** for every ecosystem watched: minor + patch bumps batched per ecosystem per week, majors as their own PRs. An ungrouped queue gets hand-merged in omnibus commits nobody reviewed.
+- Bot updates (Dependabot, Renovate) are **grouped** for every ecosystem watched: minor + patch bumps batched per ecosystem per week, majors as their own PRs — except GitHub Actions majors (pinned SHAs change on every release and a major is rarely breaking; one group for all) and lockstep partners (a partner set's major lands in its pattern group so it never splits). An ungrouped queue gets hand-merged in omnibus commits nobody reviewed.
 - Partners that only break in company (`react` + `react-dom`, `@typescript-eslint/*`, `vite` + `@vitejs/*`, `tokio` + `tokio-*`) share a pattern group so they always land together. List the project's lockstep sets explicitly.
 - Bot PRs pass the same gate as any PR, including the age gate below. Template: `templates/dependabot.yml.example`; rationale in `standards/security/sec-01_security_standards.md` §5.
 

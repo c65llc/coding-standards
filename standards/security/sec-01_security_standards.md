@@ -555,8 +555,14 @@ jobs:
           now=$(date -u +%Y-%m-%dT%H:%M:%SZ); rc=0
           # Only follow-ups THIS workflow created (same author filter as the
           # creation step): a stranger's issue with a guessed marker is not audited.
-          for number in $(gh issue list --repo "$REPO" --state all --limit 200 \
-                            --search 'dep-age-follow-up-for-pr- in:body author:app/github-actions' --json number --jq '.[].number'); do
+          # Bounded set, not a fixed historical cap: every OPEN follow-up, plus
+          # those CLOSED in the last 8 days (an early closure is re-flagged
+          # nightly, so one older than that has already been reported 8 times).
+          since=$(date -u -d '8 days ago' +%Y-%m-%d)
+          for number in $(gh issue list --repo "$REPO" --state open --limit 1000 \
+                            --search 'dep-age-follow-up-for-pr- in:body author:app/github-actions' --json number --jq '.[].number'
+                          gh issue list --repo "$REPO" --state closed --limit 1000 \
+                            --search "dep-age-follow-up-for-pr- in:body author:app/github-actions closed:>=$since" --json number --jq '.[].number'); do
             gh issue view "$number" --repo "$REPO" --json state,closedAt,body,assignees,comments \
               --jq '{state, closedAt, body, as: [.assignees[].login],
                      cs: [.comments[] | {a: .author.login, t: .createdAt, b: .body}]}' > "issue.json"
@@ -723,7 +729,10 @@ CI secret scanner. Its GitHub Action is fully free (Gitleaks' action requires a
 license for v2+), it is actively maintained, and unignored findings **block
 merge** per the P0 hardcoded-credentials rule above.
 
-- **Keep verification OFF by default.** Do not pass `--only-verified`.
+- **Keep verification OFF by default.** TruffleHog verifies by default, so
+  pass `--no-verification` explicitly (omitting `--only-verified` is not
+  enough) and report `--results=unverified,unknown`, or the unverified
+  detections the scan now produces are filtered out of the blocking run.
   Verification sends detected secrets to third-party endpoints (a security
   concern in itself), needs outbound network many CI environments restrict, and
   adds latency/flakiness. An expired/rotated secret is still a finding worth
