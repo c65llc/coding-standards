@@ -318,7 +318,10 @@ while IFS=: read -r file line text; do
   [ -n "$due" ] && [ "$(date -u -d "$due" +%Y-%m-%d 2>/dev/null)" = "$due" ] \
     || { echo "FAIL $file:$line malformed date marker '$due' (want a real YYYY-MM-DD)"; rc=1; continue; }
   if [ ! "$due" \> "$today" ]; then echo "FAIL $file:$line workaround expired $due ($todo)"; rc=1; fi
-done < <(git grep -n 'workaround-expiry: date ' -- . ':!scripts/check-workarounds.sh')
+# Markers live next to the workaround (Makefile, scripts, CI, lockfile
+# overrides), never in prose: Markdown and the vendored `.standards/` tree
+# (this document mentions the marker several times) are excluded.
+done < <(git grep -n 'workaround-expiry: date ' -- . ':!scripts/check-workarounds.sh' ':!*.md' ':!.standards/' ':!docs/')
 exit "$rc"
 ```
 

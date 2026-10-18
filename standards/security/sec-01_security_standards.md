@@ -372,8 +372,9 @@ override path around it.
    audit (third excerpt below) finds follow-ups by their marker in every
    state and fails on one that passed `Due:` with no assignee comment posted
    before it, one still open a day past `Matures:`, or one closed before
-   `Matures:` without a "rolled back" note, so a forgotten, late or
-   prematurely closed follow-up surfaces on its own.
+   `Matures:` without a `Rolled back:` comment from an assignee posted by the
+   close, so a forgotten, late or prematurely closed follow-up surfaces on
+   its own.
 
 ```yaml
 # .github/workflows/dep-age-gate.yml (excerpt) — the gate, on the PR.
@@ -385,9 +386,26 @@ on:
     # check attached to the commit after the label or the body block changed.
     # Label and body edits re-run the gate so removing either turns it red.
     types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+    # Path scoping (arch-08 §3.1): only a PR that touches a manifest or
+    # lockfile can add or upgrade a dependency. List every ecosystem you use.
+    paths:
+      - "package.json"
+      - "**/package-lock.json"
+      - "**/pnpm-lock.yaml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Package.resolved"
+# One run per PR; a label or body edit cancels the run it supersedes instead of
+# stacking registry lookups (arch-08 §3.1).
+concurrency:
+  group: dep-age-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 jobs:
   dep-age:
     runs-on: ubuntu-latest
+    timeout-minutes: 10   # registry lookups hang on a bad network; never the 6 h default
     permissions:
       contents: read
       pull-requests: read
@@ -446,8 +464,10 @@ jobs:
           while IFS= read -r offender; do
             [ -n "$offender" ] || continue
             lit=$(printf '%s' "$offender" | sed 's/[][\.*^$+?(){}|\\/]/\\&/g')
-            printf '%s\n' "$BODY" | grep -Eq "^Dep-age override:[[:space:]]*${lit}[[:space:]]+[^[:space:]]" \
-              || { echo "no 'Dep-age override: $offender — <advisory>' line for an offender the checker named"; rc=1; }
+            # After the offender: whitespace, an optional dash/colon separator, then advisory text
+            # that is itself not a separator — `foo@1.2.3 —` alone does not pass.
+            printf '%s\n' "$BODY" | grep -Eq "^Dep-age override:[[:space:]]*${lit}[[:space:]]+([-—–:]+[[:space:]]+)?[^[:space:]—–:-]" \
+              || { echo "no 'Dep-age override: $offender — <advisory>' line with advisory text for an offender the checker named"; rc=1; }
           done < age-offenders.txt
           [ "$rc" -eq 0 ] || exit 1
           approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
@@ -464,10 +484,17 @@ jobs:
 on:
   pull_request_target:
     types: [closed]
+# Path scoping is deliberately absent: the job runs once, at merge, only for a
+# labelled PR (see `if:`), so there is nothing to scope. Concurrency is keyed
+# on the PR so a re-delivered close event cannot race the first run.
+concurrency:
+  group: dep-age-follow-up-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 jobs:
   follow-up:
     if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'dep-age-override')
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       issues: write
@@ -482,28 +509,36 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           marker="dep-age-follow-up-for-pr-$PR"
-          # Search by the marker alone (any state, any label): an issue whose
-          # label was removed in triage must still count as existing.
+          # Idempotency: an existing follow-up is one THIS workflow created —
+          # author filter `app/github-actions`, marker in the body, any state,
+          # any label (a label removed in triage still counts). An issue a
+          # third party opened with a guessed marker does not suppress ours.
           existing=$(gh issue list --repo "$REPO" --state all \
-            --search "$marker in:body" --json number --jq 'length')
+            --search "$marker in:body author:app/github-actions" --json number --jq 'length')
           [ "$existing" -eq 0 ] || { echo "follow-up for #$PR already exists (marker $marker)"; exit 0; }
           approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
-          subject=$(printf '%s\n' "$BODY" | sed -n 's/^Dep-age override:[[:space:]]*//p' | head -1)
+          # Every override line goes into the issue: each bypassed version
+          # gets its own yank/advisory review, not just the first.
+          overrides=$(printf '%s\n' "$BODY" | sed -n 's/^Dep-age override:[[:space:]]*/- /p')
+          count=$(printf '%s\n' "$overrides" | grep -c .)
+          first=$(printf '%s\n' "$overrides" | head -1 | sed 's/^- //; s/[[:space:]].*//')
+          title="dep-age follow-up: $first"; [ "$count" -le 1 ] || title="$title (+$((count - 1)) more)"
           due=$(date -u -d "$MERGED_AT + 24 hours" +%Y-%m-%dT%H:%M:%SZ)      # GNU date (ubuntu runner)
           matures=$(date -u -d "$MERGED_AT + 72 hours" +%Y-%m-%dT%H:%M:%SZ)  # same format as the API's timestamps
           # `gh issue create --label` only applies an existing label; --force makes this idempotent.
           gh label create dep-age-follow-up --repo "$REPO" --color D93F0B --force \
             --description "Dependency age-gate override awaiting its follow-up (sec-01 §5)"
           gh issue create --repo "$REPO" --label dep-age-follow-up --assignee "$approver" \
-            --title "dep-age follow-up: $subject" \
-            --body "$(printf '%s\n\nDue: %s — 24 h review: comment here that the advisory still stands and the version shows no yank or new advisory so far.\nMatures: %s — 72 h after merge at %s: confirm no yank or advisory and close, or roll back and close.\nPR: %s\n' "$marker" "$due" "$matures" "$MERGED_AT" "$PR_URL")"
+            --title "$title" \
+            --body "$(printf '%s\n\nOverrides honored (review each):\n%s\n\nDue: %s — 24 h review: comment here, per override, that the advisory still stands and the version shows no yank or new advisory so far.\nMatures: %s — 72 h after merge at %s: confirm no yank or advisory and close, or roll back and close with a comment starting "Rolled back:".\nPR: %s\n' "$marker" "$overrides" "$due" "$matures" "$MERGED_AT" "$PR_URL")"
 ```
 
 ```yaml
 # .github/workflows/dep-age-audit.yml (excerpt) — the nightly audit.
 # Red when a follow-up missed its 24 h review (no comment BY AN ASSIGNEE posted
 # BEFORE Due: — a bot comment or a late one does not count), is still open a
-# day past Matures:, or was closed before Matures: without a rollback note.
+# day past Matures:, or was closed before Matures: without an assignee's
+# "Rolled back:" comment posted by the close.
 # Finds issues by marker across all states, not by label, so neither a label
 # removed in triage nor a premature close can hide one.
 on:
@@ -532,13 +567,16 @@ jobs:
             state=$(jq -r .state issue.json); closed_at=$(jq -r '.closedAt // ""' issue.json)
             grace=$(date -u -d "$matures + 24 hours" +%Y-%m-%dT%H:%M:%SZ)
             reviewed=$(jq -r --arg due "$due" '.as as $as | [.cs[] | select(($as | index(.a)) != null and .t <= $due)] | length' issue.json)
-            rolled_back=$(jq -r '[.cs[] | select(.b | test("rolled back"; "i"))] | length' issue.json)
+            # A rollback note counts only when an ASSIGNEE wrote it, it starts
+            # with "Rolled back:" (so "this was not rolled back" does not match),
+            # and it was posted no later than the close.
+            rolled_back=$(jq -r --arg closed "${closed_at:-9999}" '.as as $as | [.cs[] | select(($as | index(.a)) != null and (.b | test("^Rolled back:")) and .t <= $closed)] | length' issue.json)
             if [ ! "$due" \> "$now" ] && [ "$reviewed" -eq 0 ]; then
               echo "::error::#$number missed its 24 h review: no assignee comment before $due"; rc=1; fi
             if [ "$state" = "OPEN" ] && [ ! "$grace" \> "$now" ]; then
               echo "::error::#$number is still open a day past maturity ($matures)"; rc=1; fi
             if [ "$state" = "CLOSED" ] && [ "$closed_at" \< "$matures" ] && [ "$rolled_back" -eq 0 ]; then
-              echo "::error::#$number was closed at $closed_at, before maturity $matures, with no 'rolled back' note — reopen it or record the rollback"; rc=1; fi
+              echo "::error::#$number was closed at $closed_at, before maturity $matures, with no 'Rolled back:' comment from an assignee — reopen it, or an assignee records the rollback"; rc=1; fi
           done
           exit "$rc"
 ```
