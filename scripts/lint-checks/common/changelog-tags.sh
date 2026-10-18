@@ -162,20 +162,30 @@ manifest_version_package_json() {
 }
 
 manifest_version_cargo_toml() {
-    # `version = "x"` inside [package] or [workspace.package]; a
-    # `version.workspace = true` member defers to the workspace and prints nothing.
+    # The root package's version: an explicit `version = "x"` in [package]
+    # wins; `[workspace.package] version` applies only when the package opts
+    # into inheritance (`version.workspace = true`) or there is no [package]
+    # at all (a virtual workspace root). Section order in the file is
+    # irrelevant. Dotted-key spellings of the same tables are read too
+    # (top-level `package.version`, `package.version` under `[workspace]`).
+    # TOML basic ("…") and literal ('"'"'…'"'"') strings are both legal.
     awk '
-    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]]/, "", sect); next }
-    # `version = …` inside the section, or the dotted-key spelling of the same
-    # table: top-level `package.version = …`, or `package.version = …` under
-    # `[workspace]` (TOML dotted keys define the same nested table).
-    ((sect == "[package]" || sect == "[workspace.package]") && /^[[:space:]]*version[[:space:]]*=/) ||
-    ((sect == "" || sect == "[workspace]") && /^[[:space:]]*package\.version[[:space:]]*=/) {
-        line = $0
+    function strval(line) {
         sub(/^[^=]*=[[:space:]]*/, "", line)
-        # TOML basic ("…") and literal ('"'"'…'"'"') strings are both legal here.
-        if (match(line, /"[^"]*"/)) { print substr(line, RSTART + 1, RLENGTH - 2); exit }
-        if (match(line, /'"'"'[^'"'"']*'"'"'/)) { print substr(line, RSTART + 1, RLENGTH - 2); exit }
+        if (match(line, /"[^"]*"/)) return substr(line, RSTART + 1, RLENGTH - 2)
+        if (match(line, /'"'"'[^'"'"']*'"'"'/)) return substr(line, RSTART + 1, RLENGTH - 2)
+        return ""
+    }
+    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]]/, "", sect); next }
+    (sect == "[package]" && /^[[:space:]]*version\.workspace[[:space:]]*=[[:space:]]*true/) ||
+    (sect == "" && /^[[:space:]]*package\.version\.workspace[[:space:]]*=[[:space:]]*true/) { inherits = 1; next }
+    (sect == "[package]" && /^[[:space:]]*version[[:space:]]*=/) ||
+    (sect == "" && /^[[:space:]]*package\.version[[:space:]]*=/) { if (pkg == "") pkg = strval($0); next }
+    (sect == "[workspace.package]" && /^[[:space:]]*version[[:space:]]*=/) ||
+    (sect == "[workspace]" && /^[[:space:]]*package\.version[[:space:]]*=/) { if (ws == "") ws = strval($0); next }
+    END {
+        if (pkg != "" && !inherits) print pkg
+        else if (ws != "") print ws
     }' "$1"
 }
 
@@ -316,6 +326,12 @@ release-1.0.2'
     printf '[workspace]\nmembers = ["a"]\npackage.version = "0.9.3"\n' > "$tmp/Cargo.toml"
     got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
     [ "$got" = "0.9.3" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed package.version under [workspace]: '$got'"; return 1; }
+    printf '[workspace.package]\nversion = "2.0.0"\n\n[package]\nname = "root"\nversion = "1.0.0"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "1.0.0" ] || { rm -rf "$tmp"; echo "Cargo.toml reader preferred the workspace default over the explicit root version: '$got'"; return 1; }
+    printf '[workspace.package]\nversion = "2.0.0"\n\n[package]\nname = "root"\nversion.workspace = true\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "2.0.0" ] || { rm -rf "$tmp"; echo "Cargo.toml reader ignored version.workspace = true inheritance: '$got'"; return 1; }
     printf 'project.name = "p"\nproject.version = "4.5.8"\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "4.5.8" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed the dotted key project.version: '$got'"; return 1; }
@@ -341,10 +357,26 @@ fi
 # Configuration — .standards.yml `release:` block
 # ---------------------------------------------------------------------------
 # read_release_key <key> → the value, `__EMPTY__` when the key is present with
-# no value, or nothing when the key is absent
+# no value, or nothing when the key is absent. Reads the block form
+# (`release:` + indented keys) and the single-line flow form
+# (`release: { changelog: x, tag_prefix: y }`).
 read_release_key() {
     [ -f "$PROJECT_ROOT/.standards.yml" ] || return 0
     awk -v key="$1" '
+        /^release:[[:space:]]*\{/ {
+            s = $0; sub(/^release:[[:space:]]*\{/, "", s); sub(/\}.*$/, "", s)
+            n = split(s, parts, ",")
+            for (i = 1; i <= n; i++) {
+                p = parts[i]; sub(/^[[:space:]]+/, "", p); sub(/[[:space:]]+$/, "", p)
+                if (p ~ ("^" key "[[:space:]]*:")) {
+                    sub("^" key "[[:space:]]*:[[:space:]]*", "", p)
+                    gsub(/^["'"'"']|["'"'"']$/, "", p)
+                    if (p == "" || p == "~" || p == "null") print "__EMPTY__"; else print p
+                    exit
+                }
+            }
+            exit
+        }
         /^release:/ { inblk = 1; next }
         inblk && /^[^[:space:]#]/ { exit }
         inblk && $0 ~ "^[[:space:]]+" key ":" {

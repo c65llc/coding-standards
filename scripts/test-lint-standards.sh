@@ -3040,6 +3040,19 @@ printf 'version: 1\nrelease:\n  changelog: docs/CHANGES.md\n' > "$ct6/.standards
 out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct6" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL changelog-tags.*docs/CHANGES.md'; then pass; else fail "expected FAIL naming the declared path, got: $out"; fi
 
+echo -n "Test 208b: changelog-tags reads the YAML flow form 'release: { changelog: …, tag_prefix: … }' (fails closed, honors prefix)... "
+ct6b=$(make_project "ct-flow-missing")
+printf 'version: 1\nrelease: { changelog: docs/CHANGES.md, tag_prefix: release- }\n' > "$ct6b/.standards.yml"
+out_missing=$(bash "$CHECKS/common/changelog-tags.sh" "$ct6b" 2>/dev/null || true)
+ct6c=$(make_project "ct-flow-ok")
+mkdir -p "$ct6c/docs"
+printf 'version: 1\nrelease: { changelog: docs/CHANGES.md, tag_prefix: "release-" }\n' > "$ct6c/.standards.yml"
+write_changelog "$ct6c/docs/CHANGES.md" "## [3.0.0] - 2026-06-01"
+tag_all "$ct6c" release-3.0.0
+out_ok=$(bash "$CHECKS/common/changelog-tags.sh" "$ct6c" 2>/dev/null || true)
+if echo "$out_missing" | grep -q '^FAIL changelog-tags.*docs/CHANGES.md' && echo "$out_ok" | grep -q '^PASS changelog-tags.*docs/CHANGES.md.*release-'; then pass; else
+    fail "missing: $out_missing | ok: $out_ok"; fi
+
 echo -n "Test 209: changelog-tags honors release.changelog and release.tag_prefix... "
 ct7=$(make_project "ct-declared")
 mkdir -p "$ct7/docs"

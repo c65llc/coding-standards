@@ -169,10 +169,12 @@ signal high.
   redaction output, a repeated-character pad) and nothing a real secret
   would take. A shape a real secret *can* take — a UUID, since many services
   issue UUID API keys — is never allowlisted globally; it is confined to
-  fixture locations with a path-AND-shape condition (Gitleaks ≥ 8.21
+  fixture locations with a path-AND-shape condition (Gitleaks ≥ 8.25
   `[[allowlists]] condition = "AND"`) or marked inline. (3) A path exclude,
-  only for a path that is all-noise by construction (lockfiles, generated
-  bundles).
+  only for a path that is all-noise by construction (lockfiles). A committed
+  build output (`dist/`, `*.min.js`) is not all-noise — it is where a
+  build-time-injected credential lands — so it is excluded per named
+  artifact, if at all, never per tree.
 - **Never exclude `tests/`, `fixtures/` or `__tests__/` wholesale.** A real
   secret pasted into a test file must still be caught; the shape allowlist
   covers the fixture forms without opening that hole.
@@ -186,9 +188,9 @@ signal high.
   review.
 
 Ship-with-standards template: [`templates/.gitleaks.toml.example`](../../templates/.gitleaks.toml.example)
-(Gitleaks ≥ 8.21: global shape regexes for naming-convention fakes, redaction
+(Gitleaks ≥ 8.25: global shape regexes for naming-convention fakes, redaction
 output and repeated-character padding; path-AND-shape blocks for UUID fixtures
-and fixture stopwords; a last-resort path list). TruffleHog
+and fixture stopwords; a lockfile-only path list). TruffleHog
 takes only path excludes (`.trufflehog-ignore`), so its per-finding
 suppression is the inline `trufflehog:ignore` marker. The scanner workflow
 itself is in §9.
@@ -348,7 +350,11 @@ override path around it.
    `permissions:` grant changes that for forks), and the 24 h clock must not
    start while the PR is still open. The job declares `issues: write` and
    re-asserts the `dep-age-follow-up` label with `gh label create --force`
-   before `gh issue create`, which only applies an existing label.
+   before `gh issue create`, which only applies an existing label. It keys on
+   the label alone, which is sound only because the gate refuses a label the
+   age check no longer needs: a PR cannot be green with `dep-age-override`
+   present and the age check passing, so at merge the label means an override
+   was honored.
 4. **A red advisory lane is not an override.** Moving the CVE audit from the
    required gate to a nightly job (arch-08 §2) is the right response to a
    transitive advisory that would otherwise wedge every merge; it does not
@@ -390,6 +396,15 @@ jobs:
         # field is enough. Nothing else in the gate depends on its output.
         run: ./scripts/dep-age-check.sh --max-age-hours 72
         continue-on-error: true
+      - name: Refuse a stale dep-age-override label
+        # The merge-time job opens the follow-up whenever the label is present,
+        # so a label left on a PR whose age check now passes (the version aged
+        # past 72 h, or the upgrade was dropped) would record a bypass that
+        # never happened. Red until the label is removed; `unlabeled` re-runs.
+        if: steps.age.outcome == 'success' && contains(github.event.pull_request.labels.*.name, 'dep-age-override')
+        run: |
+          echo "the age gate passes; remove the dep-age-override label — no override is needed and none will be recorded"
+          exit 1
       - name: Honor dep-age-override (privileged label + body block, both required)
         if: steps.age.outcome == 'failure'
         env:

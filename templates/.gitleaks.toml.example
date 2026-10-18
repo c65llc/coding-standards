@@ -1,11 +1,13 @@
 # .gitleaks.toml — shape-based allowlist for Gitleaks. Copy to .gitleaks.toml.
 #
-# Requires Gitleaks >= 8.21 (October 2024). The file uses the `[[allowlists]]`
-# array-of-tables form throughout: Gitleaks refuses a config that mixes it with
-# the legacy single `[allowlist]` table, and only the plural form can AND a
-# path condition with a shape. On an older release, rename the first block to
-# `[allowlist]`, delete the `condition = "AND"` blocks, and mark their fixture
-# lines inline instead.
+# Requires Gitleaks >= 8.25 (the release that added GLOBAL `[[allowlists]]`;
+# 8.21 added only the per-rule form). The file uses the array-of-tables form
+# throughout: Gitleaks refuses a config that mixes it with the legacy single
+# `[allowlist]` table, and only the plural form can AND a path condition with
+# a shape. On an older release, rename the first block to `[allowlist]`,
+# delete the `condition = "AND"` blocks, and mark their fixture lines inline
+# instead — a block the parser cannot read is silently ignored, so check
+# `gitleaks version` before relying on this file.
 #
 # sec-01 §3 "Scanner False Positives on Test Fixtures". Test fixtures trip
 # secret scanners for predictable reasons: UUIDv7 ids look like tokens, a
@@ -104,9 +106,14 @@ stopwords = [
 
 # ---------------------------------------------------------------------------
 # C. Path excludes — the LAST resort. Each one covers a path that is all-noise
-#    by construction (lockfile hashes, generated bundles). Never exclude
-#    `tests/` or `fixtures/` wholesale: block B covers the fixture shapes, and a
-#    real secret pasted into a test file must still be caught.
+#    by construction: lockfiles, whose content is integrity hashes and registry
+#    URLs the package manager wrote. Never exclude `tests/` or `fixtures/`
+#    wholesale: block B covers the fixture shapes, and a real secret pasted
+#    into a test file must still be caught. Generated bundles (`dist/`,
+#    `*.min.js`) are NOT excluded by default: a committed bundle is exactly
+#    where a build-time-injected credential ends up, and a path exclude drops
+#    the finding whatever its shape. Exclude a bundle only when you know its
+#    build injects no configuration, and name that artifact, not the tree.
 # ---------------------------------------------------------------------------
 [[allowlists]]
 description = "All-noise paths (sec-01 §3, last resort)"
@@ -117,6 +124,6 @@ paths = [
   '''(^|/)Cargo\.lock$''',
   '''(^|/)poetry\.lock$''',
   '''(^|/)Package\.resolved$''',
-  '''\.min\.(js|css)$''',
-  '''(^|/)dist/''',
+  # Opt in per artifact, never per tree — see the note above:
+  # '''^public/vendor/highlight\.min\.js$''',
 ]
