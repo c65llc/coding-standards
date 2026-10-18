@@ -97,6 +97,86 @@ landing on the wrong branch or failing on phantom errors:
   repo's hook-repair target (e.g. `make hooks`) to rewrite them for the current
   checkout.
 
+#### One worktree root per repository
+
+Worktree sprawl is a disk and correctness problem, not a tidiness one: a survey
+of four consumer projects found 17 worktrees under one checkout (`.claude/worktrees`
+8.8 GB, `.Codex/worktrees` 12 GB), a `.worktrees/` tree of 37 GB, worktrees nested
+two deep, a worktree accidentally committed as a submodule, and a linter that timed
+out walking them. These rules keep worktrees cheap:
+
+* **Every worktree lives under one gitignored root.** The root is `worktree_dir:` in
+  `.standards.yml` (default `.claude/worktrees`); `setup.sh` writes the `.gitignore`
+  entry and installs a pre-commit guard (`templates/pre-commit-worktree-guard.example`)
+  that refuses any commit staging a path under it — a worktree arriving as a gitlink
+  (the shape of a submodule) is the failure this prevents. Worktrees found elsewhere
+  (`.worktrees/`, `.Codex/worktrees/`, …) are strays: `doctor` reports them and
+  `worktree-gc` collects them like any other.
+* **Never create a worktree from inside a worktree.** `git worktree add` resolves a
+  relative path against the current directory, so running it from inside
+  `.claude/worktrees/a` produces `.claude/worktrees/a/.claude/worktrees/b`: a nested
+  tree that doubles the disk cost and is skipped by nothing. Create worktrees from
+  the main checkout, or pass the absolute path under the root. `doctor` warns on
+  nesting.
+* **A worktree has a lifetime: its PR.** It is removed when the PR merges (step 7
+  above), and a worktree with no commit or checkout activity for **14 days** is
+  idle and collected. Uncommitted work in an idle worktree is a **warning, not a
+  blocker**: the collector says what it is discarding and removes the worktree;
+  pass `--keep-dirty` to opt out. An unmerged branch keeps its ref — only the
+  directory goes.
+* **Collect with `make worktree-gc`** (`scripts/worktree-gc.sh`). It fetches with
+  `--prune`, removes worktrees whose branch is merged into the base or whose
+  upstream is gone (deleting those branches), removes idle worktrees, prunes
+  registrations whose directory vanished, reports every remaining worktree with its
+  idle age and size, and never touches the main checkout, the worktree it runs from,
+  or a locked worktree. `--dry-run` previews. Run it after every merge, and from a
+  weekly reminder on long-lived machines.
+* **`make doctor` reports worktree count, oldest idle age and total size**, and warns
+  on nesting, strays outside the root, a root that is not gitignored, and worktrees
+  past the idle limit.
+
+#### Shared caches live outside the worktree
+
+N worktrees must not mean N copies of `target/`, `node_modules/` or
+`DerivedData/`. Point every build cache at one location per repository — under
+`~/.cache/<repo>/`, or `$TMPDIR` when the checkout is inside a synced folder such as
+iCloud Drive or Dropbox — so a fresh worktree builds warm and a removed worktree
+frees only source. Set them in one place every tool sees (`.envrc` via direnv, the
+`make ci` environment, the runner service's environment):
+
+| Tool | Setting | Example |
+|------|---------|---------|
+| Cargo | `CARGO_TARGET_DIR` | `~/.cache/<repo>/target` |
+| pnpm | `pnpm config set store-dir` (content-addressable; `node_modules/` are hard links into it) | `~/.cache/pnpm-store` |
+| npm / yarn | `npm_config_cache` / `YARN_CACHE_FOLDER` | `~/.cache/<repo>/npm` |
+| Turborepo | `TURBO_CACHE_DIR` (or `cacheDir` in `turbo.json`) | `~/.cache/<repo>/turbo` |
+| SwiftPM / Xcode | `swift build --scratch-path`, `xcodebuild -derivedDataPath` | `~/.cache/<repo>/swiftpm`, `~/.cache/<repo>/DerivedData` |
+| Gradle | `GRADLE_USER_HOME`, `org.gradle.caching=true` | `~/.cache/<repo>/gradle` |
+| Go | `GOCACHE`, `GOMODCACHE` (already outside the tree by default) | `~/.cache/go-build` |
+| Python (uv / pip) | `UV_CACHE_DIR` / `PIP_CACHE_DIR` | `~/.cache/<repo>/uv` |
+
+Caches that cannot be relocated (a tool that insists on `./node_modules`) are
+re-created per worktree from the lockfile (see "Install from the lockfile" above);
+their size is part of what `worktree-gc` reclaims.
+
+#### Runners: disk-free preflight and post-job cleanup
+
+Self-hosted runners accumulate the same sprawl without anyone looking. Every job on
+a persistent runner:
+
+* **Starts with a disk-free preflight** that fails fast below a threshold (20 GB by
+  default) rather than dying mid-build with a cryptic `ENOSPC` — see the `apple` lane
+  in `templates/ci-gate.yml.example`.
+* **Ends with a cleanup step that runs `if: always()`**: `git worktree prune`,
+  `git clean -ffdx` in the checkout, and removal of the job's scratch under
+  `$RUNNER_TEMP`. Shared caches (above) are deliberately left alone — they are the
+  point of a persistent runner.
+* Keeps the runner's `_work` directory on a volume with headroom, and runs
+  `worktree-gc` from a scheduled job when agents work on the runner host.
+
+See [arch-08 § 6](../architecture/arch-08_ci_cd_pipeline_standards.md#6-self-hosted-runners)
+for the rest of the runner rules.
+
 ## 2. Project-Level AI Guide
 
 Every project SHOULD have a `CLAUDE.md` (or equivalent agent guide) at the repository root. This file is distinct from `.cursorrules` or `.github/copilot-instructions.md` — it documents project-specific context that evolves during development.

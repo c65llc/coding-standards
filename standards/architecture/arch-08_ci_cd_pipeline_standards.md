@@ -165,6 +165,12 @@ Self-hosted runners trade per-minute cost for operational responsibility. If use
   **queued/waiting** (nothing schedules it). A *collision/misconfig* yields a run
   that **fails at "Set up job" within seconds**. Same-looking red check, opposite
   cause — read which one before touching the code.
+* **Disk is a managed resource.** Every job on a persistent runner starts with a
+  disk-free preflight that fails fast below a threshold and ends with an
+  `if: always()` cleanup step (`git worktree prune`, `git clean -ffdx`, the job's
+  `$RUNNER_TEMP` scratch); build caches live outside the checkout so they survive
+  the cleanup. See [proc-04 § Worktree Hygiene](../process/proc-04_agent_workflow_standards.md#worktree-hygiene)
+  and the `apple` lane in `templates/ci-gate.yml.example`.
 
 ### 6.1 Every step passes on a locked, headless, interchangeable runner
 

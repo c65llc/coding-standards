@@ -36,8 +36,8 @@ make setup
    - `AGENTS.md` (OpenAI Codex)
    - `.aider-instructions.md` and `.aiderrc` (Aider)
 4. Writes `.standards.yml` (declared languages, agents, role; a declared `members:` list is preserved) and `.standards-checksums`. In a monorepo the root `.standards.yml` keeps only the root's own languages, detected from the root's own manifests (a non-empty list makes `lint-standards.sh` run language checks against the root; a sub-root that carries other languages is pointed out so it can become a member), while the root agent configs are assembled from the union of the root's and every member's (see [Monorepos: Members](../guides/customization.md#monorepos-members)); a declared member without a `.standards.yml` gets one bootstrapped with the languages detected in it.
-5. In detect mode only: installs a `post-merge` git hook that checks for standards updates and runs `setup-git-aliases.sh` to configure global git aliases.
-6. Adds `.cursorrules.backup`, `.standards_tmp/` and `.standards-pending/` to `.gitignore`.
+5. In detect mode only: installs a `post-merge` git hook that checks for standards updates, installs the pre-commit worktree guard (`templates/pre-commit-worktree-guard.example`, refusing commits that stage a path under the worktree root) when no pre-commit hook exists and `hooks:` names the standards as the hook manager — otherwise prints how to wire it into husky / lefthook / the existing hook — and runs `setup-git-aliases.sh` to configure global git aliases.
+6. Adds `.cursorrules.backup`, `.standards_tmp/`, `.standards-pending/` and the worktree root (`worktree_dir:` in `.standards.yml`, default `.claude/worktrees/`) to `.gitignore`.
 
 **Flags:**
 
@@ -176,16 +176,55 @@ In a monorepo the runner iterates the root plus every member (`members:` in `.st
 
 ## doctor.sh
 
-**Purpose:** Standards health check — configuration, members, agent configs, checksums, languages, submodule, git hooks, `.aiderrc` drift, Postgres MCP, `.gitignore` entries. Exit 1 on any `FAIL`.
+**Purpose:** Standards health check — configuration, members, agent configs, checksums, languages, submodule, git hooks, `.aiderrc` drift, Postgres MCP, `.gitignore` entries, worktrees. Exit 1 on any `FAIL`.
 
 ```bash
 ./scripts/doctor.sh
 make doctor
 ```
 
+The `Worktrees` check (proc-04 § Worktree Hygiene) passes when the worktree root (`worktree_dir:`, default `.claude/worktrees`) is gitignored and reports the repository's linked worktrees — count, oldest idle age, total size. It warns on an invalid `worktree_dir:`, a root that is not gitignored, worktrees nested inside another worktree, worktrees outside the root (`.worktrees/`, `.Codex/worktrees/`, …), and worktrees idle for more than 14 days or whose directory is gone, pointing at `make worktree-gc`.
+
 The `Languages` check compares what `detect-languages.sh` finds with what `.standards.yml` declares, for the root (member directories skipped) and for each member (`Languages (server)`). It warns about a supported language that is detected but not declared, and about a declared key that has no standards document or lint checks (`cpp`): agent assembly and the linter silently ignore such a key. The `Members` check fails on a declared member whose directory is missing and warns on one without a `.standards.yml`.
 
 The `Checksums` check names the configs modified since their last assembly and treats a file declared `managed: false` in `.standards.yml` as `curated, not drifted` (the check still passes). The `Git Hooks` check honours `hooks:`: `custom` passes outright (the project's own manager owns the hooks), `lefthook` / `husky` pin which manager's config is read (a missing config is a `WARN`), and an unrecognised value warns and falls back to detection. See [Curated Agent Configs](../guides/customization.md#curated-agent-configs).
+
+---
+
+## worktree-gc.sh
+
+**Purpose:** Remove finished agent worktrees, delete their merged branches, prune stale registrations and report what remains with its idle age and size (proc-04 § Worktree Hygiene).
+
+**Usage:**
+
+```bash
+./scripts/worktree-gc.sh [--dry-run] [--max-age <days>] [--keep-dirty] [--no-fetch] [--base <ref>] [project-root]
+make worktree-gc                 # ARGS="--dry-run" to preview
+```
+
+**What it does:**
+
+1. Fetches `origin` with `--prune` (skip with `--no-fetch`) and picks the base branch (`origin/main`, `origin/master`, `main` or `master`; override with `--base`).
+2. Classifies every linked worktree of the repository, wherever it lives:
+   - **merged** — its HEAD is contained in the base: worktree removed, branch deleted
+   - **gone** — its branch tracks an upstream that was deleted (PR merged, remote branch removed): worktree removed, branch deleted
+   - **idle** — no commit or checkout activity for more than `--max-age` days (default 14): worktree removed, **branch kept** (the work is unmerged)
+   - **prunable** — the directory is already gone: the registration is pruned
+   - everything else is kept and listed with its branch, idle age and size
+3. Never touches the main checkout, the worktree it runs from, or a locked worktree. Uncommitted changes in a worktree about to be removed are a warning, not a blocker; `--keep-dirty` leaves such worktrees alone.
+4. Reports directories under the worktree root that are not registered worktrees, with their size, and leaves them for you to delete.
+5. Prints a summary: worktrees removed, disk reclaimed, branches deleted, worktrees kept, warnings (nesting, strays outside the root, dirty removals).
+
+| Flag | Effect |
+| --- | --- |
+| `--dry-run` | Print what would be removed; change nothing. |
+| `--max-age <days>` | Idle threshold (default 14). |
+| `--keep-dirty` | Never remove a worktree with uncommitted changes. |
+| `--no-fetch` | Judge merged/gone from the local refs only. |
+| `--base <ref>` | Branch to judge "merged" against. |
+| `-h`, `--help` | Show usage. Unknown options exit 2. |
+
+Exit 0 on success, 1 when a removal failed or the directory is not a git repository, 2 on a usage error. The worktree root is `worktree_dir:` in `.standards.yml` (default `.claude/worktrees`). Tests: `scripts/test-worktree-gc.sh`.
 
 ---
 

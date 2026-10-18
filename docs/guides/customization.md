@@ -161,6 +161,23 @@ hooks: custom        # or: lefthook | husky | standards (default)
 
 `setup.sh` then leaves the native `.git/hooks/post-merge` alone and the `Git Hooks` check passes. `lefthook` / `husky` pin the manager `doctor` checks (and warn when its config file is missing). `setup.sh` carries all four keys verbatim into the `.standards.yml` it regenerates.
 
+## Worktree Root
+
+Agents work in git worktrees (proc-04), and worktrees sprawl: a survey of four consumer projects found 17 of them under one checkout, 37 GB under another, worktrees nested two deep, and one committed as a submodule. The standard is **one gitignored worktree root per repository**, declared in `.standards.yml`:
+
+```yaml
+worktree_dir: .claude/worktrees     # the default; project-relative, never absolute or ..
+```
+
+What the tooling does with it:
+
+- **`setup.sh`** adds `<worktree_dir>/` to `.gitignore` (once) and installs the pre-commit guard from `templates/pre-commit-worktree-guard.example` as `.git/hooks/pre-commit` when no pre-commit hook exists and the standards own the hooks. The guard refuses any commit that stages a path under the root — or under the roots other agents create on their own (`.worktrees`, `.Codex/worktrees`, `.cursor/worktrees`). With `hooks: husky` / `hooks: lefthook` / an existing hook, setup prints how to wire the guard in instead (the lefthook template already carries a `pre-commit` block for it).
+- **`make doctor`** reports the linked worktrees (count, oldest idle age, total size) and warns on a root that is not gitignored, worktrees nested inside another worktree, strays outside the root, and worktrees idle past 14 days.
+- **`make worktree-gc`** (`scripts/worktree-gc.sh`) removes worktrees whose branch is merged or whose upstream is gone (and deletes those branches), removes worktrees idle for more than 14 days (keeping their unmerged branch), prunes registrations whose directory vanished, and reports the rest. Uncommitted changes are a warning, not a blocker (`--keep-dirty` to opt out); `--dry-run` previews. In a consumer project: `./.standards/scripts/worktree-gc.sh`.
+- **`lint-standards.sh`** and member auto-discovery skip the root, so a non-hidden root (`worktrees/`) is never scanned and a worktree's own `.standards.yml` is never mistaken for a member.
+
+Keep build caches outside the worktrees (`CARGO_TARGET_DIR`, the pnpm store, SwiftPM scratch, Gradle, turbo under `~/.cache/<repo>` or `$TMPDIR`) so N worktrees do not mean N copies of `target/` — proc-04 § Worktree Hygiene has the table.
+
 ## Monorepos: Members
 
 Most real projects are monorepos: a Rust core with a SwiftUI shell and TypeScript workers, or `server/` + `web/` with the test directory, `mypy` and `eslint` configuration each one level down. Run against the root alone, the scripts assume a single project and report those layouts as missing. `.standards.yml` therefore supports **members** — sub-roots that are projects in their own right, each with its own `.standards.yml`:

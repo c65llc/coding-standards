@@ -98,6 +98,8 @@ This document explains the reorganized file hierarchy for easier navigation and 
 ├── scripts/                        # 🔧 Automation scripts
 │   ├── setup.sh                   # Setup standards in a project
 │   ├── sync-standards.sh          # Sync standards updates
+│   ├── doctor.sh                  # Standards health check (config, agents, hooks, worktrees)
+│   ├── worktree-gc.sh             # Remove merged, gone and idle agent worktrees
 │   ├── detect-languages.sh        # Detect project languages via manifest files
 │   └── build-claude-settings.sh   # Build language-aware Claude Code settings
 │

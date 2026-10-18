@@ -279,6 +279,27 @@ hooks: custom
 
 ---
 
+### `worktree_dir`
+
+Type: string (project-relative path)
+
+The single directory agent worktrees live under (proc-04 § Worktree Hygiene). Default: `.claude/worktrees`.
+
+| Script | Behaviour |
+|--------|-----------|
+| `setup.sh` | Adds `<worktree_dir>/` to `.gitignore` (once; a parent entry such as `.claude/` also counts) and installs `templates/pre-commit-worktree-guard.example` as `.git/hooks/pre-commit` when no pre-commit hook exists and the standards own the hooks; otherwise prints how to wire the guard into husky / lefthook / the existing hook. Carries the key verbatim into the regenerated `.standards.yml`. |
+| `doctor.sh` | `Worktrees` check: passes when the root is gitignored; reports linked worktree count, oldest idle age and total size; warns on nested worktrees, worktrees outside the root, worktrees idle beyond 14 days or whose directory is gone. |
+| `worktree-gc.sh` | Reports the root, collects every linked worktree of the repository (inside or outside the root) that is merged, gone or idle, and flags unregistered directories under the root. |
+| `lint-standards.sh`, members discovery | The root joins the built-in exclusions, so a non-hidden root (`worktrees/`) is never scanned and a worktree's own `.standards.yml` is never discovered as a member. |
+
+The value must stay inside the project: an absolute path, `~`, or a `..` segment is rejected — `setup.sh`, `doctor.sh` and `worktree-gc.sh` warn and use the default. The pre-commit guard additionally refuses the roots other agents create on their own (`.worktrees`, `.Codex/worktrees`, `.cursor/worktrees`, `.workspaces`).
+
+```yaml
+worktree_dir: .claude/worktrees
+```
+
+---
+
 ## Migration from `.standards-config`
 
 The legacy `.standards-config` file used `KEY=VALUE` format:

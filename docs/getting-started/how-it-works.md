@@ -76,8 +76,8 @@ Under the hood:
 
 1. `install.sh` adds this repo as `.standards/` via `git submodule add`
 2. `setup.sh` copies agent config templates to their expected locations
-3. A `post-merge` git hook is installed to remind you when standards have upstream updates
-4. A `make sync-standards` target is added to your Makefile
+3. A `post-merge` git hook is installed to remind you when standards have upstream updates, and a `pre-commit` guard refuses commits that add paths under the (gitignored) agent worktree root
+4. `make sync-standards`, `make diff-standards` and `make worktree-gc` targets are added to your Makefile
 
 ### Sync Flow
 

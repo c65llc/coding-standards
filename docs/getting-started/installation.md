@@ -31,6 +31,7 @@ The setup script will:
 - Detect which AI agents your project already uses and assemble their configs (`CLAUDE.md`, `.cursorrules`, `AGENTS.md`, ...)
 - Write `.standards.yml` and `.standards-checksums`
 - Set up a post-merge git hook that checks for standards updates
+- Gitignore the agent worktree root (`worktree_dir:` in `.standards.yml`, default `.claude/worktrees`) and install a pre-commit guard that refuses commits adding worktree paths
 - Configure git aliases for common workflows
 
 To install for a specific agent only, pass `--agents`. An explicit list installs **only** that agent's artifacts: no git hooks, git aliases, Cursor commands, `.claude/settings.json` or `.gemini/` unless the owning agent is listed. Standards-owned files are still written in every mode: `.standards.yml`, `.standards-checksums`, the `.gitignore` entries, `.trufflehog-ignore`, and any tool configs for detected languages (for example `.eslintrc`, `.ruff.toml`).
