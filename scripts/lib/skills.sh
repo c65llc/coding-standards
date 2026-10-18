@@ -8,7 +8,9 @@
 # A skill is a Markdown runbook with a YAML frontmatter carrying `name:` and
 # `description:`. The same file is emitted in each agent's own shape:
 #
-#   claude-code  .claude/skills/<name>.md            frontmatter kept as is
+#   claude-code  .claude/skills/<name>/SKILL.md      frontmatter kept as is (the
+#                                                    directory layout Claude Code
+#                                                    discovers project skills in)
 #   cursor       .cursor/commands/<name>.md          `description:` frontmatter only
 #   copilot      .github/prompts/<name>.prompt.md    `description:` frontmatter only
 #   codex, gemini, aider                             a "## Skills" index in the
@@ -26,6 +28,12 @@
 #   render_skills_index <skills_dir> <ref>  → the "## Skills" section body;
 #                                             <ref> is the path prefix the
 #                                             runbooks are reachable at
+#   skills_owned_key <key>                  → true for a checksums key that
+#                                             names an installed skill file
+#   skill_file_hash <file>                  → whole-file SHA-256 (skill files
+#                                             are not hashed with compute_hash)
+#   skills_checksum_entries <checksums>     → the .standards-checksums lines
+#                                             that record installed skill files
 
 # Agents whose skills are files the agent discovers on its own.
 SKILLS_FILE_AGENTS="claude-code cursor copilot"
@@ -91,7 +99,7 @@ skill_section() {
 # agent reads skill <name> from; prints nothing for index-only agents.
 skills_agent_target() {
     case "$1" in
-        claude-code) printf '.claude/skills/%s.md\n' "$2" ;;
+        claude-code) printf '.claude/skills/%s/SKILL.md\n' "$2" ;;
         cursor)      printf '.cursor/commands/%s.md\n' "$2" ;;
         copilot)     printf '.github/prompts/%s.prompt.md\n' "$2" ;;
         *)           return 0 ;;
@@ -106,6 +114,41 @@ skills_agent_dir() {
         copilot)     printf '.github/prompts\n' ;;
         *)           return 0 ;;
     esac
+}
+
+# skills_owned_key <key> — true when a .standards-checksums key names an
+# installed skill file (a path under one of the per-agent skill directories).
+skills_owned_key() {
+    local a
+    for a in $SKILLS_FILE_AGENTS; do
+        case "$1" in "$(skills_agent_dir "$a")"/*) return 0 ;; esac
+    done
+    return 1
+}
+
+# skill_file_hash <file> — SHA-256 of the whole file. Skill files are hashed
+# whole, not with compute_hash: that stops at the first PROJECT-SPECIFIC
+# sentinel, and runbooks such as merge-standards mention the sentinel in their
+# own text, which would hide every edit made below that line.
+skill_file_hash() {
+    shasum -a 256 "$1" | awk '{print $1}'
+}
+
+# skills_checksum_entries <checksums_file> — the `<path> <hash>` lines of
+# .standards-checksums that record installed skill files (keys under one of
+# the per-agent skill directories). assemble-skills.sh owns these entries;
+# setup.sh carries them across its rewrite of the file so an unmodified skill
+# stays recognised as standards-owned on the next run.
+skills_checksum_entries() {
+    local file="$1" a dirs=""
+    [ -f "$file" ] || return 0
+    for a in $SKILLS_FILE_AGENTS; do
+        dirs="${dirs:+$dirs }$(skills_agent_dir "$a")/"
+    done
+    awk -v dirs="$dirs" '
+        BEGIN { n = split(dirs, d, " ") }
+        NF >= 2 { for (i = 1; i <= n; i++) if (index($1, d[i]) == 1) { print; next } }
+    ' "$file"
 }
 
 # skills_agent_known <agent> — true for every agent the skills tooling knows.

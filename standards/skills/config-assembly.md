@@ -33,18 +33,16 @@ Generate agent configuration files by composing content blocks based on the proj
    | `aider` | `.standards/standards/agents/aider/base-aider.md` | `.aider-instructions.md` |
    | `codex` | `.standards/standards/agents/codex/base-codex.md` | `AGENTS.md` |
 
-3. Run the assembly script for each agent:
+3. Re-assemble through the checksum guard — never by running the pure assembler on a live config:
 
    ```bash
-   .standards/scripts/assemble-config.sh \
-     <agent> \
-     .standards/standards/shared/blocks/ \
-     <base-template> \
-     <output-file> \
-     lang-<language1>.md lang-<language2>.md role-<role>.md
+   .standards/scripts/sync-standards.sh --dry-run   # preview (or: .standards/scripts/diff-standards.sh)
+   .standards/scripts/sync-standards.sh             # assemble every declared agent, guarded
    ```
 
-   The script automatically includes the common blocks in order:
+   `sync-standards.sh` reads the declared agents, languages and role and runs `assemble-config.sh` once per agent through `assemble_agent_config_guarded` (`scripts/lib/assembly.sh`). To add an agent, declare it under `agents:` first — the sync assembles only what is declared. The guard is what makes steps 5–6 true: `assemble-config.sh` on its own reads neither `.standards-checksums` nor `managed:` and overwrites everything above the project-specific sentinel, so call it directly only with a scratch `<output-file>` (to inspect one assembly), never on `CLAUDE.md`, `AGENTS.md` or another installed config.
+
+   Each assembly includes the common blocks in order:
    1. `architecture-core.md`
    2. `testing-policy.md`
    3. `security-summary.md`
@@ -52,23 +50,17 @@ Generate agent configuration files by composing content blocks based on the proj
    5. `git-workflow.md`
    6. `documentation-policy.md`
 
-   Then appends the language and role blocks you specify. For `codex`, `gemini` and `aider` it also appends a `## Skills` index of `standards/skills/` (name, description, triggers, runbook path), since those agents read a single file.
+   then the language and role blocks for the declared `languages:` and `role:`. For `codex`, `gemini` and `aider` it also appends a `## Skills` index of `standards/skills/` (name, description, triggers, runbook path), since those agents read a single file.
 
-4. Emit the skills for the file-based agents:
-
-   ```bash
-   .standards/scripts/assemble-skills.sh <agent> [<agent> ...]
-   ```
-
-   `claude-code` → `.claude/skills/<name>.md`, `cursor` → `.cursor/commands/<name>.md`, `copilot` → `.github/prompts/<name>.prompt.md`. A file is rewritten only when its content changed.
+4. The same sync emits the skills for the file-based agents (`assemble-skills.sh`, under the same guard): `claude-code` → `.claude/skills/<name>/SKILL.md`, `cursor` → `.cursor/commands/<name>.md`, `copilot` → `.github/prompts/<name>.prompt.md`. A file is rewritten only when its content changed; one the standards did not install, or that was edited since, is kept and the new version is staged to `.standards-pending/<path>`.
 
 5. The assembler respects the `<!-- BEGIN PROJECT-SPECIFIC` sentinel — any content below it in an existing output file is preserved across re-assembly.
 
-6. If the output file has been customized (checksum mismatch), the assembler writes to `.standards-pending/` instead of overwriting. Use the `merge-standards` skill to resolve these.
+6. If the output file has been customized (checksum mismatch), the guarded sync stages the new assembly to `.standards-pending/` instead of overwriting. Use the `merge-standards` skill to resolve these. A file declared `managed: { <file>: false }` in `.standards.yml` is left alone entirely.
 
 ## Checksum System
 
-Generated configs are tracked in `.standards-checksums`. The assembler:
+Generated configs are tracked in `.standards-checksums`. The guard (`sync-standards.sh` and `setup.sh`, via `scripts/lib/assembly.sh`):
 
 - Computes SHA256 of the generated (non-custom) portion of the file
 - Compares against the stored hash

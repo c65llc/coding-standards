@@ -6,7 +6,7 @@ title: "Merge Standards Updates"
 
 When `sync-standards` detects that your agent configs have been customized, it stages pending updates in `.standards-pending/` instead of overwriting your files. This document explains how to merge those updates.
 
-**Claude Code, Cursor and Copilot users:** run the `merge-standards` skill, command or prompt (`.claude/skills/merge-standards.md`, `.cursor/commands/merge-standards.md`, `.github/prompts/merge-standards.prompt.md` — setup installs the one for each declared agent) instead of following this guide; it automates the entire process. **Codex, Gemini CLI and Aider** find the same runbook listed in the `## Skills` section of their assembled config.
+**Claude Code, Cursor and Copilot users:** run the `merge-standards` skill, command or prompt (`.claude/skills/merge-standards/SKILL.md`, `.cursor/commands/merge-standards.md`, `.github/prompts/merge-standards.prompt.md` — setup installs the one for each declared agent) instead of following this guide; it automates the entire process. **Codex, Gemini CLI and Aider** find the same runbook listed in the `## Skills` section of their assembled config.
 
 ## What Happened
 

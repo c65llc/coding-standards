@@ -78,17 +78,19 @@ Adjust values based on user answers. Show the file to the user for approval befo
 
 ### Step 5: Run Setup
 
-Execute the full setup with dry-run first:
+`setup.sh` does not read `agents:`, `role:` or `languages:` back from the file written in Step 4. Without flags it detects agents from existing agent config files (none on a fresh project, so it would write `agents: []`), defaults the role to `service` and re-detects the languages. Pass the approved selections explicitly, comma-separated, so the configuration setup writes is the one the user approved. Dry-run first:
 
 ```bash
-.standards/scripts/setup.sh --dry-run
+.standards/scripts/setup.sh --dry-run --agents claude-code,cursor --role service --languages python,typescript
 ```
 
-Show the user what will be created. On approval, run without `--dry-run`:
+Show the user what will be created. On approval, run the same command without `--dry-run`:
 
 ```bash
-.standards/scripts/setup.sh
+.standards/scripts/setup.sh --agents claude-code,cursor --role service --languages python,typescript
 ```
+
+Setup rewrites `.standards.yml` from these flags; confirm afterwards that its `agents:`, `role:` and `languages:` match what the user approved in Step 4.
 
 ### Step 6: Verify
 

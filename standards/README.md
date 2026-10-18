@@ -106,7 +106,7 @@ Agent-neutral runbooks (`merge-standards`, `standards-audit`, `security-gate`, `
 
 | Agent | Shape |
 |-------|-------|
-| Claude Code | `.claude/skills/<name>.md` (frontmatter kept) |
+| Claude Code | `.claude/skills/<name>/SKILL.md` (frontmatter kept) |
 | Cursor | `.cursor/commands/<name>.md` (`description:` frontmatter) |
 | Copilot | `.github/prompts/<name>.prompt.md` (`description:` frontmatter) |
 | Codex, Gemini CLI, Aider | a `## Skills` section in `AGENTS.md`, `.gemini/GEMINI.md`, `.aider-instructions.md` — name, description, triggers and the runbook path |

@@ -37,7 +37,7 @@ git clone https://github.com/c65llc/coding-standards.git .standards
 
 Supported agents and the files setup assembles for them:
 
-- `CLAUDE.md` (and `.claude/settings.json`, `.claude/skills/*.md`) for Claude Code
+- `CLAUDE.md` (and `.claude/settings.json`, `.claude/skills/*/SKILL.md`) for Claude Code
 - `.cursorrules` and `.cursor/commands/` (custom commands plus the skills) for Cursor AI
 - `.github/copilot-instructions.md` and `.github/prompts/*.prompt.md` for GitHub Copilot
 - `.gemini/GEMINI.md` and `.gemini/settings.json` for Gemini CLI

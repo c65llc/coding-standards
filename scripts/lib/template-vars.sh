@@ -1,7 +1,8 @@
 #!/bin/bash
 # Resolve {{PROJECT_NAME}}, {{PROJECT_OVERVIEW}}, {{KEY_COMMANDS}} and
-# {{WORKTREE_DIR}} in assembled agent-config and skill output. Called by assemble-config.sh right before the
-# output file is written.
+# {{WORKTREE_DIR}} in assembled agent-config output. Called by
+# assemble-config.sh right before the output file is written. Skills
+# (assemble-skills.sh) are installed as written and never pass through here.
 #
 # Philosophy: fill what we can from package metadata and from the persisted
 # `project_overview:` / `key_commands:` in .standards.yml; replace what we

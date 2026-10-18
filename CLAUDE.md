@@ -115,7 +115,7 @@ Every base template and `standards/shared/blocks/git-workflow.md` name the workt
 
 ### Skills (`standards/skills/`)
 
-Agent-neutral runbooks (`merge-standards`, `standards-audit`, `security-gate`, `coverage-enforcer`, `dependency-age-gate`, `naming-convention`, `config-assembly`, `setup-wizard`) with a `name:` / `description:` frontmatter and a `## When to Use` section. `scripts/assemble-skills.sh` (via `scripts/lib/skills.sh`) emits them per declared agent — `.claude/skills/<name>.md`, `.cursor/commands/<name>.md`, `.github/prompts/<name>.prompt.md` — and `scripts/assemble-config.sh` appends a `## Skills` index to the single-file agents' configs (`AGENTS.md`, `.gemini/GEMINI.md`, `.aider-instructions.md`). Write a skill once for every agent: reference `.standards/scripts/...`, never one agent's tooling. Tests: `scripts/test-setup-safe.sh` Tests 75–83.
+Agent-neutral runbooks (`merge-standards`, `standards-audit`, `security-gate`, `coverage-enforcer`, `dependency-age-gate`, `naming-convention`, `config-assembly`, `setup-wizard`) with a `name:` / `description:` frontmatter and a `## When to Use` section. `scripts/assemble-skills.sh` (via `scripts/lib/skills.sh`) emits them per declared agent — `.claude/skills/<name>/SKILL.md`, `.cursor/commands/<name>.md`, `.github/prompts/<name>.prompt.md` — and `scripts/assemble-config.sh` appends a `## Skills` index to the single-file agents' configs (`AGENTS.md`, `.gemini/GEMINI.md`, `.aider-instructions.md`). Write a skill once for every agent: reference `.standards/scripts/...`, never one agent's tooling. Tests: `scripts/test-setup-safe.sh` Tests 91–102.
 
 ### Scripts (`scripts/`)
 
