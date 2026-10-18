@@ -596,8 +596,12 @@ jobs:
             # issue body: the PR number is in the marker, its mergedAt is fixed,
             # and the approver is the actor of the `labeled` timeline event.
             pr=$(jq -r .body issue.json | sed -n 's/^dep-age-follow-up-for-pr-\([0-9]*\)$/\1/p' | head -1)
-            merged_at=$(gh pr view "$pr" --repo "$REPO" --json mergedAt,author --jq '.mergedAt // empty')
-            author=$(gh pr view "$pr" --repo "$REPO" --json author --jq '.author.login // empty')
+            # One checked call for both facts: a failed lookup aborts this
+            # issue's evaluation as an error instead of leaving `author` empty
+            # and letting the self-approval test pass by accident.
+            pr_meta=$(gh pr view "$pr" --repo "$REPO" --json mergedAt,author --jq '(.mergedAt // "") + " " + (.author.login // "")') \
+              || { echo "::error::#$number: could not read PR #$pr (mergedAt/author)"; rc=1; continue; }
+            read -r merged_at author <<< "$pr_meta"
             # The approver is frozen at merge: the last `labeled` event AT OR
             # BEFORE mergedAt. A label removed and re-applied on the closed PR
             # afterwards does not change it. Re-validate against the approver
