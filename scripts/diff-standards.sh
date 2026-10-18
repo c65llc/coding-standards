@@ -217,6 +217,7 @@ CHANGED=0
 UNCHANGED=0
 NEW_FILES=0
 SKIPPED=0
+CURATED=0
 
 TEMP_FILES=()
 # shellcheck disable=SC2317
@@ -274,16 +275,32 @@ for agent in $AGENTS_LIST; do
         continue
     fi
 
+    # Curated file (#183): `managed: { <file>: false }` in .standards.yml. Sync
+    # never regenerates it, so its differences are shown for manual review
+    # but are not pending changes (and do not fail --exit-code).
+    IS_CURATED=false
+    if declare -f file_managed >/dev/null 2>&1 && ! file_managed "$PROJECT_ROOT" "$OUTPUT_PATH"; then
+        IS_CURATED=true
+    fi
+
     # Compute diff
     DIFF_OUTPUT=$(diff --unified=3 "$OUTPUT_PATH" "$TEMP_FILE" 2>/dev/null || true)
 
     if [ -z "$DIFF_OUTPUT" ]; then
-        printf "  %s\n" "${GREEN}✅ Up to date${NC}"
+        if [ "$IS_CURATED" = true ]; then
+            printf "  %s\n" "${GREEN}✅ Up to date (curated: managed: false)${NC}"
+        else
+            printf "  %s\n" "${GREEN}✅ Up to date${NC}"
+        fi
         UNCHANGED=$((UNCHANGED + 1))
     else
         ADDED=$(printf '%s\n' "$DIFF_OUTPUT" | grep -c '^+[^+]' || true)
         REMOVED=$(printf '%s\n' "$DIFF_OUTPUT" | grep -c '^-[^-]' || true)
-        printf "  %s~ Changes: +%d/-%d lines%s\n" "$YELLOW" "$ADDED" "$REMOVED" "$NC"
+        if [ "$IS_CURATED" = true ]; then
+            printf "  %s~ Curated (managed: false): +%d/-%d lines differ from the upstream template — review manually; sync will not apply them%s\n" "$CYAN" "$ADDED" "$REMOVED" "$NC"
+        else
+            printf "  %s~ Changes: +%d/-%d lines%s\n" "$YELLOW" "$ADDED" "$REMOVED" "$NC"
+        fi
         # Print colored diff
         printf '%s\n' "$DIFF_OUTPUT" | while IFS= read -r line; do
             case "$line" in
@@ -293,7 +310,11 @@ for agent in $AGENTS_LIST; do
                 *)  printf "%s\n" "$line" ;;
             esac
         done
-        CHANGED=$((CHANGED + 1))
+        if [ "$IS_CURATED" = true ]; then
+            CURATED=$((CURATED + 1))
+        else
+            CHANGED=$((CHANGED + 1))
+        fi
     fi
     printf "\n"
 done
@@ -307,6 +328,9 @@ printf "  %sSummary:%s " "$BOLD" "$NC"
 printf "%s%d up to date%s  " "$GREEN" "$UNCHANGED" "$NC"
 printf "%s%d would change%s  " "$YELLOW" "$CHANGED" "$NC"
 printf "%s%d new%s  " "$GREEN" "$NEW_FILES" "$NC"
+if [ "$CURATED" -gt 0 ]; then
+    printf "%s%d curated (manual review)%s  " "$CYAN" "$CURATED" "$NC"
+fi
 if [ "$SKIPPED" -gt 0 ]; then
     printf "%s%d skipped%s" "$YELLOW" "$SKIPPED" "$NC"
 fi

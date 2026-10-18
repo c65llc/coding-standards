@@ -234,6 +234,12 @@ source "$SCRIPT_DIR/lib/languages.sh"
 # shellcheck source=lib/members.sh disable=SC1091
 source "$SCRIPT_DIR/lib/members.sh"
 
+# Filled-in Project Overview / Key Commands capture (#183)
+if [ -f "$SCRIPT_DIR/lib/project-sections.sh" ]; then
+    # shellcheck source=lib/project-sections.sh disable=SC1091
+    source "$SCRIPT_DIR/lib/project-sections.sh"
+fi
+
 # Members of this project (root-relative sub-roots), resolved from the existing
 # root .standards.yml (`members:`) or by auto-discovery before setup rewrites
 # that file. MEMBERS_EXPLICIT records whether the key was declared so it is
@@ -407,6 +413,11 @@ setup_ai_agents() {
             1)
                 echo "⚠️  $agent config already exists and differs — staged to $PENDING_DIR/"
                 PENDING_LIST="${PENDING_LIST:+$PENDING_LIST }$(basename "$OUTPUT_PATH")"
+                # Filled-in overview/commands that .standards.yml does not persist
+                # are the usual reason a config can never match its checksum (#183).
+                if declare -f print_capture_hint >/dev/null 2>&1; then
+                    print_capture_hint "$PROJECT_ROOT" "$OUTPUT_PATH" "${OUTPUT_PATH#"$PROJECT_ROOT"/}" || true
+                fi
                 ;;
             2)
                 echo "⚠️  $agent config was manually created — backup in $PENDING_DIR/"
@@ -415,6 +426,10 @@ setup_ai_agents() {
             3)
                 echo "⚠️  Failed to assemble $agent config (non-fatal, continuing...)"
                 continue
+                ;;
+            4)
+                echo "ℹ️  $agent config is curated (managed: false in .standards.yml) — left as is."
+                echo "   Review upstream template changes with diff-standards.sh."
                 ;;
         esac
 
@@ -555,6 +570,19 @@ setup_ai_agents() {
         fi
     fi
 
+    # Hand-written blocks the regenerated file must carry across verbatim
+    # (#183): the persisted project text, the curated-file map and the hook
+    # manager. Captured before the write below, which truncates the file.
+    local PRESERVED_YML="" _k _blk
+    if [ -f "$PROJECT_ROOT/.standards.yml" ] && declare -f yaml_raw_block >/dev/null 2>&1; then
+        for _k in project_overview key_commands managed hooks; do
+            _blk=$(yaml_raw_block "$_k" "$PROJECT_ROOT/.standards.yml")
+            [ -n "$_blk" ] || continue
+            PRESERVED_YML="${PRESERVED_YML:+$PRESERVED_YML
+}$_blk"
+        done
+    fi
+
     # Write .standards.yml
     {
         echo "# .standards.yml — Project standards configuration"
@@ -600,6 +628,26 @@ setup_ai_agents() {
         echo "  slow_threshold_ms: 2000"
         echo "architecture: clean"
         echo "security: strict"
+        if [ -n "$PRESERVED_YML" ]; then
+            echo "# Project text, curated files and hook manager (kept from the previous"
+            echo "# .standards.yml; see templates/standards.yml.example)."
+            printf '%s\n' "$PRESERVED_YML"
+        else
+            echo "# Project text assembled into the agent configs ({{PROJECT_OVERVIEW}} /"
+            echo "# {{KEY_COMMANDS}}). Persist it here so re-assembly reproduces it and the"
+            echo "# checksum stays stable; /merge-standards fills it in."
+            echo "# project_overview: |"
+            echo "#   One paragraph: what this project is and how it is organised."
+            echo "# key_commands: |"
+            echo "#   make test    # run the test suite"
+            echo "# Hand-curated agent configs that sync must not regenerate (doctor and"
+            echo "# sync report them as curated, diff-standards still previews changes):"
+            echo "# managed:"
+            echo "#   CLAUDE.md: false"
+            echo "# Git hook manager owning post-merge/commit-msg: standards (default,"
+            echo "# native hooks written by setup.sh) | lefthook | husky | custom."
+            echo "# hooks: custom"
+        fi
         echo "# Conventional Commits enforcement — uncomment to tune. Defaults: the last"
         echo "# 50 non-merge commits locally; the PR's own commits in the standards-review"
         echo "# action. Precedence: since > PR range (CI) > window, so a window only"
@@ -769,8 +817,20 @@ fi
 # Set up git hooks (workstation extra: skipped when --agents names an explicit list)
 GIT_HOOKS_DIR="$PROJECT_ROOT/.git/hooks"
 
+# hooks: in .standards.yml names the manager that owns the hooks (#183). With
+# lefthook, husky or a custom manager declared, the native post-merge hook is
+# theirs to provide (and would not run under core.hooksPath anyway).
+DECLARED_HOOKS=""
+if declare -f read_standards_config >/dev/null 2>&1 && read_standards_config "$PROJECT_ROOT" 2>/dev/null; then
+    DECLARED_HOOKS="${STD_HOOKS:-}"
+fi
+
 if ! install_git_extras; then
     echo "ℹ️  Skipping git hooks (explicit --agents). Run without --agents to install them."
+elif [ -n "$DECLARED_HOOKS" ] && [ "$DECLARED_HOOKS" != "standards" ]; then
+    echo "🪝 Setting up git hooks..."
+    echo "ℹ️  hooks: $DECLARED_HOOKS declared in .standards.yml — not installing the native post-merge hook."
+    echo "   Keep the standards-sync reminder in your $DECLARED_HOOKS post-merge hook (see templates/lefthook.yml.example)."
 elif [ ! -d "$GIT_HOOKS_DIR" ]; then
     echo "🪝 Setting up git hooks..."
     echo "⚠️  Not a git repository. Skipping git hooks setup."

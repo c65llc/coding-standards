@@ -17,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/c65llc/coding-standards/main/instal
 
 The installer sets up the following in your project:
 
-- A `.standards.yml` declarative config — declares your languages, agents, coverage thresholds, and architecture mode
+- A `.standards.yml` declarative config — declares your languages, agents, coverage thresholds, architecture mode, the project overview and key commands assembled into the agent configs, which configs are hand-curated (`managed:`), and your git hook manager (`hooks:`)
 - All AI agent configuration files (see table below)
 - A `make sync-standards` Makefile target for on-demand updates
 - A `make doctor` target for auditing your standards setup health

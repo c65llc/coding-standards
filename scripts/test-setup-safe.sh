@@ -769,6 +769,115 @@ diff_rc=0
 [ "$diff_rc" -eq 0 ]                                              || errs="$errs diff-reports-drift($diff_rc)"
 if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$sync_out" | grep -i 'languages' | head -2)"; fi
 
+# --- #183: curated agent configs ---------------------------------------------
+
+TODO_OVERVIEW='<!-- TODO(standards): one-paragraph project overview goes here. Run /merge-standards to fill. -->'
+TODO_COMMANDS='<!-- TODO(standards): list key build/test/run commands. Run /merge-standards to fill. -->'
+
+echo -n "Test 57: project_overview/key_commands in .standards.yml are assembled into CLAUDE.md and survive the setup rewrite... "
+proj=$(make_project "persisted-overview")
+fake_standards "$proj"
+printf 'version: 1\nlanguages:\n  - typescript\nagents:\n  - claude-code\nrole: service\nproject_overview: |\n  Widget service that renders dashboards.\n\n  It talks to the billing API.\nkey_commands: |\n  make test    # unit tests\n  make lint\n' > "$proj/.standards.yml"
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+errs=""
+grep -q 'Widget service that renders dashboards.' "$proj/CLAUDE.md" 2>/dev/null || errs="$errs overview-missing"
+grep -q 'It talks to the billing API.' "$proj/CLAUDE.md" 2>/dev/null         || errs="$errs overview-second-paragraph-missing"
+grep -q '^make test    # unit tests$' "$proj/CLAUDE.md" 2>/dev/null         || errs="$errs commands-missing"
+grep -q '^make lint$' "$proj/CLAUDE.md" 2>/dev/null                         || errs="$errs commands-second-line-missing"
+grep -q 'TODO(standards)' "$proj/CLAUDE.md" 2>/dev/null                     && errs="$errs todo-marker-left"
+grep -q '{{' "$proj/CLAUDE.md" 2>/dev/null                                  && errs="$errs placeholder-left"
+grep -q '^project_overview: |$' "$proj/.standards.yml"                      || errs="$errs yml-overview-not-preserved"
+grep -q '^  make lint$' "$proj/.standards.yml"                              || errs="$errs yml-commands-not-preserved"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 58: a config assembled from persisted text re-syncs with a matching checksum (no pending, doctor PASS)... "
+sync_out=$(cd "$proj" && "$SYNC" 2>&1) || true
+doc_out=$(cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1) || true
+errs=""
+echo "$sync_out" | grep -q 'claude-code config synced'                       || errs="$errs not-synced"
+[ -d "$proj/.standards-pending" ]                                           && errs="$errs pending-staged"
+grep -q 'Widget service that renders dashboards.' "$proj/CLAUDE.md"         || errs="$errs overview-lost-on-sync"
+echo "$doc_out" | grep 'Checksums' | grep -q 'PASS'                          || errs="$errs doctor-checksums-not-pass"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$doc_out" | grep 'Checksums')"; fi
+
+echo -n "Test 59: sync prints the .standards.yml to add when a config has filled-in sections the yml lacks... "
+proj=$(make_project "capture-hint")
+fake_standards "$proj"
+write_standards_yml "$proj" claude-code
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+# Fill the sections in by hand, as the merge skill used to instruct.
+sed -e "s|$TODO_OVERVIEW|Hand-filled overview of the widget service.|" \
+    -e "s|$TODO_COMMANDS|make widgets   # build the widgets|" \
+    "$proj/CLAUDE.md" > "$proj/CLAUDE.md.tmp" && mv "$proj/CLAUDE.md.tmp" "$proj/CLAUDE.md"
+sync_out=$(cd "$proj" && "$SYNC" 2>&1) || true
+errs=""
+echo "$sync_out" | grep -q 'config customized'                                      || errs="$errs not-reported-customized"
+echo "$sync_out" | grep -q '^   project_overview: |$'                               || errs="$errs overview-key-not-printed"
+echo "$sync_out" | grep -q '^     Hand-filled overview of the widget service.$'     || errs="$errs overview-text-not-printed"
+echo "$sync_out" | grep -q '^   key_commands: |$'                                   || errs="$errs commands-key-not-printed"
+echo "$sync_out" | grep -q '^     make widgets   # build the widgets$'              || errs="$errs commands-text-not-printed"
+echo "$sync_out" | grep -q 'TODO(standards)'                                        && errs="$errs todo-marker-captured"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$sync_out" | grep -A6 'does not persist' | tr '\n' '|')"; fi
+
+echo -n "Test 60: pasting the printed yaml makes the next sync record the baseline instead of staging a pending copy... "
+rm -rf "$proj/.standards-pending"
+echo "$sync_out" | awk '/^   (project_overview|key_commands): \|$/ { p = 1 } p && /^$/ { p = 0 } p' | sed 's/^   //' >> "$proj/.standards.yml"
+before=$(cat "$proj/CLAUDE.md")
+sync_out=$(cd "$proj" && "$SYNC" 2>&1) || true
+after=$(cat "$proj/CLAUDE.md")
+doc_out=$(cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1) || true
+errs=""
+grep -q '^project_overview: |$' "$proj/.standards.yml"                       || errs="$errs yaml-not-appended"
+echo "$sync_out" | grep -q 'claude-code config synced'                       || errs="$errs not-synced"
+[ -d "$proj/.standards-pending" ]                                           && errs="$errs pending-staged"
+[ "$before" = "$after" ]                                                    || errs="$errs file-rewritten"
+grep -q 'Hand-filled overview of the widget service.' "$proj/CLAUDE.md"     || errs="$errs overview-lost"
+echo "$doc_out" | grep 'Checksums' | grep -q 'PASS'                          || errs="$errs doctor-checksums-not-pass"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$sync_out" | grep -i 'claude' | head -3 | tr '\n' '|')"; fi
+
+echo -n "Test 61: managed: { CLAUDE.md: false } keeps a hand-edited config out of sync (no rewrite, no pending, reported curated)... "
+proj=$(make_project "curated-sync")
+fake_standards "$proj"
+write_standards_yml "$proj" claude-code
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+{ head -1 "$proj/CLAUDE.md"; echo "# curated local rule"; tail -n +2 "$proj/CLAUDE.md"; } > "$proj/CLAUDE.md.tmp" \
+    && mv "$proj/CLAUDE.md.tmp" "$proj/CLAUDE.md"
+printf 'managed:\n  CLAUDE.md: false\n' >> "$proj/.standards.yml"
+sync_out=$(cd "$proj" && "$SYNC" 2>&1) || true
+errs=""
+grep -q '^# curated local rule$' "$proj/CLAUDE.md"                          || errs="$errs edit-lost"
+[ -d "$proj/.standards-pending" ]                                           && errs="$errs pending-staged"
+echo "$sync_out" | grep -q 'claude-code config is curated'                   || errs="$errs not-reported-curated"
+echo "$sync_out" | grep -q 'config customized'                               && errs="$errs reported-customized"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$sync_out" | grep -i 'claude' | head -3 | tr '\n' '|')"; fi
+
+echo -n "Test 62: setup.sh re-run keeps a curated file and carries managed:/hooks: into the regenerated .standards.yml... "
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+errs=""
+grep -q '^# curated local rule$' "$proj/CLAUDE.md"                          || errs="$errs edit-lost-on-setup"
+grep -q '^managed:$' "$proj/.standards.yml"                                 || errs="$errs managed-key-lost"
+grep -q '^  CLAUDE.md: false$' "$proj/.standards.yml"                       || errs="$errs managed-entry-lost"
+[ -d "$proj/.standards-pending" ]                                           && errs="$errs pending-staged"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(grep -c '' "$proj/.standards.yml") lines in yml"; fi
+
+echo -n "Test 63: hooks: custom stops setup.sh from installing the native post-merge hook and is kept in .standards.yml... "
+proj=$(make_project "hooks-custom")
+fake_standards "$proj"
+printf 'version: 1\nlanguages:\n  - typescript\nagents:\n  - codex\nrole: service\nhooks: custom\n' > "$proj/.standards.yml"
+setup_out=$(cd "$proj" && "$SETUP" 2>&1) || true
+errs=""
+[ -f "$proj/.git/hooks/post-merge" ]                                        && errs="$errs native-hook-installed"
+echo "$setup_out" | grep -q 'hooks: custom declared'                         || errs="$errs not-announced"
+grep -q '^hooks: custom$' "$proj/.standards.yml"                            || errs="$errs hooks-key-lost"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$setup_out" | grep -i 'hook' | head -3 | tr '\n' '|')"; fi
+
+echo -n "Test 64: without hooks: (or hooks: standards) setup.sh still installs the native post-merge hook... "
+proj=$(make_project "hooks-default")
+fake_standards "$proj"
+printf 'version: 1\nlanguages:\n  - typescript\nagents:\n  - codex\nrole: service\nhooks: standards\n' > "$proj/.standards.yml"
+(cd "$proj" && "$SETUP" >/dev/null 2>&1) || true
+if [ -f "$proj/.git/hooks/post-merge" ] && grep -q 'standards' "$proj/.git/hooks/post-merge"; then pass; else fail "native post-merge hook not installed"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

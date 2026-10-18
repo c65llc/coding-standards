@@ -93,7 +93,7 @@ make sync-standards
 1. Refuses to run when the project root resolves to `.standards/` (i.e. you ran it from inside the submodule, as the old `make -C .standards sync-standards` wrapper did). Run it from the project root instead.
 2. If a `.standards` submodule exists, fetches from the remote and pulls if there are new commits. An unreachable remote is a warning, not a failure — the sync continues from the local checkout.
 3. Reads `agents:`, `languages:`, `role:` and `members:` from `.standards.yml` (falls back to the legacy `.standards-config`, then to all agents + language auto-detection). Members (declared, or auto-discovered `*/.standards.yml`) are listed with their languages, and their languages are added to the root's for the assembly step; a declared member that does not exist is a warning, not a failure.
-4. Re-assembles one config per declared agent (`CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `.aider-instructions.md`). Customized files are staged to `.standards-pending/` instead of being overwritten.
+4. Re-assembles one config per declared agent (`CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `.aider-instructions.md`), filling `{{PROJECT_OVERVIEW}}` / `{{KEY_COMMANDS}}` from `project_overview:` / `key_commands:` in `.standards.yml`. Customized files are staged to `.standards-pending/` instead of being overwritten — unless the fresh assembly reproduces the installed file exactly (the project text was persisted since the last run), in which case the checksum baseline is recorded. A file declared `managed: false` is curated: never regenerated or staged, reported as such. When a customized config has a filled-in overview or commands the yml does not persist, the YAML to add is printed (see [Curated Agent Configs](../guides/customization.md#curated-agent-configs)).
 5. Installs agent-specific extras **only for declared agents**: Cursor custom commands (`cursor`), `.gemini/settings.json` (`gemini`, JSON-validated first), `.claude/settings.json` and the `/merge-standards` skill (`claude-code`).
 6. Syncs language-specific tool configs for detected languages.
 7. Lists available standards files.
@@ -120,7 +120,7 @@ make diff-standards
 
 | Flag | Effect |
 | ---- | ------ |
-| `--exit-code` | Exit 1 when any declared agent's assembled config (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, …) would change or be created; exit 0 otherwise. The project-specific section is never drift; verbatim-copied auxiliary files (`.aiderrc`, `.gemini/settings.json`, …) are not diffed. Without the flag the script always exits 0. |
+| `--exit-code` | Exit 1 when any declared agent's assembled config (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, …) would change or be created; exit 0 otherwise. The project-specific section is never drift (the installed file seeds the assembly, so the section below the `<!-- BEGIN PROJECT-SPECIFIC` marker is carried through, never shown as deleted); a file declared `managed: false` in `.standards.yml` is diffed and labelled `Curated` for manual review but is not a pending change; verbatim-copied auxiliary files (`.aiderrc`, `.gemini/settings.json`, …) are not diffed. Without the flag the script always exits 0. |
 | `-h`, `--help` | Show usage. Unknown options exit 2. |
 
 **What it does:**
@@ -184,6 +184,8 @@ make doctor
 ```
 
 The `Languages` check compares what `detect-languages.sh` finds with what `.standards.yml` declares, for the root (member directories skipped) and for each member (`Languages (server)`). It warns about a supported language that is detected but not declared, and about a declared key that has no standards document or lint checks (`cpp`): agent assembly and the linter silently ignore such a key. The `Members` check fails on a declared member whose directory is missing and warns on one without a `.standards.yml`.
+
+The `Checksums` check names the configs modified since their last assembly and treats a file declared `managed: false` in `.standards.yml` as `curated, not drifted` (the check still passes). The `Git Hooks` check honours `hooks:`: `custom` passes outright (the project's own manager owns the hooks), `lefthook` / `husky` pin which manager's config is read (a missing config is a `WARN`), and an unrecognised value warns and falls back to detection. See [Curated Agent Configs](../guides/customization.md#curated-agent-configs).
 
 ---
 

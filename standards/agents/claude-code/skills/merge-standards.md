@@ -17,7 +17,30 @@ When invoked immediately after `setup.sh`, `.standards-pending/MERGE_PLAN.md` ex
 
 For **empty targets** (the project had no existing config and `.standards-pending/` still contains the assembled version because `--agents detect` found it), the merge is a rename: move the pending file into place, update `.standards-checksums`, and delete the pending copy.
 
-For **`<!-- TODO(standards): -->` markers** in CLAUDE.md and friends: ask the user for a one-paragraph project overview and a list of key commands (or infer them from `package.json` scripts / Makefile targets) and replace the markers in place before completing the merge.
+For **`<!-- TODO(standards): -->` markers** in CLAUDE.md and friends: ask the user for a one-paragraph project overview and a list of key commands (or infer them from `package.json` scripts / Makefile targets). **Write them to `.standards.yml`, not only into the file:**
+
+```yaml
+project_overview: |
+  One paragraph: what this project is and how its pieces fit together.
+key_commands: |
+  make test        # run the test suite
+  make lint        # lint and format checks
+```
+
+Then re-run `./.standards/scripts/sync-standards.sh` (or replace the markers in place with the same text). The assembler reads these keys into `{{PROJECT_OVERVIEW}}` / `{{KEY_COMMANDS}}`, so the file stays byte-identical to its assembly and its checksum keeps matching; text edited only in the file is flagged as customized on every later sync.
+
+For **sections already filled in by hand** (setup or sync printed `💡 ... has a filled-in Project Overview / Key Commands that .standards.yml does not persist` followed by the YAML to add): append exactly that YAML to `.standards.yml`, then re-run the sync — it records the file as current instead of staging a pending copy.
+
+For **a config the user wants to keep hand-curated end to end** (repo-specific guidance that a regenerate would flatten): declare it in `.standards.yml` and leave it alone:
+
+```yaml
+managed:
+  CLAUDE.md: false
+```
+
+Sync and setup then never regenerate or stage it, `doctor` reports it as curated, and `diff-standards.sh` keeps showing upstream template changes for manual review. Offer this only when `project_overview` / `key_commands` and the PROJECT-SPECIFIC section cannot hold the customisation — a curated file stops receiving standards updates.
+
+If `doctor` fails on `post-merge hook not installed` and the project manages its own hooks (`make hooks`, lefthook, husky), declare `hooks: custom` (or `lefthook` / `husky`) in `.standards.yml`.
 
 ## Workflow
 
@@ -47,6 +70,7 @@ Standards sections are identified by `##` headers injected by the assembler: `##
 **Content outside standards sections** (project overview, key commands, custom sections the user or /claude-md-improver added):
 
 - Always preserve the current version — never replace or remove user-authored sections
+- Project overview and key commands: persist the current text as `project_overview:` / `key_commands:` in `.standards.yml` when they are not there yet, so the merged file matches its next assembly
 
 **Content below the `<!-- BEGIN PROJECT-SPECIFIC` sentinel:**
 

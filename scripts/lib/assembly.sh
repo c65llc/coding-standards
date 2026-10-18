@@ -20,6 +20,7 @@ fi
 #   1 — wrote pending update (.standards-pending/)
 #   2 — skipped (manual file without assembly header; backup staged)
 #   3 — assembler failed
+#   4 — skipped (curated: .standards.yml declares `managed: { <file>: false }`)
 #
 # On exit 0, caller should update its checksums using compute_hash +
 # update_checksum_entry. On exit 1, caller should track the basename in its
@@ -35,6 +36,23 @@ assemble_agent_config_guarded() {
     shift 7
     local blocks=("$@")
 
+    # Derive the pending directory relative to the consumer project root (not cwd).
+    local _project_root
+    _project_root="$(dirname "$checksums_path")"
+    local _pending_dir="$_project_root/$PENDING_DIR"
+
+    # Curated file (#183): `managed: { <file>: false }` in .standards.yml says
+    # the project owns this config. Never regenerate or stage it; the operator
+    # reviews upstream template changes with diff-standards.sh instead. A
+    # curated file that does not exist yet is still created (nothing to protect).
+    if [ -f "$output_path" ] && declare -f file_managed >/dev/null 2>&1 \
+       && ! file_managed "$_project_root" "$output_path"; then
+        if [ "$dry_run" = "true" ]; then
+            echo "  [dry-run] Would leave curated file as is (managed: false): $output_path"
+        fi
+        return 4
+    fi
+
     if [ "$dry_run" = "true" ]; then
         if [ -f "$output_path" ]; then
             echo "  [dry-run] Would assemble (guarded): $output_path"
@@ -47,11 +65,6 @@ assemble_agent_config_guarded() {
     local sa_rc=0
     should_assemble "$output_path" "$checksums_path" || sa_rc=$?
 
-    # Derive the pending directory relative to the consumer project root (not cwd).
-    local _project_root
-    _project_root="$(dirname "$checksums_path")"
-    local _pending_dir="$_project_root/$PENDING_DIR"
-
     case "$sa_rc" in
         0)
             if "$assemble_script" --project-root "$_project_root" \
@@ -63,11 +76,23 @@ assemble_agent_config_guarded() {
             fi
             ;;
         1)
+            # Seed the temp file from the installed config so the assembler
+            # carries the PROJECT-SPECIFIC section across (as a real write
+            # would). Then, if the fresh assembly reproduces the installed file
+            # byte for byte — the project text was persisted in .standards.yml
+            # since the last run (#183) — the file is current: report success
+            # so the caller records the new baseline instead of staging a
+            # pending copy identical to the file itself.
             local tmp
             tmp=$(mktemp)
+            cp "$output_path" "$tmp"
             if "$assemble_script" --project-root "$_project_root" \
                 "$agent" "$blocks_dir" "$base_template" \
                 "$tmp" ${blocks[@]+"${blocks[@]}"} 2>/dev/null; then
+                if cmp -s "$tmp" "$output_path"; then
+                    rm -f "$tmp"
+                    return 0
+                fi
                 mkdir -p "$_pending_dir"
                 cp "$tmp" "$_pending_dir/$(basename "$output_path")"
                 rm -f "$tmp"

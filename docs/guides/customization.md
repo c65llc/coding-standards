@@ -128,6 +128,39 @@ If the rule belongs in the shared standards instead, add the file to the standar
 
 This keeps the shared standards clean while allowing per-project overrides.
 
+## Curated Agent Configs
+
+Three `.standards.yml` keys give hand-maintained agent configs a first-class representation, so filling in the template no longer trips the checksum and a project that manages its own hooks no longer fails `doctor` (the schema reference, `standards/shared/standards-yml-schema.md`, lists every option).
+
+**Persist the overview and commands.** The base `CLAUDE.md` template has a `## Project Overview` paragraph and a `## Key Commands` block. Filling them in directly in the file changes the assembler-controlled section, so every later sync stages the file to `.standards-pending/` and `doctor` reports it as modified forever. Declare the text instead and the assembler reproduces it on every run:
+
+```yaml
+project_overview: |
+  Widget service that renders dashboards for the billing team.
+key_commands: |
+  make test        # run the test suite
+  make lint        # lint and format checks
+```
+
+If a config already has these sections filled in and the yml lacks them, `setup.sh` and `sync-standards.sh` print exactly this YAML for you to paste (`/merge-standards` writes it); the next sync then records the file as current instead of staging a pending copy identical to it.
+
+**Declare a file curated.** A config you maintain end to end — repo-specific guidance that a regenerate would flatten — is declared with `managed:`:
+
+```yaml
+managed:
+  CLAUDE.md: false
+```
+
+`setup.sh` and `sync-standards.sh` never regenerate or stage a curated file, `doctor.sh` reports a checksum mismatch on it as `curated, not drifted` (the check still passes), and `diff-standards.sh` keeps showing the upstream template changes for manual review without counting them as pending (`--exit-code` stays 0). Everything below the `<!-- BEGIN PROJECT-SPECIFIC` marker is preserved for managed files too, so prefer that section, or `project_overview` / `key_commands`, whenever the customisation fits there — a managed file keeps receiving standards updates, a curated one does not.
+
+**Name your hook manager.** `doctor.sh` fails when no post-merge standards-sync hook is installed. With lefthook or husky it reads their config; for a project that wires hooks itself (`make hooks`, a pre-commit framework), declare it:
+
+```yaml
+hooks: custom        # or: lefthook | husky | standards (default)
+```
+
+`setup.sh` then leaves the native `.git/hooks/post-merge` alone and the `Git Hooks` check passes. `lefthook` / `husky` pin the manager `doctor` checks (and warn when its config file is missing). `setup.sh` carries all four keys verbatim into the `.standards.yml` it regenerates.
+
 ## Monorepos: Members
 
 Most real projects are monorepos: a Rust core with a SwiftUI shell and TypeScript workers, or `server/` + `web/` with the test directory, `mypy` and `eslint` configuration each one level down. Run against the root alone, the scripts assume a single project and report those layouts as missing. `.standards.yml` therefore supports **members** — sub-roots that are projects in their own right, each with its own `.standards.yml`:

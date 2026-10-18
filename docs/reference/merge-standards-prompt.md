@@ -38,6 +38,16 @@ For each standards section:
 For content outside standards sections (project overview, key commands, custom sections you added):
 
 - **Always keep your version**
+- **Persist the overview and commands** in `.standards.yml` so the next assembly reproduces them and the checksum stays stable (text edited only in the file is flagged as customized on every later sync). `sync-standards` prints the exact YAML when it finds filled-in sections the yml lacks:
+
+  ```yaml
+  project_overview: |
+    One paragraph: what this project is and how its pieces fit together.
+  key_commands: |
+    make test        # run the test suite
+  ```
+
+- **Keep a file hand-curated** with `managed: { CLAUDE.md: false }` in `.standards.yml` when the customisation cannot live in those keys or below the `<!-- BEGIN PROJECT-SPECIFIC` marker: sync then never regenerates or stages it, `doctor` reports it as curated, and `diff-standards.sh` still shows upstream changes for manual review.
 
 For content below `<!-- BEGIN PROJECT-SPECIFIC`:
 

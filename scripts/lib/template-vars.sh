@@ -3,9 +3,20 @@
 # assembled agent-config output. Called by assemble-config.sh right before the
 # output file is written.
 #
-# Philosophy: fill what we can from package metadata; replace what we can't
-# with explicit TODO markers so the user (or their LLM via /merge-standards)
-# can finish the job. Never leave literal {{...}} in shipped output.
+# Philosophy: fill what we can from package metadata and from the persisted
+# `project_overview:` / `key_commands:` in .standards.yml; replace what we
+# can't with explicit TODO markers so the user (or their LLM via
+# /merge-standards) can finish the job. Never leave literal {{...}} in shipped
+# output.
+
+# yaml_block_scalar lives in lib/checksums.sh (the .standards.yml reader).
+if ! declare -f yaml_block_scalar >/dev/null 2>&1; then
+    _TV_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "$_TV_LIB_DIR/checksums.sh" ]; then
+        # shellcheck disable=SC1091
+        source "$_TV_LIB_DIR/checksums.sh"
+    fi
+fi
 
 resolve_project_name() {
     local root="${1:-$(pwd)}"
@@ -36,6 +47,28 @@ _escape_sed_replacement() {
     printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'
 }
 
+TODO_OVERVIEW_MARKER="<!-- TODO(standards): one-paragraph project overview goes here. Run /merge-standards to fill. -->"
+TODO_COMMANDS_MARKER="<!-- TODO(standards): list key build/test/run commands. Run /merge-standards to fill. -->"
+
+# Persisted project text (#183). `project_overview:` and `key_commands:` in
+# .standards.yml are the source of truth for {{PROJECT_OVERVIEW}} and
+# {{KEY_COMMANDS}}; with them declared, a re-assembly reproduces the filled-in
+# config byte for byte, so its checksum stays stable and sync never stages it
+# as customized. Without them the TODO markers are written, as before.
+resolve_project_overview() {
+    local root="${1:-$(pwd)}"
+    if declare -f yaml_block_scalar >/dev/null 2>&1 && [ -f "$root/.standards.yml" ]; then
+        yaml_block_scalar "project_overview" "$root/.standards.yml"
+    fi
+}
+
+resolve_key_commands() {
+    local root="${1:-$(pwd)}"
+    if declare -f yaml_block_scalar >/dev/null 2>&1 && [ -f "$root/.standards.yml" ]; then
+        yaml_block_scalar "key_commands" "$root/.standards.yml"
+    fi
+}
+
 # Usage: resolve_template_vars <file> <project_root>
 # Rewrites the file in place.
 resolve_template_vars() {
@@ -48,12 +81,35 @@ resolve_template_vars() {
     local project_name_escaped
     project_name_escaped=$(_escape_sed_replacement "$project_name")
 
-    # POSIX-safe in-place edit (macOS/BSD compatible)
+    local overview commands
+    overview=$(resolve_project_overview "$root")
+    commands=$(resolve_key_commands "$root")
+    [ -n "$overview" ] || overview="$TODO_OVERVIEW_MARKER"
+    [ -n "$commands" ] || commands="$TODO_COMMANDS_MARKER"
+
+    # POSIX-safe in-place edit (macOS/BSD compatible). The two multi-line
+    # values go through awk via the environment (not -v, which would
+    # interpret backslash escapes); a placeholder line is replaced by the
+    # whole block, which may span several lines.
     local tmp
     tmp=$(mktemp)
-    sed \
-        -e "s|{{PROJECT_NAME}}|${project_name_escaped}|g" \
-        -e "s|{{PROJECT_OVERVIEW}}|<!-- TODO(standards): one-paragraph project overview goes here. Run /merge-standards to fill. -->|g" \
-        -e "s|{{KEY_COMMANDS}}|<!-- TODO(standards): list key build/test/run commands. Run /merge-standards to fill. -->|g" \
-        "$file" > "$tmp" && mv "$tmp" "$file"
+    sed -e "s|{{PROJECT_NAME}}|${project_name_escaped}|g" "$file" \
+        | TV_OVERVIEW="$overview" TV_COMMANDS="$commands" awk '
+            # Literal replace-all (index/substr): the placeholders contain
+            # braces, which BSD awk rejects inside a regex.
+            function replace_all(line, needle, repl,   out, pos) {
+                out = ""
+                while ((pos = index(line, needle)) > 0) {
+                    out = out substr(line, 1, pos - 1) repl
+                    line = substr(line, pos + length(needle))
+                }
+                return out line
+            }
+            BEGIN { ov = ENVIRON["TV_OVERVIEW"]; cm = ENVIRON["TV_COMMANDS"] }
+            {
+                line = replace_all($0, "{{PROJECT_OVERVIEW}}", ov)
+                line = replace_all(line, "{{KEY_COMMANDS}}", cm)
+                print line
+            }
+        ' > "$tmp" && mv "$tmp" "$file"
 }

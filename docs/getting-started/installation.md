@@ -101,6 +101,8 @@ This pulls the latest standards, updates all AI agent configuration files, and n
 
 The setup script installs a `post-merge` hook. After every `git pull` or `git merge`, the hook checks whether the standards submodule has newer commits on the remote and prints a reminder if so.
 
+If the project already manages its hooks (lefthook, husky, or its own `make hooks`), declare `hooks: lefthook`, `hooks: husky` or `hooks: custom` in `.standards.yml`: setup then leaves the native hook alone and `doctor.sh`'s `Git Hooks` check is satisfied by the declared manager (see [Curated Agent Configs](../guides/customization.md#curated-agent-configs)).
+
 ### CI/CD Validation
 
 Add a check to your pipeline so pull requests fail when standards are out of date:

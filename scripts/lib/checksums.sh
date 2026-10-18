@@ -318,8 +318,193 @@ yaml_nested_list() {
     ' "$file" 2>/dev/null
 }
 
+# Read a scalar that may be a YAML literal block (`key: |` or `key: |-`) or a
+# plain one-line value. Block lines are de-indented by the indentation of the
+# first non-blank line; interior blank lines are kept, trailing ones dropped.
+# A folded block (`>`) is read like a literal one. Output ends with a newline
+# when non-empty.
+# Usage: yaml_block_scalar "key" "file"
+yaml_block_scalar() {
+    local key="$1"
+    local file="$2"
+    awk -v k="$key" '
+        function flush() {
+            while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--
+            for (i = 1; i <= n; i++) print lines[i]
+        }
+        !inb && index($0, k ":") == 1 {
+            rest = substr($0, length(k) + 2)
+            sub(/^[[:space:]]+/, "", rest)
+            if (rest ~ /^[|>][-+]?[[:space:]]*(#.*)?$/) { inb = 1; n = 0; indent = -1; next }
+            # plain scalar on the key line: trailing comment dropped, quotes stripped
+            sub(/[[:space:]]+#.*$/, "", rest)
+            sub(/[[:space:]]+$/, "", rest)
+            if (rest ~ /^".*"$/ || rest ~ /^\047.*\047$/) rest = substr(rest, 2, length(rest) - 2)
+            if (rest != "") print rest
+            exit
+        }
+        inb {
+            if ($0 ~ /^[[:space:]]*$/) { n++; lines[n] = ""; next }
+            # next top-level key ends the block (exit still runs END, so clear inb)
+            if ($0 ~ /^[^[:space:]]/) { flush(); inb = 0; exit }
+            if (indent < 0) { match($0, /^[[:space:]]*/); indent = RLENGTH }
+            n++; lines[n] = substr($0, indent + 1)
+            next
+        }
+        END { if (inb) flush() }
+    ' "$file" 2>/dev/null
+}
+
+# Print a top-level key and its whole block verbatim: the `key:` line plus every
+# following indented or blank line, trailing blank lines dropped. Lets a script
+# that regenerates .standards.yml carry a hand-written block across unchanged.
+# Prints nothing when the key is absent.
+# Usage: yaml_raw_block "key" "file"
+yaml_raw_block() {
+    local key="$1"
+    local file="$2"
+    awk -v k="$key" '
+        !inb && index($0, k ":") == 1 { inb = 1; n = 1; lines[n] = $0; next }
+        inb && $0 ~ /^[^[:space:]]/ { exit }
+        inb { n++; lines[n] = $0 }
+        END {
+            if (!inb) exit
+            while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--
+            for (i = 1; i <= n; i++) print lines[i]
+        }
+    ' "$file" 2>/dev/null
+}
+
+# Read one entry of a top-level YAML mapping whose keys are file paths:
+#   managed:
+#     CLAUDE.md: false
+#     .github/copilot-instructions.md: false
+# or inline: managed: { CLAUDE.md: false, AGENTS.md: true }
+# Keys and values may be quoted; a trailing comment is dropped. Prints the
+# value, or nothing when the entry is absent.
+# Usage: yaml_map_value "parent" "entry-key" "file"
+yaml_map_value() {
+    local parent="$1"
+    local entry="$2"
+    local file="$3"
+    awk -v p="$parent" -v want="$entry" '
+        function unq(s) {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
+            if (s ~ /^".*"$/ || s ~ /^\047.*\047$/) s = substr(s, 2, length(s) - 2)
+            return s
+        }
+        function emit(pair,   k, v) {
+            if (pair !~ /:/) return
+            k = pair; sub(/:.*$/, "", k)
+            v = pair; sub(/^[^:]*:/, "", v)
+            sub(/[[:space:]]+#.*$/, "", v)
+            if (unq(k) == want) { print unq(v); exit }
+        }
+        !inp && index($0, p ":") == 1 {
+            rest = substr($0, length(p) + 2)
+            sub(/^[[:space:]]+/, "", rest)
+            if (rest ~ /^\{/) {
+                sub(/^\{/, "", rest); sub(/\}.*$/, "", rest)
+                n = split(rest, parts, ",")
+                for (i = 1; i <= n; i++) emit(parts[i])
+                exit
+            }
+            inp = 1; next
+        }
+        inp && $0 ~ /^[^[:space:]]/ { exit }
+        inp && $0 ~ /^[[:space:]]*(#|$)/ { next }
+        inp { line = $0; sub(/^[[:space:]]+/, "", line); emit(line) }
+    ' "$file" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# file_managed <project_root> <config-path>
+#
+# Returns 0 when the assembled agent config at <config-path> (absolute, relative
+# to the project root, or a bare basename such as CLAUDE.md) is managed by the
+# standards scripts — the default — and 1 when .standards.yml declares it
+# hand-curated (#183):
+#
+#   managed:
+#     CLAUDE.md: false
+#
+# The entry may name the relative path or the basename. Any value other than
+# false/no/off (case-insensitive) means managed.
+# ---------------------------------------------------------------------------
+file_managed() {
+    local root="$1"
+    local path="$2"
+    local yml="$root/.standards.yml"
+    [ -f "$yml" ] || return 0
+    local rel="${path#"$root"/}"
+    local base
+    base="$(basename "$path")"
+    local value
+    value=$(yaml_map_value "managed" "$rel" "$yml")
+    if [ -z "$value" ] && [ "$rel" != "$base" ]; then
+        value=$(yaml_map_value "managed" "$base" "$yml")
+    fi
+    if [ -z "$value" ]; then
+        # Entry written with a directory the caller did not give (or vice
+        # versa): every agent config has a unique basename, so match on it.
+        local entry_key entry_value
+        while IFS="$(printf '\t')" read -r entry_key entry_value; do
+            [ -n "$entry_key" ] || continue
+            if [ "$(basename "$entry_key")" = "$base" ]; then
+                value="$entry_value"
+                break
+            fi
+        done <<EOF
+$(yaml_map_entries "managed" "$yml")
+EOF
+    fi
+    case "$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')" in
+        false|no|off) return 1 ;;
+        *)            return 0 ;;
+    esac
+}
+
+# List every entry of a top-level YAML mapping (block or inline) as
+# "<key><TAB><value>" lines, keys and values unquoted, comments dropped.
+# Usage: yaml_map_entries "parent" "file"
+yaml_map_entries() {
+    local parent="$1"
+    local file="$2"
+    awk -v p="$parent" '
+        function unq(s) {
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", s)
+            if (s ~ /^".*"$/ || s ~ /^\047.*\047$/) s = substr(s, 2, length(s) - 2)
+            return s
+        }
+        function emit(pair,   k, v) {
+            if (pair !~ /:/) return
+            k = pair; sub(/:.*$/, "", k)
+            v = pair; sub(/^[^:]*:/, "", v)
+            sub(/[[:space:]]+#.*$/, "", v)
+            k = unq(k)
+            if (k != "") printf "%s\t%s\n", k, unq(v)
+        }
+        !inp && index($0, p ":") == 1 {
+            rest = substr($0, length(p) + 2)
+            sub(/^[[:space:]]+/, "", rest)
+            if (rest ~ /^\{/) {
+                sub(/^\{/, "", rest); sub(/\}.*$/, "", rest)
+                n = split(rest, parts, ",")
+                for (i = 1; i <= n; i++) emit(parts[i])
+                exit
+            }
+            inp = 1; next
+        }
+        inp && $0 ~ /^[^[:space:]]/ { exit }
+        inp && $0 ~ /^[[:space:]]*(#|$)/ { next }
+        inp { line = $0; sub(/^[[:space:]]+/, "", line); emit(line) }
+    ' "$file" 2>/dev/null
+}
+
 # Read .standards.yml or fall back to .standards-config
-# Sets global variables: STD_LANGUAGES, STD_AGENTS, STD_ROLE, STD_VERSION, STD_COVERAGE_MIN, STD_COVERAGE_DOMAIN, STD_ARCHITECTURE, STD_SECURITY, STD_LINT_EXCLUDE, STD_MEMBERS
+# Sets global variables: STD_LANGUAGES, STD_AGENTS, STD_ROLE, STD_VERSION, STD_COVERAGE_MIN, STD_COVERAGE_DOMAIN, STD_ARCHITECTURE, STD_SECURITY, STD_LINT_EXCLUDE, STD_MEMBERS,
+# STD_PROJECT_OVERVIEW and STD_KEY_COMMANDS (text assembled into {{PROJECT_OVERVIEW}} / {{KEY_COMMANDS}}),
+# STD_HOOKS (declared git hook manager: standards | lefthook | husky | custom; empty when undeclared)
 read_standards_config() {
     local project_root="$1"
     local yml="$project_root/.standards.yml"
@@ -341,6 +526,13 @@ read_standards_config() {
         # or globs that lint-standards.sh check modules skip (see
         # scripts/lib/lint-files.sh for the matching rules).
         STD_LINT_EXCLUDE=$(yaml_nested_list "lint" "exclude" "$yml" | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+        # project_overview / key_commands: persisted text the assembler writes
+        # into {{PROJECT_OVERVIEW}} / {{KEY_COMMANDS}}, so a re-assembly
+        # reproduces a filled-in config and its checksum stays stable (#183).
+        STD_PROJECT_OVERVIEW=$(yaml_block_scalar "project_overview" "$yml")
+        STD_KEY_COMMANDS=$(yaml_block_scalar "key_commands" "$yml")
+        # hooks: the git hook manager that owns post-merge/commit-msg (#183).
+        STD_HOOKS=$(yaml_get "hooks" "$yml" | sed 's/[[:space:]]*#.*$//' | sed 's/^["'"'"']//; s/["'"'"']$//')
         # Defaults
         STD_ROLE="${STD_ROLE:-service}"
         STD_COVERAGE_MIN="${STD_COVERAGE_MIN:-95}"
@@ -371,6 +563,9 @@ read_standards_config() {
         STD_SECURITY="strict"
         STD_LINT_EXCLUDE=""
         STD_MEMBERS=""
+        STD_PROJECT_OVERVIEW=""
+        STD_KEY_COMMANDS=""
+        STD_HOOKS=""
         return 0
     else
         return 1

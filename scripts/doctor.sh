@@ -214,6 +214,8 @@ check_checksums() {
 
     local mismatches=0
     local checked=0
+    local curated=""
+    local drifted=""
 
     while IFS=' ' read -r key stored_hash; do
         [ -z "$key" ] && continue
@@ -235,18 +237,28 @@ check_checksums() {
         checked=$((checked + 1))
 
         if [ "$current_hash" != "$stored_hash" ]; then
-            mismatches=$((mismatches + 1))
+            # A file .standards.yml declares `managed: false` is hand-curated
+            # (#183): sync never regenerates it, so its edits are not drift.
+            if declare -f file_managed >/dev/null 2>&1 && ! file_managed "$PROJECT_ROOT" "$file"; then
+                curated="${curated:+$curated, }$file"
+            else
+                mismatches=$((mismatches + 1))
+                drifted="${drifted:+$drifted, }$file"
+            fi
         fi
     done < "$checksums_file"
+
+    local curated_note=""
+    [ -n "$curated" ] && curated_note=" (curated, not drifted: $curated)"
 
     if [ "$checked" -eq 0 ]; then
         check_warn "Checksums" ".standards-checksums is empty or has no matching files" \
             "Run: make setup  (to regenerate checksums)"
     elif [ "$mismatches" -eq 0 ]; then
-        check_pass "Checksums" "All config checksums match"
+        check_pass "Checksums" "All config checksums match${curated_note}"
     else
-        check_warn "Checksums" "$mismatches config file(s) modified since last assembly" \
-            "Run: make sync-standards  (after reviewing changes in .standards-pending/)"
+        check_warn "Checksums" "$mismatches config file(s) modified since last assembly: $drifted${curated_note}" \
+            "Run: make sync-standards  (after reviewing changes in .standards-pending/); persist a filled-in overview with project_overview:/key_commands: in .standards.yml, or declare the file curated with managed: { <file>: false }"
     fi
 }
 
@@ -514,6 +526,29 @@ lefthook_block() {
 check_git_hooks() {
     local lefthook_cfg="" f
 
+    # hooks: in .standards.yml (#183) names the manager that owns the hooks:
+    # standards (native hooks written by setup.sh, the default), lefthook,
+    # husky, or custom (the project's own `make hooks` or similar). A declared
+    # manager wins over file detection; custom satisfies the check outright,
+    # since there is no config file for doctor to read.
+    local declared=""
+    if declare -f read_standards_config >/dev/null 2>&1; then
+        read_standards_config "$PROJECT_ROOT" 2>/dev/null || true
+        declared="${STD_HOOKS:-}"
+    fi
+    case "$declared" in
+        ""|standards|lefthook|husky) ;;
+        custom)
+            check_pass "Git Hooks" "hooks: custom — the project's own hook manager owns post-merge/commit-msg (native hook check skipped)"
+            return
+            ;;
+        *)
+            check_warn "Git Hooks" "hooks: '$declared' is not recognised (expected standards, lefthook, husky or custom); checking hooks as if undeclared" \
+                "Fix: set hooks: to standards | lefthook | husky | custom in .standards.yml"
+            declared=""
+            ;;
+    esac
+
     for f in lefthook.yml lefthook.yaml .lefthook.yml .lefthook.yaml; do
         if [ -f "$PROJECT_ROOT/$f" ]; then
             lefthook_cfg="$f"
@@ -521,7 +556,18 @@ check_git_hooks() {
         fi
     done
 
-    if [ -n "$lefthook_cfg" ]; then
+    if [ "$declared" = "lefthook" ] && [ -z "$lefthook_cfg" ]; then
+        check_warn "Git Hooks" "hooks: lefthook declared but no lefthook.yml found (nothing manages the hooks yet)" \
+            "Run: cp .standards/templates/lefthook.yml.example lefthook.yml && lefthook install  (or fix hooks: in .standards.yml)"
+        return
+    fi
+    if [ "$declared" = "husky" ] && [ ! -d "$PROJECT_ROOT/.husky" ]; then
+        check_warn "Git Hooks" "hooks: husky declared but no .husky/ directory found (nothing manages the hooks yet)" \
+            "Run: npx husky init  (or fix hooks: in .standards.yml)"
+        return
+    fi
+
+    if [ -n "$lefthook_cfg" ] && [ "$declared" != "husky" ]; then
         if hook_manager_installed lefthook; then
             check_pass "Git Hooks" "lefthook manages git hooks ($lefthook_cfg, hooks installed)"
         else
@@ -548,7 +594,7 @@ check_git_hooks() {
         return
     fi
 
-    if [ -d "$PROJECT_ROOT/.husky" ]; then
+    if [ -d "$PROJECT_ROOT/.husky" ] && [ "$declared" != "lefthook" ]; then
         if hook_manager_installed husky; then
             check_pass "Git Hooks" "husky manages git hooks (.husky/, hooks installed)"
         else

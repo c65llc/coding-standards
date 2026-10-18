@@ -108,3 +108,39 @@ tests:
 #   exclude:
 #     - docs/
 #     - fixtures/**
+
+# Project text assembled into the agent configs: {{PROJECT_OVERVIEW}} and
+# {{KEY_COMMANDS}} in the base templates (the "Project Overview" and "Key
+# Commands" sections of CLAUDE.md). Persisting them here is what lets a
+# re-assembly reproduce a filled-in config byte for byte, so its checksum stays
+# stable and sync never stages it as customized. Without them the assembler
+# writes <!-- TODO(standards): --> markers; when a config already has these
+# sections filled in by hand, setup and sync print the YAML to add here
+# (Claude Code: /merge-standards writes it). Literal blocks (`|`) or one-line
+# scalars.
+# project_overview: |
+#   One paragraph: what this project is, what it is made of and how the pieces
+#   fit together.
+# key_commands: |
+#   make test        # run the test suite
+#   make lint        # lint and format checks
+#   make run         # start the service locally
+
+# Hand-curated agent configs. By default every assembled config is managed:
+# sync regenerates it when its checksum matches and stages a pending copy when
+# it does not. A file declared `false` here is yours: setup and sync never
+# regenerate or stage it, doctor reports it as curated instead of drifted, and
+# diff-standards still shows the upstream template changes for manual review
+# (they do not fail --exit-code). Keys are the config's path or basename;
+# inline `managed: { CLAUDE.md: false }` works too.
+# managed:
+#   CLAUDE.md: false
+#   .github/copilot-instructions.md: false
+
+# Git hook manager that owns the post-merge standards-sync reminder and the
+# commit-msg hook. Default `standards`: setup.sh writes the native
+# .git/hooks/post-merge. Declare `lefthook` or `husky` to pin the manager
+# doctor checks (its config file must exist), or `custom` for your own
+# (`make hooks`, a pre-commit framework, ...): setup then leaves the native hook
+# alone and doctor's hook check passes without inspecting it.
+# hooks: custom
