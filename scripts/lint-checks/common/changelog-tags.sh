@@ -576,6 +576,13 @@ if [ -n "$VERSIONS" ]; then
 fi
 
 if [ "$VERSION_COUNT" -eq 0 ]; then
+    # With an incomplete tag namespace the local list proves nothing: a
+    # release tagged on an older commit may exist on the remote. Unverifiable,
+    # not "no release tags".
+    if [ "$IS_SHALLOW" = true ]; then
+        echo "WARN $CHECK_NAME $CHANGELOG_LABEL has no release heading and this clone did not fetch all tags (shallow history or a --no-tags remote) — cannot tell whether a release was tagged but not recorded; use actions/checkout with fetch-depth: 0 or fetch-tags: true, or git fetch --tags"
+        exit 2
+    fi
     # Only RELEASE-shaped tags count here: an operational tag such as
     # `docs-preview-2026-01-01` is not an unrecorded release.
     # (The SemVer regex is a literal here: awk -v would process its backslashes.)

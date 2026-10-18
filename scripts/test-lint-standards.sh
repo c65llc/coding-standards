@@ -3123,6 +3123,18 @@ tag_all "$ct8c" docs-preview-2026-01-01 deploy/staging
 out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct8c" 2>/dev/null || true)
 if echo "$out" | grep -q '^PASS changelog-tags.*0 release'; then pass; else fail "expected PASS despite operational tags, got: $out"; fi
 
+echo -n "Test 210c: changelog-tags WARNs (not PASSes) for an Unreleased-only changelog in a shallow clone that lacks the remote's older tag... "
+ct8dsrc=$(make_project "ct-unreleased-shallow-src")
+write_changelog "$ct8dsrc/CHANGELOG.md" "## [1.0.0] - 2026-05-01"
+( cd "$ct8dsrc" && git add CHANGELOG.md && git -c user.email="t@t.local" -c user.name="T" commit -q -m "docs: 1.0.0" )
+tag_all "$ct8dsrc" v1.0.0
+write_changelog "$ct8dsrc/CHANGELOG.md"       # heading removed again: Unreleased only, but v1.0.0 exists upstream
+( cd "$ct8dsrc" && git add CHANGELOG.md && git -c user.email="t@t.local" -c user.name="T" commit -q -m "docs: reset" )
+ct8d="$TMP_BASE/ct-unreleased-shallow"
+git clone -q --depth 1 "file://$ct8dsrc" "$ct8d" 2>/dev/null   # tip has no tag; v1.0.0 is beyond the boundary
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct8d" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN changelog-tags.*cannot tell'; then pass; else fail "expected WARN (unverifiable), got: $out"; fi
+
 echo -n "Test 211: runner treats changelog-tags as repo-wide (once at the root, not per member)... "
 ct9=$(make_project "ct-members")
 mkdir -p "$ct9/apps/web" "$ct9/apps/api"
