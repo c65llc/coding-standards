@@ -57,12 +57,11 @@ for r in results:
     member = r.get("member", "")
     if member and member != ".":
         check = f"{member_cell(member)}: {check}"
-    if raw_check == "members":
-        # The synthetic members check quotes declared member paths (missing,
-        # unconfigured or rejected entries) in its message, so that text is
-        # repository-controlled too.
-        message = inert(r.get("message", ""))
-    else:
-        message = cell(r.get("message", ""))
+    # Every message is repository-controlled input: modules quote file names,
+    # link targets, declared member paths and content excerpts from the PR
+    # under review, so a hostile PR could otherwise plant a mention, link,
+    # image or HTML in the bot's comment. Neutralise all of them, not just
+    # the synthetic members check.
+    message = inert(r.get("message", ""))[:500]
     icon = icons.get(status, ":grey_question:")
     print(f"| {icon} {status} | {check} | {message} |")

@@ -108,8 +108,20 @@ assert_eq "markup-only member falls back to a placeholder" "$expected" "$out"
 # Test 16: the synthetic members check quotes declared paths in its message, so
 # that message is neutralised too; other checks' messages are left as they are
 out=$(python3 "$FORMATTER" '{"results":[{"status":"WARN","check":"members","member":".","message":"declared member '"'"'@org/team'"'"' not found [x](https://evil)"},{"status":"PASS","check":"naming","member":".","message":"ok (see @docs)"}]}')
-expected=$(printf "| :warning: WARN | members | declared member 'org/team' not found xhttps://evil |\n| :white_check_mark: PASS | naming | ok (see @docs) |")
-assert_eq "members-check message is neutralised, others untouched" "$expected" "$out"
+expected=$(printf "| :warning: WARN | members | declared member 'org/team' not found xhttps://evil |\n| :white_check_mark: PASS | naming | ok see docs |")
+assert_eq "every check message is neutralised, not only members" "$expected" "$out"
+
+# Test 17: a non-members check echoing repo content (a doc-lint link target) cannot
+# inject a link, mention, image, HTML or code span into the bot comment
+out=$(python3 "$FORMATTER" '{"results":[{"status":"FAIL","check":"doc-lint","member":".","message":"docs/a.md -> `](https://evil) @user <img src=x> ![i](u)"}]}')
+expected="| :x: FAIL | doc-lint | docs/a.md - https://evil user img src=x !iu |"
+assert_eq "hostile doc-lint message is inert" "$expected" "$out"
+
+# Test 18: messages are length-capped so a PR cannot flood the comment
+long=$(python3 -c 'print("x"*900)')
+out=$(python3 "$FORMATTER" "{\"results\":[{\"status\":\"PASS\",\"check\":\"c\",\"member\":\".\",\"message\":\"$long\"}]}")
+msg_len=$(printf '%s' "$out" | awk -F'|' '{print length($4)}')
+if [ "$msg_len" -le 502 ]; then PASS=$((PASS+1)); else FAIL=$((FAIL+1)); echo "FAIL: message not capped (len=$msg_len)"; fi
 
 echo ""
 echo "format-results.py tests: $PASS passed, $FAIL failed"
