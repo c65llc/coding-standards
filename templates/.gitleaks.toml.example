@@ -1,0 +1,119 @@
+# .gitleaks.toml — shape-based allowlist for Gitleaks. Copy to .gitleaks.toml.
+#
+# Requires Gitleaks >= 8.25 (the release that added GLOBAL `[[allowlists]]`;
+# 8.21 added only the per-rule form). The file uses the array-of-tables form
+# throughout: Gitleaks refuses a config that mixes it with the legacy single
+# `[allowlist]` table, and only the plural form can AND a path condition with
+# a shape. On an older release, rename the first block to `[allowlist]`,
+# delete the `condition = "AND"` blocks, and mark their fixture lines inline
+# instead — a block the parser cannot read is silently ignored, so check
+# `gitleaks version` before relying on this file.
+#
+# sec-01 §3 "Scanner False Positives on Test Fixtures". Test fixtures trip
+# secret scanners for predictable reasons: UUIDv7 ids look like tokens, a
+# redaction test needs a plausible password to redact, a fake credential in a
+# `*_test` file is the whole point of the test. The usual response — a second
+# and third allowlist round, each excluding one more PATH — ends with whole
+# trees unscanned. Allowlist the SHAPE of the false positive instead, and when
+# the shape is one a real secret can also take, require the fixture LOCATION
+# as well. Path excludes are the last resort, and every entry states why it
+# exists.
+#
+# Two mechanisms, finest granularity first:
+#   1. Inline, on the exact line, in the FILE'S comment syntax — the scanners
+#      match the token, not the comment leader:
+#        JS/Go/Rust:        … // gitleaks:allow   … // trufflehog:ignore
+#        Python/shell/YAML: … # gitleaks:allow    … # trufflehog:ignore
+#      Put BOTH markers on a line that trips both scanners. The marker
+#      documents the false positive where a reader meets it and keeps the rest
+#      of the file scanned. Prefer this for one-off constants.
+#   2. This file, for a shape that recurs across many fixtures.
+#
+# Blocks below, in increasing reach:
+#   A. Global shapes — regexes that match ONLY a form that cannot work as a
+#      credential anywhere (redaction output). Deliberately tiny.
+#   B. Fixture path AND shape — forms a real secret CAN take (a UUID, a weak
+#      default like `changeme`, a repeated-character pad, a token that
+#      contains "example"), suppressed only inside test paths. Not a path
+#      exclude: a non-matching secret in a test file is reported.
+#   C. Path excludes — none by default; a commented per-artifact example.
+# No block sets `regexTarget`, so Gitleaks tests the regexes against the
+# extracted SECRET (the rule's capture group), which is what anchored shapes
+# expect — `password = "test-foo"` is suppressed because `test-foo` matches,
+# and a real secret sharing a line with a fixture is still reported.
+# Regexes are Go RE2: no backreferences, no lookaround.
+
+title = "project gitleaks config"
+
+[extend]
+# Start from the built-in rule set; this file only adds allowlist entries.
+useDefault = true
+
+# ---------------------------------------------------------------------------
+# A. Global shapes — forms that cannot work as a credential anywhere. Only
+#    redaction output qualifies: a value like `changeme`, `hunter2` or
+#    `xxxxxxxxxxxxxxxx` in production config is a weak DEFAULT credential
+#    (sec-01 §6, P0), not a fixture, so those shapes live in block B.
+# ---------------------------------------------------------------------------
+[[allowlists]]
+description = "Redaction output — never a working credential (sec-01 §3)"
+regexes = [
+  # Redaction-test output: the scanner sees the redacted form, which is only
+  # asterisks or the literal REDACTED marker.
+  '''^(\*{4,}|\[?REDACTED\]?|<redacted>)$''',
+]
+
+# ---------------------------------------------------------------------------
+# B. Fixture path AND shape — both conditions must hold (`condition = "AND"`
+#    spans every condition TYPE a block declares: the path must match AND one
+#    of the regexes must match).
+# ---------------------------------------------------------------------------
+[[allowlists]]
+description = "Fixture-shaped values in test paths only (sec-01 §3)"
+condition = "AND"
+paths = [
+  '''(^|/)(tests?|__tests__|spec|fixtures)/''',
+  '''(_test|\.test|\.spec|_spec)\.[A-Za-z0-9]+$''',
+]
+regexes = [
+  # Fake credentials by naming convention: a value that announces itself
+  # (test-, fake-, dummy-, example-, not-a-real-, changeme). Outside a test
+  # path the same value is a default credential and is reported.
+  '''^(test|fake|dummy|example|placeholder|not-a-real|changeme|hunter2)[-_a-zA-Z0-9]*$''',
+  # Repeated-character pads (`xxxxxxxx…`, `0000…`, `aaaa…`) that bring a token
+  # to the right length in a parser test. RE2 has no backreference, so the
+  # usual padding characters are enumerated; add yours to the alternation.
+  '''(?i)^(0{16,}|1{16,}|9{16,}|a{16,}|f{16,}|x{16,}|z{16,})$''',
+  # UUIDv7 (version nibble 7, variant 8-b): time-ordered fixture primary keys.
+  # A UUID is a shape many services issue API keys in, hence test paths only.
+  '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$''',
+  # Any RFC 4122 UUID (v1–v5) for fixtures that are not time-ordered.
+  '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$''',
+]
+
+# No `stopwords` block, on purpose. Stopwords are a case-insensitive SUBSTRING
+# match on the secret, so a real credential such as `prod-example-customer-key`
+# pasted into a test file would be dropped for containing "example" — which
+# contradicts the rule that a real secret in a test file is still caught. The
+# anchored naming-convention regex above (`^(test|fake|example|…)-…$`) covers
+# the fixture convention precisely; anything else gets an inline marker.
+
+# ---------------------------------------------------------------------------
+# C. Path excludes — the LAST resort, and this template ships NONE. A path
+#    exclude drops every finding in the file whatever its value, so it is
+#    only right for a file that cannot carry a credential at all, and few can:
+#    a committed bundle (`dist/`, `*.min.js`) is where a build-time-injected
+#    credential lands; a lockfile (`package-lock.json`, `yarn.lock`) carries
+#    the registry URLs the package manager wrote, token and all, when someone
+#    installed from a private URL. Lockfile hash noise is handled by
+#    Gitleaks' default rules (`useDefault = true` above), not by excluding the
+#    file. Never exclude `tests/` or `fixtures/` wholesale: block B covers the
+#    fixture shapes, and a real secret pasted into a test file must be caught.
+#    If a specific artifact is provably credential-free, name that artifact:
+#
+# [[allowlists]]
+# description = "vendored highlight.js build: upstream artifact, no config injected"
+# paths = [
+#   '''^public/vendor/highlight\.min\.js$''',
+# ]
+# ---------------------------------------------------------------------------

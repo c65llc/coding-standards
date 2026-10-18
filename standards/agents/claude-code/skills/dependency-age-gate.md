@@ -71,14 +71,34 @@ Check that every 3rd-party dependency version in the project was published at le
 
 ## Exception Process
 
-If a dependency fails the age gate but is a critical security patch:
+If a dependency fails the age gate but is a critical security patch, the gate
+stays red until the audited override path is complete. Do not recommend
+merging on a warning, setting `continue-on-error`, or removing the job.
 
-1. Confirm the user has **team lead or security owner approval**
-2. Require a **documented justification** in the PR description
-3. Note that a **follow-up review within 24 hours** is required
-4. Allow the merge with a warning, not a block
+1. The PR body carries a `Dep-age override: <package>@<version> — <advisory>`
+   block with an `Approved-by: @handle` line. A version alone is not a
+   justification; the advisory or CVE goes in the block.
+2. A **listed approver** (the `DEP_AGE_APPROVERS` repository variable: the
+   security owner or team leads), who is **not the PR author**, posts a PR
+   comment `Dep-age approved: <full head SHA>` and applies the
+   `dep-age-override` label. The comment is the approval: it is bound to the
+   exact head, so a later push needs a fresh one. The handle in
+   `Approved-by:` must be the comment's author. Tell the user who has to do
+   this; never post the comment or apply the label on their behalf.
+3. The gate re-runs on pushes, label and body edits and goes green only when
+   all three parts agree. Merging then opens a `dep-age-follow-up` issue
+   from a merge-time workflow, due 24 hours after merge, with the 72-hour
+   maturity check as a second checkpoint. Point the user at that issue; it is
+   not optional.
+4. A red advisory lane is not an override: moving the CVE audit to a nightly
+   job does not waive the age gate for the pin that fixes it.
 
-Reference: `standards/security/sec-01_security_standards.md` §5 — Dependency Age Gate.
+If the repository has no override workflow, report the gate as FAIL and name
+the reference implementation; the age gate is P1 and a warning is not a
+substitute.
+
+Reference: `standards/security/sec-01_security_standards.md` §5 — Dependency
+Age Gate, "Reference implementation: override label + 24 h follow-up".
 
 ## After Check
 

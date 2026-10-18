@@ -1,0 +1,745 @@
+#!/bin/bash
+# Check: every released CHANGELOG heading has a matching git tag (proc-02 §5)
+# Receives: $1 = project root
+# Outputs: PASS|WARN|FAIL <check-name> <message>
+# Exit:    0=PASS, 1=FAIL, 2=WARN
+#
+# A changelog that lists 0.1.4 and 0.1.5 while only v0.1.2/v0.1.3 exist as tags
+# (and package.json still says 0.1.3) means the release process stopped at the
+# prose: nothing is reproducible from the "released" versions. This check reads
+# the Keep-a-Changelog release headings and asserts each one is a tag.
+#
+#   - Headings: `## [1.2.3] - 2026-01-01`, `## 1.2.3 (2026-01-01)`, `## v1.2.3`,
+#     with an optional prerelease/build suffix and an optional `[YANKED]`.
+#     `## [Unreleased]` (any case) is skipped.
+#   - Tags: `v<version>` or `<version>` by default; `.standards.yml`
+#     `release.tag_prefix` makes one prefix authoritative.
+#   - Location: CHANGELOG.md / CHANGELOG / CHANGES.md / HISTORY.md at the root,
+#     or `release.changelog` in .standards.yml (a declared file that is missing
+#     fails closed).
+#   - Manifest drift (WARN): when any root package.json / Cargo.toml /
+#     pyproject.toml carries a version that is not the topmost released
+#     heading (Keep a Changelog: newest first), the manifest was not bumped in
+#     the release commit. Every root manifest with a static version is checked.
+#   - Release in flight (WARN): exactly the TOPMOST heading untagged, every
+#     other one tagged — a release PR promotes [Unreleased] and the tag is cut
+#     after merge, so this state exists legitimately for a short while. Two or
+#     more untagged headings, or an older untagged heading while newer ones
+#     are tagged (the forgotten-tag pattern from the consumer survey), FAIL.
+#   - Shallow clone (WARN, never PASS or FAIL on a missing tag): a `--depth`
+#     clone only carries the tags that point inside the fetched history, so a
+#     heading without a visible tag is unverifiable rather than untagged. The
+#     check says so — actions/checkout needs `fetch-depth: 0` or
+#     `fetch-tags: true`. With `fetch-tags: true` the history is still shallow
+#     but the tag namespace is complete; the check detects that by comparing
+#     the local tag count with `git ls-remote --tags origin` and then verifies
+#     normally. Tags that ARE visible always verify their headings.
+#
+# Gate rules (proc-05 § 7, scripts/lint-checks/README.md "Writing a gate"):
+#   - self-tests the heading parser, the tag matcher and the manifest readers
+#     on every run; a rotted detector reports FAIL, never a clean result
+#   - fails closed on a declared changelog that is missing or empty
+#   - bash 3.2 + POSIX awk/sed/sort only, so macOS and Linux agree
+
+PROJECT_ROOT="${1:-.}"
+
+CHECK_NAME="changelog-tags"
+DEFAULT_LOCATIONS="CHANGELOG.md CHANGELOG CHANGES.md HISTORY.md changelog.md"
+MAX_LISTED=4
+SEMVER_ERE='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+
+# ---------------------------------------------------------------------------
+# Heading parser — emits one version per released `## ...` heading, in file
+# order, with the surrounding `[ ]`, a leading `v`/`V`, the date and any
+# `[YANKED]` marker stripped. Unreleased headings never appear in the output.
+# ---------------------------------------------------------------------------
+extract_versions() {
+    awk '
+    {
+        # CommonMark allows up to three leading spaces before an ATX heading;
+        # four would be a code block, so at most three are stripped. A CRLF
+        # file leaves a carriage return on every line; drop it first.
+        h = $0; sub(/\r$/, "", h)
+        sub(/^ /, "", h); sub(/^ /, "", h); sub(/^ /, "", h)
+    }
+    # Fenced code blocks (``` or ~~~, three or more, same character to close):
+    # a `## [9.9.9]` inside an example is code, not a release heading.
+    # Inside a fence everything is code, `<!--` included. The closer must use
+    # the same character, be at least as long as the opener, and carry nothing
+    # but whitespace — so a three-backtick line inside a four-backtick fence
+    # is content, not a close.
+    infence {
+        if (substr(h, 1, 1) == fence) {
+            n = 0
+            while (substr(h, n + 1, 1) == fence) n++
+            if (n >= flen && substr(h, n + 1) ~ /^[[:space:]]*$/) infence = 0
+        }
+        next
+    }
+    # HTML comments come BEFORE fence openers: inside a comment a ``` line is
+    # text, not a fence. A commented-out template heading (`<!-- ## [x.y.z] -->`)
+    # is not a release. Strip complete `<!-- … -->` spans on the line; a span
+    # that opens without closing hides every following line until `-->`.
+    {
+        if (incomment) {
+            p = index(h, "-->")
+            if (p == 0) next
+            h = substr(h, p + 3); incomment = 0
+        }
+        # An inline code span is literal text: a `<!--` inside backticks must
+        # not open a comment. Version tokens never contain backticks, so the
+        # spans are replaced before the comment scan without affecting headings.
+        while (match(h, /`[^`]+`/)) h = substr(h, 1, RSTART - 1) "CODE" substr(h, RSTART + RLENGTH)
+        while ((o = index(h, "<!--")) > 0) {
+            rest = substr(h, o + 4)
+            c = index(rest, "-->")
+            if (c == 0) { h = substr(h, 1, o - 1); incomment = 1; break }
+            h = substr(h, 1, o - 1) substr(rest, c + 3)
+        }
+        if (h ~ /^[[:space:]]*$/) next
+    }
+    # Fence opener (CommonMark): three or more backticks or tildes. The info
+    # string of a backtick fence may not itself contain a backtick, so a line
+    # such as "```foo`bar" is ordinary text and opens nothing. (No apostrophes
+    # in these comments: the whole awk program is a single-quoted string.)
+    h ~ /^(```|~~~)/ {
+        fence = substr(h, 1, 1); flen = 0
+        while (substr(h, flen + 1, 1) == fence) flen++
+        if (fence == "`" && index(substr(h, flen + 1), "`") > 0) { }   # not an opener; fall through
+        else { infence = 1; next }
+    }
+    h ~ /^##[[:blank:]]/ {
+        # A space or a tab may follow the `##` (CommonMark).
+        s = substr(h, 4)
+        sub(/^[[:space:]]+/, "", s)
+        sub(/^\[/, "", s)
+        # Cut at the end of the version token: closing bracket, blank (space or tab), "(" or ":".
+        if (match(s, /[] \t(:]/)) s = substr(s, 1, RSTART - 1)
+        sub(/^[vV]/, "", s)
+        if (s == "") next
+        if (tolower(s) == "unreleased") next
+        if (s ~ /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/) print s
+    }'
+}
+
+
+# tag_for <version> <tags-newline-list> <prefix-or-__DEFAULT__> → prints the
+# matching tag name, or returns 1 when none matches
+tag_for() {
+    local version="$1" tags="$2" prefix="$3"
+    if [ "$prefix" = "__DEFAULT__" ]; then
+        if printf '%s\n' "$tags" | grep -Fxq -- "v$version"; then printf 'v%s\n' "$version"; return 0; fi
+        if printf '%s\n' "$tags" | grep -Fxq -- "$version"; then printf '%s\n' "$version"; return 0; fi
+        return 1
+    fi
+    if printf '%s\n' "$tags" | grep -Fxq -- "$prefix$version"; then printf '%s%s\n' "$prefix" "$version"; return 0; fi
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# Manifest readers — root manifests only; each prints a version or nothing.
+# ---------------------------------------------------------------------------
+manifest_version_package_json() {
+    # The ROOT object's "version" string, whatever the formatting (pretty or
+    # one line) and wherever it sits among the keys. A tiny JSON walker tracks
+    # string state and nesting depth, so a nested `"version"` inside e.g.
+    # `"releaseConfig": {…}` or a dependency table is never mistaken for it.
+    awk '
+    { buf = buf $0 "\n" }
+    END {
+        n = length(buf); depth = 0; instr = 0; esc = 0; tok = ""; key = ""; want = 0
+        for (i = 1; i <= n; i++) {
+            c = substr(buf, i, 1)
+            if (instr) {
+                if (esc) { esc = 0; tok = tok c; continue }
+                if (c == "\\") { esc = 1; tok = tok c; continue }
+                if (c == "\"") {
+                    instr = 0
+                    if (depth == 1) {
+                        if (want) { print tok; exit }
+                        key = tok
+                    }
+                    continue
+                }
+                tok = tok c; continue
+            }
+            if (c == "\"") { instr = 1; tok = ""; continue }
+            if (c == "{" || c == "[") { depth++; key = ""; want = 0; continue }
+            if (c == "}" || c == "]") { depth--; key = ""; want = 0; continue }
+            if (c == ":") { if (depth == 1 && key == "version") want = 1; key = ""; continue }
+            if (c == ",") { key = ""; want = 0; continue }
+        }
+    }' "$1"
+}
+
+manifest_version_cargo_toml() {
+    # The root package's version: an explicit `version = "x"` in [package]
+    # wins; `[workspace.package] version` applies only when the package opts
+    # into inheritance (`version.workspace = true`) or there is no [package]
+    # at all (a virtual workspace root). Section order in the file is
+    # irrelevant. Dotted-key spellings of the same tables are read too
+    # (top-level `package.version`, `package.version` under `[workspace]`).
+    # TOML basic ("…") and literal ('"'"'…'"'"') strings are both legal.
+    awk '
+    function strval(line) {
+        sub(/^[^=]*=[[:space:]]*/, "", line)
+        if (match(line, /"[^"]*"/)) return substr(line, RSTART + 1, RLENGTH - 2)
+        if (match(line, /'"'"'[^'"'"']*'"'"'/)) return substr(line, RSTART + 1, RLENGTH - 2)
+        return ""
+    }
+    # TOML literal quotes (single) are normalised to basic quotes (double)
+    # up front, so every quoted-key matcher below reads both spellings.
+    { gsub(/'"'"'/, "\"") }
+    # Section header, normalised: comment stripped, whitespace removed, and
+    # quoted table names (`["package"]`) unquoted so they compare like bare ones.
+    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]"]/, "", sect); next }
+    # Dotted keys may quote any segment (`"package"."version" = …`); the
+    # matches below allow an optional quote around each segment.
+    (sect == "[package]" && /^[[:space:]]*"?version"?\."?workspace"?[[:space:]]*=[[:space:]]*true/) ||
+    (sect == "" && /^[[:space:]]*"?package"?\."?version"?\."?workspace"?[[:space:]]*=[[:space:]]*true/) { inherits = 1; next }
+    # Bare or quoted key (`version = …` / `"version" = …`); strval strips to the `=`.
+    (sect == "[package]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
+    (sect == "" && /^[[:space:]]*"?package"?\."?version"?[[:space:]]*=/) { if (pkg == "") pkg = strval($0); next }
+    # Inline table: `package = { name = "app", version = "1.2.3" }`. The key
+    # must start at a table boundary (`{` or `,`) so `rust-version = "1.85"`
+    # is not mistaken for it.
+    sect == "" && /^[[:space:]]*package[[:space:]]*=[[:space:]]*\{/ {
+        line = $0
+        if (match(line, /[{,][[:space:]]*"?version"?[[:space:]]*=[[:space:]]*("[^"]*"|'"'"'[^'"'"']*'"'"')/)) {
+            if (pkg == "") pkg = strval(substr(line, RSTART, RLENGTH))
+        }
+        next
+    }
+    (sect == "[workspace.package]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
+    (sect == "[workspace]" && /^[[:space:]]*"?package"?\."?version"?[[:space:]]*=/) ||
+    (sect == "" && /^[[:space:]]*"?workspace"?\."?package"?\."?version"?[[:space:]]*=/) { if (ws == "") ws = strval($0); next }
+    END {
+        if (pkg != "" && !inherits) print pkg
+        else if (ws != "") print ws
+    }' "$1"
+}
+
+manifest_version_pyproject() {
+    # `[project] version` is authoritative (PEP 621); `[tool.poetry] version`
+    # is the legacy field and applies only when [project] declares none —
+    # independent of section order, so a migration-era file that still
+    # carries a stale poetry value is read correctly. `dynamic = ["version"]`
+    # projects have no static version and print nothing. Dotted-key
+    # spellings are read too (top-level `project.version` /
+    # `tool.poetry.version`, `poetry.version` under `[tool]`).
+    awk '
+    function strval(line) {
+        sub(/^[^=]*=[[:space:]]*/, "", line)
+        if (match(line, /"[^"]*"/)) return substr(line, RSTART + 1, RLENGTH - 2)
+        if (match(line, /'"'"'[^'"'"']*'"'"'/)) return substr(line, RSTART + 1, RLENGTH - 2)
+        return ""
+    }
+    { gsub(/'"'"'/, "\"") }   # literal (single) quotes read like basic (double) quotes
+    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]"]/, "", sect); next }
+    (sect == "[project]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
+    (sect == "" && /^[[:space:]]*"?project"?\."?version"?[[:space:]]*=/) { if (proj == "") proj = strval($0); next }
+    # Inline table: `project = { name = "demo", version = "1.2.3" }`.
+    sect == "" && /^[[:space:]]*project[[:space:]]*=[[:space:]]*\{/ {
+        line = $0
+        if (match(line, /[{,][[:space:]]*"?version"?[[:space:]]*=[[:space:]]*("[^"]*"|'"'"'[^'"'"']*'"'"')/)) {
+            if (proj == "") proj = strval(substr(line, RSTART, RLENGTH))
+        }
+        next
+    }
+    (sect == "[tool.poetry]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
+    (sect == "" && /^[[:space:]]*"?tool"?\."?poetry"?\."?version"?[[:space:]]*=/) ||
+    (sect == "[tool]" && /^[[:space:]]*"?poetry"?\."?version"?[[:space:]]*=/) { if (poetry == "") poetry = strval($0); next }
+    END {
+        if (proj != "") print proj
+        else if (poetry != "") print poetry
+    }' "$1"
+}
+
+# root_manifest_versions <root> → one "<file> <version>" line per root manifest
+# that carries a static version (a polyglot root may have several; every one
+# is checked, so a stale Cargo.toml is not hidden by a current package.json)
+root_manifest_versions() {
+    local root="$1" v
+    if [ -f "$root/package.json" ]; then
+        v=$(manifest_version_package_json "$root/package.json")
+        [ -n "$v" ] && printf 'package.json %s\n' "$v"
+    fi
+    if [ -f "$root/Cargo.toml" ]; then
+        v=$(manifest_version_cargo_toml "$root/Cargo.toml")
+        [ -n "$v" ] && printf 'Cargo.toml %s\n' "$v"
+    fi
+    if [ -f "$root/pyproject.toml" ]; then
+        v=$(manifest_version_pyproject "$root/pyproject.toml")
+        [ -n "$v" ] && printf 'pyproject.toml %s\n' "$v"
+    fi
+    return 0
+}
+
+# ---------------------------------------------------------------------------
+# Self-test — the detector must prove it still detects before it may report
+# ---------------------------------------------------------------------------
+self_test() {
+    local fixture got want tags t tmp
+
+    fixture='# Changelog
+
+## [Unreleased]
+
+- pending
+
+## [1.10.0] - 2026-06-01
+
+## 1.9.1 (2026-05-20) [YANKED]
+
+## v1.9.0 - 2026-05-01
+
+## [2.0.0-rc.1] - 2026-04-01
+
+## [1.8.0]: 2026-03-01
+
+   ## [1.7.0] - 2026-02-01
+
+##	[1.6.0] - 2026-01-15
+
+## 1.5.0	(2026-01-10)
+
+```markdown
+## [9.9.9] - an example inside a fence, not a release
+```
+
+~~~
+## [8.8.8] - tilde fence
+~~~
+
+````markdown
+```
+## [7.7.7] - three backticks inside a four-backtick fence do not close it
+```
+````
+
+## [1.4.0] - 2026-01-05
+
+<!-- ## [6.6.6] - a commented-out template heading -->
+<!--
+## [5.5.5] - inside a multi-line comment
+```
+a fence-looking line inside a comment must not open a fence
+-->
+## [1.3.0] - 2026-01-02
+
+Prose with a literal opener in code: `<!--` is how a comment starts.
+
+## [1.2.5] - 2026-01-01
+
+```not`a`fence
+## [1.2.0] - 2026-01-01 — the line above is text (backtick in the info string), so this heading counts
+
+    ## [0.0.1] - code block, not a heading
+
+## Not a version
+
+## [UNRELEASED]
+'
+    got=$(printf '%s\n' "$fixture" | extract_versions | tr '\n' ' ')
+    want='1.10.0 1.9.1 1.9.0 2.0.0-rc.1 1.8.0 1.7.0 1.6.0 1.5.0 1.4.0 1.3.0 1.2.5 1.2.0 '
+    [ "$got" = "$want" ] || { echo "heading parser produced '$got' (expected '$want')"; return 1; }
+    got=$(printf '## [Unreleased]\n## [unreleased] - soon\n## 1.2\n## 1.2.3.4\n' | extract_versions)
+    [ -z "$got" ] || { echo "heading parser accepted a non-release heading: $got"; return 1; }
+    got=$(printf '## v3.3.3\r\n## [3.3.2] - 2026-01-01\r\n' | extract_versions | tr '\n' ' ')
+    [ "$got" = "3.3.3 3.3.2 " ] || { echo "heading parser choked on CRLF line endings: '$got'"; return 1; }
+
+
+    tags='v1.0.0
+1.0.1
+release-1.0.2'
+    t=$(tag_for 1.0.0 "$tags" __DEFAULT__) && [ "$t" = "v1.0.0" ] || { echo "tag matcher missed v-prefixed tag"; return 1; }
+    t=$(tag_for 1.0.1 "$tags" __DEFAULT__) && [ "$t" = "1.0.1" ] || { echo "tag matcher missed bare tag"; return 1; }
+    tag_for 1.0.2 "$tags" __DEFAULT__ >/dev/null && { echo "tag matcher accepted a foreign prefix by default"; return 1; }
+    t=$(tag_for 1.0.2 "$tags" release-) && [ "$t" = "release-1.0.2" ] || { echo "tag matcher missed declared prefix"; return 1; }
+    tag_for 1.0.0 "$tags" release- >/dev/null && { echo "tag matcher fell back to v-tag despite a declared prefix"; return 1; }
+    tag_for 1.0.0 "$tags" "" >/dev/null && { echo "empty declared prefix matched a v-tag"; return 1; }
+    tag_for 9.9.9 "$tags" __DEFAULT__ >/dev/null && { echo "tag matcher matched a tag that does not exist"; return 1; }
+
+    tmp=$(mktemp -d "${TMPDIR:-/tmp}/changelog-tags-selftest.XXXXXX") || { echo "mktemp failed"; return 1; }
+    printf '{\n  "name": "x",\n  "version": "0.1.3",\n  "dependencies": { "left-pad": "1.3.0" }\n}\n' > "$tmp/package.json"
+    got=$(manifest_version_package_json "$tmp/package.json")
+    [ "$got" = "0.1.3" ] || { rm -rf "$tmp"; echo "package.json reader returned '$got'"; return 1; }
+    printf '{"name":"x","version":"0.2.0","dependencies":{"left-pad":"1.3.0"}}' > "$tmp/package.json"
+    got=$(manifest_version_package_json "$tmp/package.json")
+    [ "$got" = "0.2.0" ] || { rm -rf "$tmp"; echo "package.json reader missed a compact one-line manifest: '$got'"; return 1; }
+    printf '{\n  "releaseConfig": { "version": "9.9.9", "tags": ["v:1"] },\n  "scripts": { "x": "echo \\"version\\": {" },\n  "version": "0.4.0"\n}\n' > "$tmp/package.json"
+    got=$(manifest_version_package_json "$tmp/package.json")
+    [ "$got" = "0.4.0" ] || { rm -rf "$tmp"; echo "package.json reader took a nested version instead of the root one: '$got'"; return 1; }
+    printf '{\n  "name": "x",\n  "private": true\n}\n' > "$tmp/package.json"
+    got=$(manifest_version_package_json "$tmp/package.json")
+    [ -z "$got" ] || { rm -rf "$tmp"; echo "package.json reader invented a version for a versionless manifest: '$got'"; return 1; }
+    printf '{\n  "name": "x",\n  "version": "0.3.0"\n}\n' > "$tmp/package.json"
+    printf '[package]\nname = "x"\nversion = "0.2.9"\n' > "$tmp/Cargo.toml"
+    got=$(root_manifest_versions "$tmp" | tr '\n' ' ')
+    [ "$got" = "package.json 0.3.0 Cargo.toml 0.2.9 " ] || { rm -rf "$tmp"; echo "root_manifest_versions stopped at the first manifest: '$got'"; return 1; }
+    rm -f "$tmp/Cargo.toml"
+    printf '[workspace]\nmembers = ["a"]\n\n[workspace.package]\nversion = "2.3.4"\n\n[workspace.dependencies]\nserde = { version = "1.0" }\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "2.3.4" ] || { rm -rf "$tmp"; echo "Cargo.toml reader returned '$got' (expected 2.3.4 from [workspace.package])"; return 1; }
+    printf '[package]\nname = "m"\nversion.workspace = true\n\n[dependencies]\nfoo = { version = "9.9.9" }\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ -z "$got" ] || { rm -rf "$tmp"; echo "Cargo.toml reader took a dependency version: '$got'"; return 1; }
+    printf '[package]\nname = "m"\nversion = '"'"'0.9.0'"'"'\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "0.9.0" ] || { rm -rf "$tmp"; echo "Cargo.toml reader rejected a TOML literal string: '$got'"; return 1; }
+    printf '[package] # root crate\nname = "m"\nversion = "0.9.1"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "0.9.1" ] || { rm -rf "$tmp"; echo "Cargo.toml reader lost a section header with a trailing comment: '$got'"; return 1; }
+    printf '[project]   # metadata\nname = "p"\nversion = "4.5.7"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "4.5.7" ] || { rm -rf "$tmp"; echo "pyproject.toml reader lost a section header with a trailing comment: '$got'"; return 1; }
+    printf 'package.name = "m"\npackage.version = "0.9.2"\n\n[dependencies]\nfoo = { version = "9.9.9" }\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "0.9.2" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed the dotted key package.version: '$got'"; return 1; }
+    printf '[workspace]\nmembers = ["a"]\npackage.version = "0.9.3"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "0.9.3" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed package.version under [workspace]: '$got'"; return 1; }
+    printf '[workspace.package]\nversion = "2.0.0"\n\n[package]\nname = "root"\nversion = "1.0.0"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "1.0.0" ] || { rm -rf "$tmp"; echo "Cargo.toml reader preferred the workspace default over the explicit root version: '$got'"; return 1; }
+    printf '[workspace.package]\nversion = "2.0.0"\n\n[package]\nname = "root"\nversion.workspace = true\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "2.0.0" ] || { rm -rf "$tmp"; echo "Cargo.toml reader ignored version.workspace = true inheritance: '$got'"; return 1; }
+    printf 'workspace.members = ["a"]\nworkspace.package.version = "2.0.1"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "2.0.1" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed the fully dotted workspace.package.version: '$got'"; return 1; }
+    printf 'package = { name = "app", rust-version = "1.85", edition = "2021", version = "1.2.3" }\n\n[dependencies]\nfoo = { version = "9.9.9" }\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "1.2.3" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed an inline package table or took rust-version: '$got'"; return 1; }
+    printf 'package = { name = "app", "version" = "1.2.4" }\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "1.2.4" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed a quoted key in an inline package table: '$got'"; return 1; }
+    printf '["package"]\nname = "app"\nversion = "1.2.6"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "1.2.6" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed a quoted table name: '$got'"; return 1; }
+    printf '"package"."name" = "app"\n"package"."version" = "1.2.7"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "1.2.7" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed quoted dotted-key segments: '$got'"; return 1; }
+    printf "['package']\nname = 'app'\n'version' = '1.2.8'\n" > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "1.2.8" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed literal-quoted table and key: '$got'"; return 1; }
+    printf "['project']\n'version' = '2.0.5'\n" > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "2.0.5" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed literal-quoted table and key: '$got'"; return 1; }
+    printf '"project"."version" = "2.0.4"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "2.0.4" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed quoted dotted-key segments: '$got'"; return 1; }
+    printf '["project"]\nname = "p"\nversion = "2.0.2"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "2.0.2" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed a quoted table name: '$got'"; return 1; }
+    printf 'project = { name = "demo", requires-python = ">=3.12", version = "2.0.3" }\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "2.0.3" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed an inline project table: '$got'"; return 1; }
+    printf 'project.name = "p"\nproject.version = "4.5.8"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "4.5.8" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed the dotted key project.version: '$got'"; return 1; }
+    printf '[tool]\npoetry.name = "p"\npoetry.version = "4.5.9"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "4.5.9" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed poetry.version under [tool]: '$got'"; return 1; }
+    printf '[tool.poetry]\nname = "p"\nversion = "1.0.0"\n\n[project]\nname = "p"\nversion = "2.0.0"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "2.0.0" ] || { rm -rf "$tmp"; echo "pyproject.toml reader preferred legacy [tool.poetry] over [project]: '$got'"; return 1; }
+    printf '[package]\nname = "q"\n"version" = "1.0.1"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "1.0.1" ] || { rm -rf "$tmp"; echo "Cargo.toml reader rejected a quoted version key: '$got'"; return 1; }
+    printf '[project]\nname = "q"\n"version" = "2.0.1"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "2.0.1" ] || { rm -rf "$tmp"; echo "pyproject.toml reader rejected a quoted version key: '$got'"; return 1; }
+    printf '[build-system]\nrequires = ["hatchling"]\n\n[project]\nname = "p"\nversion = '"'"'4.5.6'"'"'\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "4.5.6" ] || { rm -rf "$tmp"; echo "pyproject.toml reader returned '$got'"; return 1; }
+    printf '[project]\nname = "p"\ndynamic = ["version"]\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ -z "$got" ] || { rm -rf "$tmp"; echo "pyproject.toml reader invented a version for a dynamic project: '$got'"; return 1; }
+    rm -rf "$tmp"
+    return 0
+}
+
+if ! self_test_msg=$(self_test); then
+    echo "FAIL $CHECK_NAME self-test failed (detector rot, refusing to report): $self_test_msg"
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Configuration — .standards.yml `release:` block
+# ---------------------------------------------------------------------------
+# read_release_key <key> → the value, `__EMPTY__` when the key is present with
+# no value, or nothing when the key is absent. Reads the block form
+# (`release:` + indented keys) and the single-line flow form
+# (`release: { changelog: x, tag_prefix: y }`).
+read_release_key() {
+    [ -f "$PROJECT_ROOT/.standards.yml" ] || return 0
+    awk -v key="$1" '
+        /^release:[[:space:]]*\{/ {
+            s = $0; sub(/^release:[[:space:]]*\{/, "", s); sub(/\}.*$/, "", s)
+            n = split(s, parts, ",")
+            for (i = 1; i <= n; i++) {
+                p = parts[i]; sub(/^[[:space:]]+/, "", p); sub(/[[:space:]]+$/, "", p)
+                if (p ~ ("^" key "[[:space:]]*:")) {
+                    sub("^" key "[[:space:]]*:[[:space:]]*", "", p)
+                    gsub(/^["'"'"']|["'"'"']$/, "", p)
+                    if (p == "" || p == "~" || p == "null") print "__EMPTY__"; else print p
+                    exit
+                }
+            }
+            exit
+        }
+        /^release:/ { inblk = 1; next }
+        inblk && /^[^[:space:]#]/ { exit }
+        inblk && $0 ~ "^[[:space:]]+" key ":" {
+            sub("^[[:space:]]*" key ":[[:space:]]*", "")
+            sub(/[[:space:]]+#.*$/, "")
+            sub(/[[:space:]]+$/, "")
+            gsub(/^["'"'"']|["'"'"']$/, "")
+            if ($0 == "" || $0 == "~" || $0 == "null") print "__EMPTY__"; else print
+            exit
+        }' "$PROJECT_ROOT/.standards.yml" 2>/dev/null
+}
+
+DECLARED=$(read_release_key changelog)
+TAG_PREFIX=$(read_release_key tag_prefix)
+case "$TAG_PREFIX" in
+    "") TAG_PREFIX="__DEFAULT__" ;;          # not declared: accept v<ver> and <ver>
+    __EMPTY__) TAG_PREFIX="" ;;              # declared empty: bare <ver> only
+esac
+if [ "$TAG_PREFIX" = "__DEFAULT__" ]; then
+    PREFIX_LABEL="v<version> or <version>"
+else
+    PREFIX_LABEL="${TAG_PREFIX}<version>"
+fi
+
+if [ "$DECLARED" = "__EMPTY__" ]; then
+    echo "FAIL $CHECK_NAME .standards.yml declares release.changelog with no value — set a path or remove the key (failing closed)"
+    exit 1
+fi
+
+CHANGELOG=""
+CHANGELOG_LABEL=""
+if [ -n "$DECLARED" ]; then
+    CHANGELOG_LABEL="$DECLARED"
+    if [ ! -f "$PROJECT_ROOT/$DECLARED" ]; then
+        echo "FAIL $CHECK_NAME .standards.yml declares release.changelog: $DECLARED but the file does not exist (failing closed)"
+        exit 1
+    fi
+    CHANGELOG="$PROJECT_ROOT/$DECLARED"
+else
+    for candidate in $DEFAULT_LOCATIONS; do
+        if [ -f "$PROJECT_ROOT/$candidate" ]; then
+            CHANGELOG="$PROJECT_ROOT/$candidate"
+            CHANGELOG_LABEL="$candidate"
+            break
+        fi
+    done
+fi
+
+if [ -z "$CHANGELOG" ]; then
+    echo "PASS $CHECK_NAME No CHANGELOG (none declared in .standards.yml, no CHANGELOG.md/CHANGES.md/HISTORY.md at the root) — nothing to reconcile with tags"
+    exit 0
+fi
+
+if [ ! -r "$CHANGELOG" ] || [ ! -s "$CHANGELOG" ]; then
+    echo "FAIL $CHECK_NAME $CHANGELOG_LABEL is empty or unreadable — cannot pass (failing closed)"
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Tags
+# ---------------------------------------------------------------------------
+if ! git -C "$PROJECT_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    echo "WARN $CHECK_NAME $CHANGELOG_LABEL found but $PROJECT_ROOT is not a git repository — cannot read tags, not verified"
+    exit 2
+fi
+
+TAGS=$(git -C "$PROJECT_ROOT" tag -l 2>/dev/null)
+TAG_COUNT=0
+if [ -n "$TAGS" ]; then
+    TAG_COUNT=$(printf '%s\n' "$TAGS" | grep -c . || true)
+fi
+
+IS_SHALLOW=false
+shallow_answer=$(git -C "$PROJECT_ROOT" rev-parse --is-shallow-repository 2>/dev/null || true)
+if [ "$shallow_answer" = "true" ]; then
+    IS_SHALLOW=true
+elif [ -z "$shallow_answer" ] || [ "$shallow_answer" = "--is-shallow-repository" ]; then
+    # git < 2.15 echoes the unknown flag back; fall back to the marker file.
+    git_dir=$(git -C "$PROJECT_ROOT" rev-parse --git-dir 2>/dev/null || true)
+    # A relative answer (`.git`) is relative to the repository, not to the
+    # caller's directory; anchor it before testing for the marker file.
+    case "$git_dir" in ''|/*) ;; *) git_dir="$PROJECT_ROOT/$git_dir" ;; esac
+    [ -n "$git_dir" ] && [ -f "$git_dir/shallow" ] && IS_SHALLOW=true
+fi
+# A shallow HISTORY with a complete TAG namespace (actions/checkout with
+# `fetch-tags: true` and a positive depth) is verifiable: when the local tag
+# SET equals the remote's (same names, not merely the same count — a
+# local-only tag must not mask a missing remote one), a heading with no tag
+# is genuinely untagged, not hidden beyond the fetch boundary. No remote or
+# no network → stays shallow.
+if [ "$IS_SHALLOW" = true ]; then
+    # The query's own exit status decides whether an empty answer means "the
+    # remote has no tags" (a complete, empty namespace: verifiable, and a
+    # changelog with releases is then simply untagged) or "could not ask".
+    if remote_raw=$(git -C "$PROJECT_ROOT" ls-remote --tags --refs origin 2>/dev/null); then
+        remote_tags=$(printf '%s\n' "$remote_raw" | sed -n 's|.*refs/tags/||p' | sort)
+        local_tags=$(printf '%s\n' "$TAGS" | grep . | sort || true)
+        # Complete when every REMOTE tag is present locally (remote ⊆ local);
+        # a local-only scratch tag cannot hide a missing remote one.
+        missing_remote=$(comm -13 <(printf '%s\n' "$local_tags") <(printf '%s\n' "$remote_tags") | grep -c . || true)
+        [ "$missing_remote" -eq 0 ] && IS_SHALLOW=false
+    fi
+elif git -C "$PROJECT_ROOT" config --get remote.origin.url >/dev/null 2>&1; then
+    # A FULL-history repository can still lack tags: `git clone --no-tags`
+    # (which persists remote.origin.tagOpt) or `git init && git fetch
+    # --no-tags` (which persists nothing). Whenever an origin exists, ask it:
+    # a remote tag the clone lacks means "not fetched", which is not the same
+    # as "not tagged", and the result is the unverifiable WARN. Offline, the
+    # local view is trusted (a full clone normally has every tag).
+    if remote_raw=$(git -C "$PROJECT_ROOT" ls-remote --tags --refs origin 2>/dev/null); then
+        remote_tags=$(printf '%s\n' "$remote_raw" | sed -n 's|.*refs/tags/||p' | sort)
+        local_tags=$(printf '%s\n' "$TAGS" | grep . | sort || true)
+        missing_remote=$(comm -13 <(printf '%s\n' "$local_tags") <(printf '%s\n' "$remote_tags") | grep -c . || true)
+        [ "$missing_remote" -eq 0 ] || IS_SHALLOW=true
+    elif [ "$(git -C "$PROJECT_ROOT" config --get remote.origin.tagOpt 2>/dev/null)" = "--no-tags" ]; then
+        # Offline, but the clone itself says it never fetched tags: still
+        # unverifiable. Only a clone without that marker is trusted offline.
+        IS_SHALLOW=true
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Reconcile headings with tags
+# ---------------------------------------------------------------------------
+VERSIONS=$(extract_versions < "$CHANGELOG")
+VERSION_COUNT=0
+if [ -n "$VERSIONS" ]; then
+    VERSION_COUNT=$(printf '%s\n' "$VERSIONS" | grep -c . || true)
+fi
+
+if [ "$VERSION_COUNT" -eq 0 ]; then
+    # With an incomplete tag namespace the local list proves nothing: a
+    # release tagged on an older commit may exist on the remote. Unverifiable,
+    # not "no release tags".
+    if [ "$IS_SHALLOW" = true ]; then
+        echo "WARN $CHECK_NAME $CHANGELOG_LABEL has no release heading and this clone did not fetch all tags (shallow history or a --no-tags remote) — cannot tell whether a release was tagged but not recorded; use actions/checkout with fetch-depth: 0 or fetch-tags: true, or git fetch --tags"
+        exit 2
+    fi
+    # Only RELEASE-shaped tags count here: an operational tag such as
+    # `docs-preview-2026-01-01` is not an unrecorded release.
+    # (The SemVer regex is a literal here: awk -v would process its backslashes.)
+    RELEASE_TAG_COUNT=$(printf '%s\n' "$TAGS" | awk -v prefix="$TAG_PREFIX" '
+        NF == 0 { next }
+        {
+            t = $0
+            if (prefix == "__DEFAULT__") sub(/^v/, "", t)
+            else if (prefix != "") { if (index(t, prefix) != 1) next; t = substr(t, length(prefix) + 1) }
+            if (t ~ /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/) n++
+        }
+        END { print n + 0 }')
+    if [ "$RELEASE_TAG_COUNT" -gt 0 ]; then
+        echo "WARN $CHECK_NAME $CHANGELOG_LABEL has no release heading (## [x.y.z]) but the repository has $RELEASE_TAG_COUNT release tag(s) — releases are tagged but not recorded (proc-02 §5)"
+        exit 2
+    fi
+    echo "PASS $CHECK_NAME $CHANGELOG_LABEL lists 0 release headings (Unreleased only) and the repository has no release tags — nothing to reconcile yet"
+    exit 0
+fi
+
+if [ "$TAG_COUNT" -eq 0 ] && [ "$IS_SHALLOW" = true ]; then
+    echo "WARN $CHECK_NAME $CHANGELOG_LABEL lists $VERSION_COUNT release heading(s) but this clone fetched no tags (shallow history or a --no-tags remote) — cannot verify; use actions/checkout with fetch-depth: 0 or fetch-tags: true, or git fetch --tags"
+    exit 2
+fi
+
+MISSING=""
+MISSING_COUNT=0
+while IFS= read -r version; do
+    [ -n "$version" ] || continue
+    if ! tag_for "$version" "$TAGS" "$TAG_PREFIX" >/dev/null; then
+        MISSING_COUNT=$((MISSING_COUNT + 1))
+        if [ "$MISSING_COUNT" -le "$MAX_LISTED" ]; then
+            MISSING="${MISSING}${MISSING:+, }$version"
+        fi
+    fi
+done <<EOF
+$VERSIONS
+EOF
+
+# Keep a Changelog lists releases newest first, so the topmost released heading
+# is the newest release on this branch. File order, not SemVer: a maintenance
+# line's `1.5.1` above an older `2.0.0` is the newer release here, and the
+# manifest on this branch should carry it.
+LATEST=$(printf '%s\n' "$VERSIONS" | head -1)
+
+if [ "$MISSING_COUNT" -gt 0 ]; then
+    more=""
+    if [ "$MISSING_COUNT" -gt "$MAX_LISTED" ]; then more=" (+$((MISSING_COUNT - MAX_LISTED)) more)"; fi
+    # Exactly the topmost heading untagged, every other one tagged: three
+    # readings, decided by what tags DO exist for that version.
+    #   1. A tag in a default release form (`v2.0.0` / `2.0.0`) while a prefix
+    #      is declared: unambiguously a misnamed release tag → FAIL below.
+    #   2. A tag under some other prefix ending in the version
+    #      (`prod-2.0.0`, `docs-preview-2.0.0`): a misnamed release and an
+    #      unrelated operational tag look identical here → WARN naming it.
+    #   3. No tag ends in the version: a release in flight (the release PR
+    #      promotes [Unreleased], the tag follows the merge) → WARN.
+    # A second untagged heading, or an older one while newer releases are
+    # tagged, is the forgotten-tag pattern and FAILs regardless.
+    if [ "$MISSING_COUNT" -eq 1 ] && [ "$MISSING" = "$LATEST" ] \
+        && ! { [ "$TAG_PREFIX" != "__DEFAULT__" ] && tag_for "$LATEST" "$TAGS" __DEFAULT__ >/dev/null; }; then
+        if [ "$TAG_PREFIX" = "__DEFAULT__" ]; then want_tag="v$LATEST"; else want_tag="${TAG_PREFIX}${LATEST}"; fi
+        # Regex-escaped suffix match; a digit or dot before the version is
+        # rejected so `v12.0.0` is not a tag for `2.0.0`.
+        latest_ere=$(printf '%s' "$LATEST" | sed 's/[][\.*^$+?(){}|\\]/\\&/g')
+        lookalike=$(printf '%s\n' "$TAGS" | grep -E -- "(^|[^0-9.])${latest_ere}\$" | head -1)
+        if [ -n "$lookalike" ]; then
+            echo "WARN $CHECK_NAME release $LATEST in $CHANGELOG_LABEL has no tag in the accepted form ($PREFIX_LABEL) but '$lookalike' ends in that version — if it is the release tag, rename it to $want_tag or declare release.tag_prefix; if it is unrelated, create $want_tag (proc-02 §5)"
+            exit 2
+        fi
+        echo "WARN $CHECK_NAME release $LATEST in $CHANGELOG_LABEL has no tag yet — every older heading is tagged, so this looks like a release in flight: create $want_tag once it is merged (proc-02 §5); a second untagged heading would fail"
+        exit 2
+    fi
+    if [ "$IS_SHALLOW" = true ]; then
+        # A depth-limited clone carries only the tags that point inside the
+        # fetched history (e.g. the tip's tag), so an older release's tag may
+        # exist beyond the boundary. Unverifiable, not untagged.
+        echo "WARN $CHECK_NAME $MISSING_COUNT of $VERSION_COUNT release heading(s) in $CHANGELOG_LABEL have no visible tag ($MISSING$more) but this clone did not fetch all tags (shallow history or a --no-tags remote) — not fetched is not untagged, cannot verify; use actions/checkout with fetch-depth: 0 or fetch-tags: true, or git fetch --tags"
+        exit 2
+    fi
+    if [ "$TAG_PREFIX" = "__DEFAULT__" ]; then
+        expected="v<version> or <version>"
+    else
+        expected="${TAG_PREFIX}<version>"
+        # Name the exact tag for the first miss so the fix is copy-pasteable.
+        first="${MISSING%%,*}"
+        expected="$expected (e.g. ${TAG_PREFIX}${first})"
+    fi
+    echo "FAIL $CHECK_NAME $MISSING_COUNT of $VERSION_COUNT release heading(s) in $CHANGELOG_LABEL have no matching tag (expected $expected): $MISSING$more — tag the release or remove the heading (proc-02 §5)"
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Manifest drift (advisory)
+# ---------------------------------------------------------------------------
+DRIFT=""
+if [ -n "$LATEST" ]; then
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        manifest_file="${line%% *}"
+        manifest_version="${line#* }"
+        manifest_version="${manifest_version#v}"
+        if [ "$manifest_version" != "$LATEST" ]; then
+            DRIFT="${DRIFT}${DRIFT:+, }$manifest_file version $manifest_version"
+        fi
+    done <<EOF
+$(root_manifest_versions "$PROJECT_ROOT")
+EOF
+fi
+if [ -n "$DRIFT" ]; then
+    echo "WARN $CHECK_NAME all $VERSION_COUNT release heading(s) in $CHANGELOG_LABEL are tagged, but $DRIFT is not the latest release $LATEST — bump the manifest in the release commit (proc-02 §5)"
+    exit 2
+fi
+
+echo "PASS $CHECK_NAME $VERSION_COUNT release heading(s) in $CHANGELOG_LABEL each have a matching tag ($PREFIX_LABEL)"
+exit 0

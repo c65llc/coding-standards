@@ -283,3 +283,48 @@ Projects with a graphical interface SHOULD include an agent-friendly development
 * **Goal:** Start an HTTP server for autonomous UI iteration.
 * **Action:** Launches a build/inspect cycle API (see `proc-04_agent_workflow_standards.md` for endpoint specification).
 * **Post-condition:** Server is running and accessible at a documented port (e.g., `localhost:9010`).
+
+## 8. Toolchain Workarounds Carry an Issue and an Expiry
+
+A build-system workaround — a deprecated flag kept because its replacement is not ready (`--build-system native`, "currently deprecated, revisit on upgrades"), a tool pinned one version back, `--legacy-peer-deps`, an environment variable that silences a new check, a package patch under `patches/` — is borrowed time. Without a date it becomes permanent: the person who added it leaves, the upgrade that would remove it never happens, and the deprecated path finally breaks at the worst moment.
+
+Every workaround in a Makefile, script, CI definition, lockfile override or toolchain file carries two things, adjacent to the workaround itself:
+
+1. **`TODO(#issue)`** — the issue that tracks removing it, per the Work Tracking rules in `core-standards.md`. The issue body states what the workaround does, what has to change upstream, and how to verify the fix.
+2. **An expiry check** — a condition CI can evaluate that fails when the workaround should have gone: a date (`workaround-expiry: date 2026-12-31`) or, better, a version threshold (`workaround-expiry: version xcodebuild 17.0`, `workaround-expiry: version node 24.0.0`). When the condition trips, the gate fails with the `TODO(#issue)` text and the workaround is removed or re-justified with a new issue and a new expiry. A workaround never silently outlives its reason.
+
+```makefile
+# TODO(#412): --build-system native is deprecated in Xcode 16; remove once the
+# SwiftPM default builds the macOS target.
+# workaround-expiry: version xcodebuild 17.0
+SWIFT_BUILD_FLAGS += --build-system native
+```
+
+`make verify` (§2) runs a `check-workarounds` step that greps for `workaround-expiry:` markers, evaluates each condition (the date is in the past, or the installed tool reports a version at or above the threshold) and fails naming the marker and its `TODO(#issue)`. A marker with no `TODO(#issue)` within the two preceding lines fails outright: an expiry with no owner is not tracked. A workaround that is still needed when it expires gets a *new* expiry and a comment on the issue saying why — the re-decision is the point, not the deadline.
+
+The checker is **consumer-supplied** (this repository ships the marker grammar, not the script, because the version half depends on which tools the project runs and how each reports its version). Its contract: exit non-zero when any marker's condition holds or any marker lacks a `TODO(#issue)` within two lines above it, naming each offender with file, line and the TODO text. The date half is a few lines of shell and is enough to start with:
+
+```bash
+# scripts/check-workarounds.sh (date markers only; add `version <tool> <min>` per tool)
+today=$(date -u +%Y-%m-%d)
+rc=0
+# `done < <(…)` keeps the loop in this shell so rc survives; a `grep | while`
+# pipeline would run the loop in a subshell and always exit 0.
+while IFS=: read -r file line text; do
+  due=$(printf '%s' "$text" | sed -n 's/.*workaround-expiry: date \([0-9][0-9]*-[0-9][0-9]-[0-9][0-9]\).*/\1/p')
+  todo=$(sed -n "$((line > 2 ? line - 2 : 1)),${line}p" "$file" | grep -o 'TODO(#[0-9][0-9]*)' | head -1)   # at least one digit: `TODO(#)` is not an owner
+  [ -n "$todo" ] || { echo "FAIL $file:$line workaround-expiry without TODO(#issue)"; rc=1; }
+  # A real calendar date, not just the shape: `9999-99-99` would sort as "future" forever.
+  # GNU date (`-d`) on Linux CI, BSD date (`-j -f`) on macOS — `make verify` runs on both.
+  parsed=$(date -u -d "$due" +%Y-%m-%d 2>/dev/null || date -u -j -f %Y-%m-%d "$due" +%Y-%m-%d 2>/dev/null || true)
+  [ -n "$due" ] && [ "$parsed" = "$due" ] \
+    || { echo "FAIL $file:$line malformed date marker '$due' (want a real YYYY-MM-DD)"; rc=1; continue; }
+  if [ ! "$due" \> "$today" ]; then echo "FAIL $file:$line workaround expired $due ($todo)"; rc=1; fi
+# Markers live next to the workaround (Makefile, scripts, CI, lockfile
+# overrides), never in prose: Markdown and the vendored `.standards/` tree
+# (this document mentions the marker several times) are excluded.
+done < <(git grep -n 'workaround-expiry: date ' -- . ':!scripts/check-workarounds.sh' ':!*.md' ':!.standards/' ':!docs/')
+exit "$rc"
+```
+
+A `version <tool> <min>` marker compares `<tool> --version` (normalised to `major.minor.patch`) against `<min>` numerically per component — never lexically, where `10.0.0` sorts below `9.0.0`. A portable comparator is one `sort`: `[ "$(printf '%s\n%s\n' "$have" "$min" | sort -t. -k1,1n -k2,2n -k3,3n | head -1)" = "$min" ]` is true when `have >= min`, which is when the workaround has expired. A tool that is not installed in CI is reported as "cannot evaluate", never as passed.

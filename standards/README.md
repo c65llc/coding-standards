@@ -104,3 +104,12 @@ Copy-and-fill templates for the documents `process/proc-01_documentation_standar
 ## C++ Tooling Templates (`../templates/cpp/`)
 
 The `.clang-format`, `.clang-tidy`, `CMakePresets.json` and `ProjectWarnings.cmake` files `languages/lang-14_cpp_standards.md` requires, ready to copy into a C++ project. See [`templates/cpp/README.md`](../templates/cpp/README.md).
+
+## Supply-Chain Templates (`../templates/`)
+
+Ready-to-copy configs for the supply-chain and release rules in `security/sec-01_security_standards.md` §3 and §5 and `process/proc-02_git_version_control_standards.md` §5:
+
+- `dependabot.yml.example` → `.github/dependabot.yml` — grouped updates for npm, cargo and github-actions, with lockstep "partner" groups (sec-01 §5, Automated Dependency Updates)
+- `.gitleaks.toml.example` → `.gitleaks.toml` — shape-based allowlist for test fixtures (redaction output globally; naming-convention fakes, repeated-character padding and UUIDs only inside test paths; no path excludes) and the inline `gitleaks:allow` / `trufflehog:ignore` convention (sec-01 §3)
+- `trufflehog.yml.example` + `.trufflehog-ignore` → the TruffleHog CI scan and its path allowlist (sec-01 §9); `setup.sh` installs the allowlist, `setup.sh --workflow` the workflow
+- `standards.yml.example` `release:` block — where `changelog-tags` finds the changelog and which tag prefix it expects (proc-02 §5)

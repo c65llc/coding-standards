@@ -1,0 +1,134 @@
+# Dependabot with grouped updates — copy to .github/dependabot.yml
+#
+# sec-01 §5 "Automated Dependency Updates": grouped updates are REQUIRED for
+# every ecosystem Dependabot watches. Ungrouped bots open one PR per package;
+# a repo that receives 10-13 of them a week ends up hand-merging "omnibus"
+# commits that nobody reviewed individually, or ignoring the queue until the
+# age gate and the CVE audit are both red. One grouped PR per ecosystem per
+# week is reviewable; forty singletons are not.
+#
+# Three rules this file encodes:
+#   1. Every ecosystem has at least one `groups:` entry. Minor + patch bumps
+#      travel together; major bumps stay separate so a breaking change gets
+#      its own review (except GitHub Actions, where majors are frequent and
+#      cheap).
+#   2. "Partners that only break in company" are grouped by PATTERN so their
+#      updates land in the same PR. Packages that must move in lockstep
+#      (`react` + `react-dom`, `@typescript-eslint/*`, `vite` + `@vitejs/*`,
+#      `tokio` + `tokio-*`) break when one is bumped without the other. A
+#      group batches what is available — it does not force both to move, so
+#      the invariant is a CI assertion on the lockfile (arch-07 §3 lockstep
+#      pins); the group is what lets a bot keep that assertion green. Add
+#      your own lockstep sets to the `patterns` lists below.
+#   3. Bot commits still follow Conventional Commits (`chore(deps): …`) and
+#      still pass the dependency age gate (sec-01 §5): a grouped PR that pulls
+#      in a version younger than 72 hours waits, like any other PR.
+#
+# Dependabot never bumps a version inside a `patches/` file; a package that is
+# patched (see core-standards "Package Patches") must be re-patched when its
+# group lands, and `patches/README.md` records how.
+version: 2
+updates:
+  # --- npm / pnpm / yarn -----------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+    open-pull-requests-limit: 5
+    groups:
+      # Lockstep partners first: a more specific group wins, so when partners
+      # have updates they land in one PR, majors included. A group BATCHES; it
+      # does not force partners to move together — Dependabot still opens the
+      # group PR when only one partner has an update. The invariant itself
+      # ("these versions match") is a CI assertion on the lockfile (arch-07 §3
+      # lockstep pins), which this grouping makes easy to keep green.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      typescript-eslint:
+        patterns:
+          - "@typescript-eslint/*"
+          - "typescript-eslint"
+      vite:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+          - "vitest"
+          - "@vitest/*"
+      # Everything else: one PR for minor + patch, majors stay individual.
+      npm-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+      # Security updates travel in their own group so they can be merged
+      # ahead of the weekly batch.
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # --- Cargo ------------------------------------------------------------------
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 5
+    groups:
+      tokio:
+        patterns:
+          - "tokio"
+          - "tokio-*"
+      serde:
+        patterns:
+          - "serde"
+          - "serde_*"
+      cargo-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+      cargo-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # --- GitHub Actions ---------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for every action bump, majors included: pinned SHAs change on
+      # every release and a major for an action is rarely a breaking change.
+      github-actions:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+          - "major"
+      # Security updates are a separate update class — a group covers one
+      # class only — so without this a vulnerable action lands as its own PR.
+      # Catch-all, like the npm and Cargo security groups.
+      github-actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # Other ecosystems (pip, bundler, gradle, swift, pub, gomod, mix, …) follow
+  # the same shape: a `groups:` entry with at least a minor+patch batch, plus a
+  # pattern group for each lockstep set the project depends on.

@@ -213,6 +213,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # changelog-tags reconciles CHANGELOG.md headings with tags; a
+          # shallow clone fetches none and the check could only WARN.
+          fetch-depth: 0
 
       # Dogfood our own compliance linter against this repo. This repo is a
       # standards library, not an application, so it legitimately has no test
@@ -243,6 +247,21 @@ jobs:
           set -euo pipefail
           ./scripts/lint-checks/common/ci-workflow-hygiene.sh .
           ./scripts/lint-checks/common/headless-ci.sh .
+
+      - name: Assert every CHANGELOG release heading has a tag
+        # Repo-wide proc-02 §5 gate; the checkout above fetches tags so the
+        # check verifies rather than WARNs about a shallow clone. Exit 2 (WARN)
+        # is advisory and passes here: between merging a `chore(release)` PR
+        # and `gh release create` the newest heading legitimately has no tag
+        # yet, on the PR and on the push to main alike. A forgotten tag cannot
+        # hide behind that: changelog-tags-nightly.yml runs the same check on a
+        # schedule and treats the in-flight WARN as a failure.
+        # Exit 1 (FAIL: two untagged headings, an older one untagged) fails.
+        run: |
+          ./scripts/lint-checks/common/changelog-tags.sh . && exit 0
+          rc=$?
+          [ "$rc" -eq 2 ] && { echo "::warning::changelog-tags reported WARN (advisory)"; exit 0; }
+          exit "$rc"
 
   # Always-run gate: fails if any lane that ran failed, passes when lanes were
   # skipped by the routing table, and reports the run's CI-minutes against the

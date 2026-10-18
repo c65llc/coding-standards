@@ -32,7 +32,20 @@ pipeline as something to be measured and optimized, not left to sprawl.
   build once and let dependent jobs consume it.
 * Keep the **required** gate minimal and fast. Move advisory checks (dependency
   CVE audit, license scan, link-checking) into **separate** jobs that do not block
-  merge — a transitive advisory should not wedge the required gate.
+  merge — a transitive advisory should not wedge the required gate. Moving the
+  audit out of the gate does not waive the dependency age gate for the pin that
+  fixes the advisory (sec-01 §5).
+* **Quarantine legacy lanes when porting.** A port (Qt → SwiftUI, Webpack → Vite,
+  Jenkins → Actions) inherits the old stack's workflows, and they keep running
+  beside the new ones — building an artifact nobody ships, burning the minute
+  budget (§3.4), and making a red legacy lane indistinguishable from a real
+  failure. At the start of the port every inherited workflow is **disabled**
+  (`on: workflow_dispatch` only, or moved out of `.github/workflows/`), **marked**
+  with its removal issue (`# legacy: remove under TODO(#issue) once <new lane> is
+  required`), and **dropped from the required checks**. It is deleted when the
+  new lane becomes required, not "later". A legacy lane that must keep shipping
+  (a release channel that has not moved yet) runs on `push` to its own branch or
+  tag pattern, never on `pull_request`.
 
 ## 3. Don't Run Everything on Every PR
 

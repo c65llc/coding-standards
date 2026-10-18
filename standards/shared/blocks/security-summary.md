@@ -6,5 +6,6 @@ P1 (High): Encode all HTML output. No `innerHTML` with untrusted data. Validate 
 
 P2 (Warning): Missing rate limiting. Verbose errors in production. Unpinned dependencies. Missing encryption at rest.
 
-Secrets scanning: run `git-secrets`, `truffleHog`, or `detect-secrets` in CI.
+Secrets scanning: run `git-secrets`, `truffleHog`, or `detect-secrets` in CI. Suppress fixture false positives by shape (inline `trufflehog:ignore` / `gitleaks:allow`, or a shape regex in `.gitleaks.toml`), never by excluding `tests/`.
 Add `.env` to `.gitignore`. Provide `.env.example` with placeholder values only.
+Dependencies: bot updates are grouped per ecosystem (`.github/dependabot.yml` `groups:`); versions younger than 72 hours wait unless a listed approver comments `Dep-age approved: <head SHA>`, the `dep-age-override` label is set and the PR body carries a matching `Approved-by:` block, which opens a 24-hour follow-up issue at merge; every package patch is listed in `patches/README.md` with its reason, regression test and removal criterion.

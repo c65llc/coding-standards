@@ -12,7 +12,7 @@ mean the linter enforces it — the table below is the source of truth.
 
 | Category | Machine-enforced by `lint-standards.sh`? | Checks |
 | --- | --- | --- |
-| Common (all repos) | ✅ | ci-workflow-hygiene, conventional-commits, coverage-config, doc-lint, headless-ci, no-secrets, quarantine-policy, test-directory-structure |
+| Common (all repos) | ✅ | changelog-tags, ci-workflow-hygiene, conventional-commits, coverage-config, doc-lint, headless-ci, no-secrets, quarantine-policy, test-directory-structure |
 | Python (lang-01) | ✅ | banned-functions, ruff-config, type-annotations |
 | Swift (lang-04) | ✅ | swift-format-config, package-resolved, warnings-as-errors |
 | TypeScript (lang-06) | ✅ | banned-functions, eslint-config, strict-tsconfig |
@@ -54,6 +54,7 @@ no automated check modules for them yet. Consumers should not assume
 | `test-directory-structure` | core-standards | A recognizable test directory exists | WARN/FAIL |
 | `ci-workflow-hygiene` | arch-08 §3 | Every `pull_request` workflow declares `concurrency` + `cancel-in-progress` (workflow-level or on every job), `timeout-minutes` on each job that runs steps, and path scoping (`paths:` on the PR trigger, a paths-filter + gate job, or `# ci-hygiene: paths-exempt <reason>`) | WARN |
 | `headless-ci` | arch-08 §6 | Workflows and composite actions free of `store-credentials`, `unlock-keychain … login`, `osascript`, `open -a` (steps that need an unlocked desktop) | WARN |
+| `changelog-tags` | proc-02 §5 | Every released `## [x.y.z]` heading in `CHANGELOG.md` (also `CHANGELOG`, `CHANGES.md`, `HISTORY.md`, or `release.changelog`) has a matching tag — `v<version>` or `<version>` by default, `release.tag_prefix` when declared; `## [Unreleased]` and `[YANKED]` markers are handled. FAIL names the untagged versions (first four, then `(+N more)`) or a declared changelog that is missing or empty. WARN when only the topmost heading is untagged (a release in flight: heading merged, tag pending), when a root `package.json` / `Cargo.toml` / `pyproject.toml` version is not the topmost released heading, when release-shaped tags exist but the changelog has no release heading (operational tags such as `docs-preview-…` are ignored), and when a shallow clone cannot see a heading's tag (a `--depth` clone only carries tags inside the fetched history — unverifiable, never a false PASS or FAIL). Self-tests the heading parser, tag matcher and manifest readers on every run | WARN/FAIL |
 
 ## Module options
 
@@ -87,6 +88,53 @@ The same type list, regex and allow-list parser live in
 (commit-msg hooks via `templates/husky-commit-msg.example` /
 `templates/lefthook.yml.example`, and the PR-title step of the
 standards-review action).
+
+### changelog-tags
+
+Reconciles the Keep-a-Changelog release headings with the repository's tags
+(proc-02 § 5). Headings are read as `## [1.2.3] - date`, `## 1.2.3 (date)` or
+`## v1.2.3`, with an optional prerelease/build suffix and `[YANKED]`;
+`## [Unreleased]` is skipped. Tags are read with `git tag -l`, so the check is
+repo-wide and runs once at the root.
+
+| Setting | Where | Effect |
+| --- | --- | --- |
+| `release.changelog` | `.standards.yml` | Path of the changelog (default: the first of `CHANGELOG.md`, `CHANGELOG`, `CHANGES.md`, `HISTORY.md` at the root). A declared file that is missing or empty fails closed |
+| `release.tag_prefix` | `.standards.yml` | Make one prefix authoritative (`release-` ⇒ `release-1.2.3`); an explicitly empty value means bare `1.2.3` tags only. Undeclared, both `v1.2.3` and `1.2.3` match |
+
+```yaml
+# .standards.yml
+release:
+  changelog: docs/CHANGES.md
+  tag_prefix: v
+```
+
+A release PR promotes `[Unreleased]` to a numbered heading before the tag
+exists (the tag is cut after merge), so the state "exactly the newest heading
+untagged, every older one tagged" exists legitimately for a short while and is
+reported as `WARN` — "release in flight" — rather than `FAIL`. When some other
+tag ends in that version (`prod-2.0.0`, `docs-preview-2.0.0`) the WARN names
+it, since a misnamed release tag and an unrelated operational tag look alike;
+a default-form tag (`v2.0.0`) while a different prefix is declared is
+unambiguously misnamed and fails. Two or more untagged headings, or an older
+untagged heading while newer releases are tagged (the forgotten-tag pattern),
+fail. "Newest" is the topmost released
+heading (Keep a Changelog lists releases newest first), not the greatest
+SemVer, so a maintenance line's `1.5.1` above an older `2.0.0` is the newest
+release on that branch; the manifest drift comparison uses the same heading.
+
+In CI the checkout must carry the tags: `actions/checkout` with `fetch-depth: 0`
+(or `fetch-tags: true`). A `--depth` clone only carries the tags that point
+inside the fetched history (typically the tip's), so in a shallow clone a
+heading without a visible tag is reported as `WARN` (cannot verify) — never as
+a pass, and never as a `FAIL` the full history would contradict. With
+`fetch-tags: true` the history is still shallow but the tag namespace is
+complete; the check recognises that when the local tag set equals
+`git ls-remote --tags origin` and verifies normally. The converse holds too: a
+full-history repository that never fetched its tags (`git clone --no-tags`,
+`git fetch --no-tags`) has them missing without being shallow; when an
+`origin` exists the check asks it, and a remote tag the clone lacks makes the
+result unverifiable (`WARN`), not untagged. Offline, the local view is trusted.
 
 ## File enumeration and exclusions
 
@@ -182,7 +230,7 @@ lives in [`scripts/lib/members.sh`](../lib/members.sh).
 
 | Scope | Checks | Where they run |
 | --- | --- | --- |
-| Repo-wide | `conventional-commits`, `ci-workflow-hygiene`, `headless-ci`, `no-secrets`, `doc-lint` | Once, at the root (history, CI definitions and every tracked file are repository properties) |
+| Repo-wide | `conventional-commits`, `ci-workflow-hygiene`, `headless-ci`, `no-secrets`, `doc-lint`, `changelog-tags` | Once, at the root (history, CI definitions, tags and every tracked file are repository properties) |
 | Project | `coverage-config`, `quarantine-policy`, `test-directory-structure` | In every member, against that member's `.standards.yml`; also at the root unless the root declares no languages and has members (a pure aggregator) |
 | Language | `python/*`, `typescript/*`, `rust/*`, … | In every member, for the languages its own `.standards.yml` declares (the root's `languages:` governs the root) |
 

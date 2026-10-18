@@ -5,28 +5,39 @@
 # the scan. Keep this list narrow — excluding whole trees can hide real secrets.
 #
 # For GRANULAR, per-finding suppression prefer an inline comment on the exact
-# line instead of excluding a whole path:
-#     const EXAMPLE_TOKEN = "AKIA...";  // trufflehog:ignore
+# line instead of excluding a whole path, in the file's own comment syntax
+# (TruffleHog matches the token, not the comment leader):
+#     const EXAMPLE_TOKEN = "AKIA...";  // trufflehog:ignore     (JS, Go, Rust)
+#     EXAMPLE_TOKEN = "AKIA..."  # trufflehog:ignore              (Python, shell, YAML)
 # That keeps the rest of the file scanned and documents the false positive in
-# place. Reserve this file for paths that are inherently all-noise.
+# place. Reserve this file for a named artifact that cannot carry a credential.
 #
-# Common all-noise paths worth excluding (uncomment/add as they apply to your
-# repo — regexes, so `\.` escapes a literal dot):
+# Fixture-SHAPED noise (UUIDv7 ids, `test-`/`fake-`-prefixed passwords,
+# redaction output) is not a path problem: do not exclude `tests/` or
+# `fixtures/` here. Mark the line inline, or — when Gitleaks also runs — add a
+# shape regex to .gitleaks.toml (see templates/.gitleaks.toml.example and
+# sec-01 §3 "Scanner False Positives on Test Fixtures").
 #
-# Lockfiles (hash checksums trip generic detectors):
-# (^|/)pnpm-lock\.yaml$
-# (^|/)package-lock\.json$
-# (^|/)yarn\.lock$
-# (^|/)Cargo\.lock$
-# (^|/)poetry\.lock$
+# This file ships EMPTY on purpose. A path exclude drops every finding in the
+# file whatever its value, so it is only right for a file that cannot carry a
+# credential at all — and the usual candidates can:
+#   - lockfiles (`package-lock.json`, `yarn.lock`, `Cargo.lock`, …) carry the
+#     registry URLs the package manager wrote, token and all, when someone
+#     installed from a private URL; their hash noise is for the detector's own
+#     verification/entropy filters, not a path exclude;
+#   - committed bundles (`dist/`, `*.min.js`) are where a build-time-injected
+#     credential lands;
+#   - `tests/`, `__tests__/`, `fixtures/`, `examples/` hold the fixtures the
+#     inline marker and the Gitleaks shape allowlist exist for.
 #
-# Checksums / SBOM / minified vendor bundles:
-# \.checksums$
-# (^|/)dist/
-# \.min\.(js|css)$
+# Exclude a specific artifact only when it is provably credential-free, and
+# name that artifact, never the tree. One regex per line, `\.` escapes a dot,
+# and NO trailing comment on a pattern line: TruffleHog compiles the whole
+# line, so an inline note would become part of the regex. Put the reason on
+# the line above, as these examples do.
 #
-# Test fixtures and example/placeholder tokens:
-# (^|/)(tests?|__tests__|fixtures|examples)/
+# upstream highlight.js build; no configuration is injected into it
+# ^public/vendor/highlight\.min\.js$
 #
-# Binary/asset data that base64-decodes to non-secrets (fonts, image URIs):
-# \.(woff2?|ttf|eot|png|jpe?g|gif|ico)$
+# binary font files in one directory
+# ^assets/fonts/[^/]+\.(woff2?|ttf|eot)$

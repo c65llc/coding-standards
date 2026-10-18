@@ -1,0 +1,35 @@
+name: Changelog tags (nightly, strict)
+
+# proc-02 §5 enforcement for the case ci.yml deliberately tolerates: the
+# dogfood step accepts the "release in flight" WARN (newest heading untagged,
+# every other one tagged) because that state exists legitimately between
+# merging a `chore(release)` PR and `gh release create`. If the tag is then
+# forgotten, every push to main would stay green. This job runs the same check
+# once a day and treats ANY non-PASS result as a failure, so a forgotten tag
+# turns a lane red within a day instead of at the next release.
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  changelog-tags-strict:
+    name: Every CHANGELOG release heading has a tag (strict)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the check reads tags; a shallow clone cannot verify
+
+      - name: Assert every release heading has a tag (WARN is a failure here)
+        run: |
+          out=$(./scripts/lint-checks/common/changelog-tags.sh .) && { echo "$out"; exit 0; }
+          echo "$out"
+          echo "::error::changelog-tags did not PASS on main — a release heading has no tag (proc-02 §5); run 'gh release create v<version> --target main'"
+          exit 1
