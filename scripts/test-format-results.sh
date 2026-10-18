@@ -150,10 +150,11 @@ assert_eq "oversized table drops PASS rows first and says so" "$expected" "$out"
 
 # Test 22: when even the FAIL/WARN rows do not fit, the table is cut at the budget
 # and the truncation row counts the rest; the output stays well under GitHub's
-# 65536-character comment limit
+# 65536-character comment limit. 110 rows (~58 KB) exceed the 50 KB budget while
+# the JSON stays under Linux's 128 KB single-argument limit (MAX_ARG_STRLEN).
 big=$(python3 -c '
 import json
-rows=[{"status":"WARN","check":"c%d"%i,"member":".","message":"x"*500} for i in range(300)]
+rows=[{"status":"WARN","check":"c%d"%i,"member":".","message":"x"*500} for i in range(110)]
 print(json.dumps({"results":rows}))')
 out=$(python3 "$FORMATTER" "$big")
 n_rows=$(printf '%s\n' "$out" | wc -l | tr -d ' ')
@@ -177,6 +178,20 @@ if [ "$n_rows" -eq 200 ] && ! printf '%s' "$out" | grep -q TRUNCATED; then
 else
     FAIL=$((FAIL+1)); echo "FAIL: in-budget table was truncated (rows=$n_rows)"
 fi
+
+# Test 24: a carriage return is a CommonMark line ending, so it would end the
+# table row and let the rest render live outside the code span; every control
+# character is normalised to a space and the row stays intact and inert
+out=$(python3 "$FORMATTER" "$(printf '{"results":[{"status":"WARN","check":"c","member":".","message":"before\\r@org/team [x](https://evil)\\u0000\\ttail"}]}')")
+expected="| :warning: WARN | c | \`before @org/team [x](https://evil)  tail\` |"
+assert_eq "control characters cannot break the row or the code span" "$expected" "$out"
+
+# Test 25: a backslash before a pipe would make the escaped pipe read as an
+# escaped backslash plus a live pipe (a cell boundary, which splits the code
+# span open); a space is inserted so the pipe stays escaped, in messages and members
+out=$(python3 "$FORMATTER" "$(printf '{"results":[{"status":"FAIL","check":"c","member":"m\\\\|x","message":"C:\\\\dir\\\\|tail @u"}]}')")
+expected="| :x: FAIL | \`m\\ \\|x\`: c | \`C:\\dir\\ \\|tail @u\` |"
+assert_eq "backslash-pipe cannot split the row" "$expected" "$out"
 
 echo ""
 echo "format-results.py tests: $PASS passed, $FAIL failed"

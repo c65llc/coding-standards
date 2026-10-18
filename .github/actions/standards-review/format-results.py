@@ -6,6 +6,7 @@ Each result may carry a ``member`` (the monorepo sub-root it was produced in,
 prefix on the check name so one table covers the whole aggregated run.
 """
 import json
+import re
 import sys
 
 raw = sys.argv[1] if len(sys.argv) > 1 else "{}"
@@ -20,9 +21,24 @@ except (json.JSONDecodeError, ValueError):
     pass
 
 
+# Every C0/C1-style control character plus the Unicode line/paragraph
+# separators. CommonMark treats \r, \n and \r\n as line endings, and a line
+# ending anywhere in a cell ends the table row, so whatever follows renders as
+# live Markdown outside the row (and outside any code span the cell opened).
+CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f\u2028\u2029]")
+
+
 def cell(value):
-    """Escape a table cell: no pipes, no line breaks."""
-    return str(value).replace("|", "\\|").replace("\n", " ")
+    """Escape a table cell: one line, no unescaped pipes.
+
+    Pipes are escaped as ``\\|``. A backslash already in the text would turn
+    that into ``\\\\|`` — an escaped backslash followed by a live pipe, which the
+    GFM row splitter reads as a cell boundary — so a space is inserted between a
+    backslash and a following pipe first.
+    """
+    text = CONTROL_CHARS.sub(" ", str(value))
+    text = re.sub(r"\\(?=\|)", "\\ ", text)
+    return text.replace("|", "\\|")
 
 
 def member_cell(value):
