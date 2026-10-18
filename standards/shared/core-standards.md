@@ -180,12 +180,28 @@ Flaky and slow tests, change-scoped suites, and gates that can pass without runn
 - Use ranges for development dependencies.
 - Regular dependency audits and updates.
 
+### Automated Dependency Updates
+
+- Bot updates (Dependabot, Renovate) are **grouped** for every ecosystem watched: minor + patch bumps batched per ecosystem per week, majors as their own PRs. An ungrouped queue gets hand-merged in omnibus commits nobody reviewed.
+- Partners that only break in company (`react` + `react-dom`, `@typescript-eslint/*`, `vite` + `@vitejs/*`, `tokio` + `tokio-*`) share a pattern group so they always land together. List the project's lockstep sets explicitly.
+- Bot PRs pass the same gate as any PR, including the age gate below. Template: `templates/dependabot.yml.example`; rationale in `standards/security/sec-01_security_standards.md` §5.
+
 ### Dependency Age Gate
 
 - **All 3rd-party dependency versions must be at least 3 days old before adoption.** Do not upgrade to or add a dependency version published less than 72 hours ago.
 - This applies to new dependencies and version upgrades alike.
 - CI should enforce age verification against the registry publish date.
-- Emergency security patches may bypass this gate with explicit team lead approval and documented justification, with a follow-up review required within 24 hours. See `standards/security/sec-01_security_standards.md` §5 for the full exception process.
+- Emergency security patches may bypass this gate only through the `dep-age-override` label plus a `Dep-age override:` block in the PR body naming the approver; the gate then opens a `dep-age-follow-up` issue due within 24 hours. A red advisory lane is not an override. See `standards/security/sec-01_security_standards.md` §5 for the reference implementation.
+
+### Package Patches (`patches/`)
+
+A patch to a third-party package (`patch-package`, pnpm `patchedDependencies`, Cargo `[patch]`, a vendored diff, a fork pin) is a fork you now maintain. Every patch is recorded in `patches/README.md`, one entry per patch file, with three fields:
+
+- **Why** — the upstream bug or missing hook, with the upstream issue or PR link.
+- **Regression test** — the test in this repo that fails without the patch, so a bot bump that silently drops it is caught by CI rather than in production.
+- **Removal criterion** — the upstream version (or condition) at which the patch is deleted, and who checks it on each bump.
+
+A patch with no README entry is removed. A README entry whose removal criterion has been met is a toolchain workaround past its expiry (`standards/architecture/arch-02_automation_standards.md` §8) and is deleted or re-justified with a new `TODO(#issue)`. Grouped bot updates re-apply patches when the group lands; the README is how the next person knows what to re-verify.
 
 ### Dependency Rules
 

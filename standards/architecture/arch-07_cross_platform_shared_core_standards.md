@@ -67,6 +67,17 @@ the boundary itself is a tested surface, not an afterthought.
 * Pin the binding generator version (e.g. `wasm-pack`, `uniffi-bindgen`) and treat
   the generated bindings as committed generated artifacts (see
   [arch-06](./arch-06_monorepo_workspace_standards.md) §6).
+* **Lockstep pins across repos.** When the core is consumed as a package by shells
+  in *separate* repositories, the declared pin and its resolved lockfile move
+  together — `Package.swift` + `Package.resolved`, `package.json` + the lockfile,
+  `Cargo.toml` + `Cargo.lock` — through **paired PRs**: the core repo tags the
+  release; the shell repo's PR bumps the declared pin *and* the resolved pin in
+  the same commit; each PR body names its partner (`Pairs with org/core#123`). A
+  bumped `Package.swift` beside a stale `Package.resolved` builds something other
+  than what the diff says. The shell's CI asserts the two agree (a fresh
+  `swift package resolve` / `npm ci` / `cargo build --locked` changes nothing),
+  the core's release checklist lists every shell repo that must pair, and the
+  pairing rule is recorded as an ADR so a new shell follows it without being told.
 * **The core's side of the contract** — opaque handles, create/destroy pairing,
   borrowed-buffer lifetimes, null-handle tolerance, status codes, and catching
   every exception at the `extern "C"` boundary — is

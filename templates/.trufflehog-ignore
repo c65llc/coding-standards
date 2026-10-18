@@ -10,6 +10,12 @@
 # That keeps the rest of the file scanned and documents the false positive in
 # place. Reserve this file for paths that are inherently all-noise.
 #
+# Fixture-SHAPED noise (UUIDv7 ids, `test-`/`fake-`-prefixed passwords,
+# redaction output) is not a path problem: do not exclude `tests/` or
+# `fixtures/` here. Mark the line inline, or — when Gitleaks also runs — add a
+# shape regex to .gitleaks.toml (see templates/.gitleaks.toml.example and
+# sec-01 §3 "Scanner False Positives on Test Fixtures").
+#
 # Common all-noise paths worth excluding (uncomment/add as they apply to your
 # repo — regexes, so `\.` escapes a literal dot):
 #

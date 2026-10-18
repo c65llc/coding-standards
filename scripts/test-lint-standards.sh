@@ -2923,6 +2923,120 @@ if echo "$out" | grep 'Languages' | grep -q 'WARN' && echo "$out" | grep -q "lan
 
 
 echo ""
+# --- changelog-tags module (#197: CHANGELOG vs tag consistency) ---------------
+
+# Helpers: a project with a Keep-a-Changelog file and a set of tags.
+write_changelog() {
+    # $1 = file path, $2.. = heading lines (one `## ...` per argument)
+    local file="$1"; shift
+    {
+        printf '# Changelog\n\n## [Unreleased]\n\n- pending work\n\n'
+        for h in "$@"; do printf '%s\n\n- entry\n\n' "$h"; done
+    } > "$file"
+}
+tag_all() {
+    # $1 = project dir, $2.. = tag names (lightweight tags on HEAD)
+    local dir="$1"; shift
+    for t in "$@"; do ( cd "$dir" && git tag "$t" ); done
+}
+
+echo -n "Test 202: changelog-tags PASSes a project with no CHANGELOG and says so... "
+ct0=$(make_project "ct-none")
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct0" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS changelog-tags.*[Nn]o CHANGELOG'; then pass; else fail "expected PASS (no CHANGELOG), got: $out"; fi
+
+echo -n "Test 203: changelog-tags PASSes when every released heading has a v-tag ([Unreleased] ignored)... "
+ct1=$(make_project "ct-ok")
+write_changelog "$ct1/CHANGELOG.md" "## [1.1.0] - 2026-06-01" "## [1.0.1] - 2026-05-20" "## [1.0.0] - 2026-05-01"
+tag_all "$ct1" v1.1.0 v1.0.1 v1.0.0
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct1" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS changelog-tags.*3 release' && ! echo "$out" | grep -qi 'unreleased'; then pass; else fail "expected PASS counting 3 releases, got: $out"; fi
+
+echo -n "Test 204: changelog-tags FAILs when a released heading has no matching tag, naming the versions... "
+ct2=$(make_project "ct-missing")
+write_changelog "$ct2/CHANGELOG.md" "## [0.1.5] - 2026-06-01" "## [0.1.4] - 2026-05-20" "## [0.1.3] - 2026-05-01" "## [0.1.2] - 2026-04-01"
+tag_all "$ct2" v0.1.3 v0.1.2
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct2" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL changelog-tags' && echo "$out" | grep -q '0.1.5' && echo "$out" | grep -q '0.1.4' \
+   && ! echo "$out" | grep -q '0.1.3'; then pass; else fail "expected FAIL naming 0.1.5 and 0.1.4 only, got: $out"; fi
+
+echo -n "Test 205: changelog-tags accepts bare tags, '## 1.2.3 (date)' headings, prereleases and [YANKED]... "
+ct3=$(make_project "ct-forms")
+write_changelog "$ct3/CHANGELOG.md" "## 2.0.0-rc.1 (2026-06-01)" "## [1.2.3] - 2026-05-01 [YANKED]" "## v1.2.2 - 2026-04-01"
+tag_all "$ct3" 2.0.0-rc.1 1.2.3 v1.2.2
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct3" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS changelog-tags.*3 release'; then pass; else fail "expected PASS for 3 heading forms, got: $out"; fi
+
+echo -n "Test 206: changelog-tags WARNs (never PASSes) in a shallow clone whose tags were not fetched... "
+ct4src=$(make_project "ct-shallow-src")
+write_changelog "$ct4src/CHANGELOG.md" "## [1.0.0] - 2026-05-01"
+( cd "$ct4src" && git add CHANGELOG.md && git -c user.email="t@t.local" -c user.name="T" commit -q -m "docs: changelog" )
+tag_all "$ct4src" v1.0.0
+ct4="$TMP_BASE/ct-shallow"
+git clone -q --depth 1 --no-tags "file://$ct4src" "$ct4" 2>/dev/null
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct4" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN changelog-tags.*shallow'; then pass; else fail "expected WARN about shallow clone, got: $out"; fi
+
+echo -n "Test 207: changelog-tags WARNs when the root manifest version trails the latest released heading... "
+ct5=$(make_project "ct-manifest")
+write_changelog "$ct5/CHANGELOG.md" "## [0.1.5] - 2026-06-01" "## [0.1.3] - 2026-05-01"
+tag_all "$ct5" v0.1.5 v0.1.3
+printf '{\n  "name": "demo",\n  "version": "0.1.3",\n  "private": true\n}\n' > "$ct5/package.json"
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct5" 2>/dev/null || true)
+ct5b=$(make_project "ct-manifest-ok")
+write_changelog "$ct5b/CHANGELOG.md" "## [0.1.5] - 2026-06-01"
+tag_all "$ct5b" v0.1.5
+printf '[package]\nname = "demo"\nversion = "0.1.5"\nedition = "2021"\n\n[dependencies]\nserde = { version = "1" }\n' > "$ct5b/Cargo.toml"
+out_ok=$(bash "$CHECKS/common/changelog-tags.sh" "$ct5b" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN changelog-tags.*package.json.*0.1.3.*0.1.5' && echo "$out_ok" | grep -q '^PASS changelog-tags'; then pass; else
+    fail "drift: $out | ok: $out_ok"; fi
+
+echo -n "Test 208: changelog-tags FAILs closed when .standards.yml declares a missing release.changelog... "
+ct6=$(make_project "ct-declared-missing")
+printf 'version: 1\nrelease:\n  changelog: docs/CHANGES.md\n' > "$ct6/.standards.yml"
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct6" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL changelog-tags.*docs/CHANGES.md'; then pass; else fail "expected FAIL naming the declared path, got: $out"; fi
+
+echo -n "Test 209: changelog-tags honors release.changelog and release.tag_prefix... "
+ct7=$(make_project "ct-declared")
+mkdir -p "$ct7/docs"
+printf 'version: 1\nrelease:\n  changelog: docs/CHANGES.md\n  tag_prefix: release-\n' > "$ct7/.standards.yml"
+write_changelog "$ct7/docs/CHANGES.md" "## [3.0.0] - 2026-06-01"
+tag_all "$ct7" release-3.0.0
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct7" 2>/dev/null || true)
+# The same project with only a v-tag must now FAIL: the declared prefix is authoritative.
+( cd "$ct7" && git tag -d release-3.0.0 >/dev/null && git tag v3.0.0 )
+out_v=$(bash "$CHECKS/common/changelog-tags.sh" "$ct7" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS changelog-tags.*docs/CHANGES.md' && echo "$out_v" | grep -q '^FAIL changelog-tags.*release-3.0.0'; then pass; else
+    fail "prefixed: $out | v-only: $out_v"; fi
+
+echo -n "Test 210: changelog-tags WARNs on a CHANGELOG with no release headings when tags exist; PASSes Unreleased-only... "
+ct8=$(make_project "ct-no-headings")
+printf '# Changelog\n\nSee GitHub releases.\n' > "$ct8/CHANGELOG.md"
+tag_all "$ct8" v1.0.0
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct8" 2>/dev/null || true)
+ct8b=$(make_project "ct-no-headings-no-tags")
+printf '# Changelog\n\n## [Unreleased]\n\n- first work\n' > "$ct8b/CHANGELOG.md"
+out_b=$(bash "$CHECKS/common/changelog-tags.sh" "$ct8b" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN changelog-tags.*no release heading' && echo "$out_b" | grep -q '^PASS changelog-tags.*0 release'; then pass; else
+    fail "tags-no-headings: $out | unreleased-only: $out_b"; fi
+
+echo -n "Test 211: runner treats changelog-tags as repo-wide (once at the root, not per member)... "
+ct9=$(make_project "ct-members")
+mkdir -p "$ct9/apps/web" "$ct9/apps/api"
+printf 'version: 1\nlanguages: []\n' > "$ct9/.standards.yml"
+printf 'version: 1\nlanguages: [typescript]\n' > "$ct9/apps/web/.standards.yml"
+printf 'version: 1\nlanguages: [python]\n' > "$ct9/apps/api/.standards.yml"
+write_changelog "$ct9/CHANGELOG.md" "## [1.0.0] - 2026-05-01"
+tag_all "$ct9" v1.0.0
+"$LINT" --format json "$ct9" > "$TMP_BASE/ct-members.json" 2>/dev/null || true
+n=$(grep -c '"check": "changelog-tags"' "$TMP_BASE/ct-members.json" || true)
+if [ "$n" -eq 1 ]; then pass; else fail "expected exactly 1 changelog-tags result, got $n"; fi
+
+echo -n "Test 212: this repo's own CHANGELOG headings all have tags (dogfood; tolerates a tagless shallow CI clone)... "
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$REPO_ROOT" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS changelog-tags' || echo "$out" | grep -q '^WARN changelog-tags.*shallow'; then pass; else fail "got: $out"; fi
+
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"
     exit 0

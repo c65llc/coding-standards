@@ -31,7 +31,7 @@
 #   with their own .standards.yml); without the key, every */.standards.yml
 #   and */*/.standards.yml is auto-discovered (see scripts/lib/members.sh).
 #   Repo-wide checks (conventional-commits, ci-workflow-hygiene, headless-ci,
-#   no-secrets, doc-lint) run once at the root. Project checks
+#   no-secrets, doc-lint, changelog-tags) run once at the root. Project checks
 #   (coverage-config, quarantine-policy, test-directory-structure) and the
 #   language checks run in every member against that member's own config;
 #   they also run at the root unless the root declares no languages and has
@@ -220,7 +220,7 @@ MEMBER_COUNT=${#MEMBERS[@]}
 # definitions, every tracked file) run once at the root; all other common
 # checks describe one project and run per member. Classified by module file
 # name under lint-checks/common/.
-REPO_SCOPED_CHECKS_ERE='^(conventional-commits|ci-workflow-hygiene|headless-ci|no-secrets|doc-lint)$'
+REPO_SCOPED_CHECKS_ERE='^(conventional-commits|ci-workflow-hygiene|headless-ci|no-secrets|doc-lint|changelog-tags)$'
 
 # A root that has members but declares no languages is a pure aggregator: its
 # project-level checks (test directory, coverage config …) would only report

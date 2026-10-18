@@ -1,0 +1,80 @@
+# .gitleaks.toml — shape-based allowlist for Gitleaks. Copy to .gitleaks.toml.
+#
+# sec-01 §3 "Scanner False Positives on Test Fixtures". Test fixtures trip
+# secret scanners for predictable reasons: UUIDv7 ids look like tokens, a
+# redaction test needs a plausible password to redact, a fake credential in a
+# `*_test` file is the whole point of the test. The usual response — a second
+# and third allowlist round, each excluding one more PATH — ends with whole
+# trees unscanned. Allowlist the SHAPE of the false positive instead: a regex
+# that matches the fixture's form and nothing a real secret would take. Path
+# excludes are the last resort, and every entry here states why it exists.
+#
+# Two mechanisms, finest granularity first:
+#   1. Inline, on the exact line:   `… // gitleaks:allow`  (Gitleaks)
+#                                   `… // trufflehog:ignore` (TruffleHog)
+#      Put BOTH markers on a line that trips both scanners. The marker
+#      documents the false positive where a reader meets it and keeps the rest
+#      of the file scanned. Prefer this for one-off constants.
+#   2. This file, for a shape that recurs across many fixtures. Each regex
+#      below is anchored to the shape and names the fixture family it covers.
+#
+# Gitleaks ≥ 8.21 also accepts `[[allowlists]]` blocks that target specific
+# rules (`targetRules`) and AND their conditions (`condition = "AND"`); the
+# single `[allowlist]` form below works on every 8.x release.
+
+title = "project gitleaks config"
+
+[extend]
+# Start from the built-in rule set; this file only adds allowlist entries.
+useDefault = true
+
+[allowlist]
+description = "Shape-based allowlist for test fixtures (sec-01 §3)"
+# "match" applies the regexes to the matched secret itself, not the whole
+# line, so an allowlisted shape cannot accidentally cover a real secret that
+# happens to share a line with a fixture.
+regexTarget = "match"
+
+regexes = [
+  # UUIDv7 (version nibble 7, variant 8-b): time-ordered ids used as fixture
+  # primary keys. A real token is never a well-formed UUID.
+  '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$''',
+  # Any RFC 4122 UUID (v1–v5) in the same position, for fixtures that are not
+  # time-ordered. Remove this line if your real secrets are UUID-shaped.
+  '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$''',
+  # Fake passwords by naming convention: a value that announces itself
+  # (test-, fake-, dummy-, example-, not-a-real-, changeme) is a fixture, not
+  # a credential. Keep the convention and the scanner stays quiet.
+  '''^(test|fake|dummy|example|placeholder|not-a-real|changeme|hunter2)[-_a-zA-Z0-9]*$''',
+  # Redaction-test output: the scanner sees the redacted form, which is only
+  # asterisks or the literal REDACTED marker, never a secret.
+  '''^(\*{4,}|\[?REDACTED\]?|<redacted>)$''',
+  # Repeated-character fixtures (`xxxxxxxx…`, `0000…`, `aaaa…`) used to pad a
+  # token to the right length in a parser test.
+  '''^([a-zA-Z0-9])\1{15,}$''',
+]
+
+# Stopwords are matched against the secret itself (case-insensitive). A token
+# that contains one of these is a fixture by construction.
+stopwords = [
+  "example",
+  "fixture",
+  "placeholder",
+  "not-a-real",
+  "redacted",
+]
+
+# Path excludes — the LAST resort. Each one covers a path that is all-noise by
+# construction (lockfile hashes, generated bundles). Never exclude `tests/` or
+# `fixtures/` wholesale: the regexes above cover the fixture shapes, and a
+# real secret pasted into a test file must still be caught.
+paths = [
+  '''(^|/)pnpm-lock\.yaml$''',
+  '''(^|/)package-lock\.json$''',
+  '''(^|/)yarn\.lock$''',
+  '''(^|/)Cargo\.lock$''',
+  '''(^|/)poetry\.lock$''',
+  '''(^|/)Package\.resolved$''',
+  '''\.min\.(js|css)$''',
+  '''(^|/)dist/''',
+]

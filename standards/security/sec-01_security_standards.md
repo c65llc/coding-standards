@@ -151,6 +151,43 @@ DATABASE_URL = "postgres://user:pass@host/db"
 private_key = "-----BEGIN RSA PRIVATE KEY-----"
 ```
 
+### Scanner False Positives on Test Fixtures `[P1]`
+
+Test fixtures trip secret scanners for predictable reasons: UUIDv7 ids look
+like tokens, a redaction test needs a plausible password to redact, a fake
+credential in a `*_test` file is the point of the test. Two consumer repos each
+needed two allowlist rounds for the same fixtures before the scanner went
+quiet, and the second round in each case excluded a whole directory. Noisy
+scanners get disabled; the P0 rule above only holds while the allowlist keeps
+signal high.
+
+- **Suppress at the finest granularity that works, in this order.** (1) An
+  inline marker on the exact line — `// trufflehog:ignore` for TruffleHog,
+  `// gitleaks:allow` for Gitleaks, both when both scanners run. (2) A
+  **shape-based** allowlist regex that matches the fixture's form (a
+  well-formed UUID, a `test-`/`fake-`/`not-a-real-`-prefixed value, a
+  `REDACTED`/`****` redaction output, a repeated-character pad) and nothing a
+  real secret would take. (3) A path exclude, only for a path that is
+  all-noise by construction (lockfiles, generated bundles).
+- **Never exclude `tests/`, `fixtures/` or `__tests__/` wholesale.** A real
+  secret pasted into a test file must still be caught; the shape allowlist
+  covers the fixture forms without opening that hole.
+- **Name fixtures so the scanner can tell.** Fake credentials carry a `test-`,
+  `fake-`, `dummy-`, `example-` or `not-a-real-` prefix (or are the literal
+  `changeme`); id fixtures are well-formed UUIDs. The convention is what the
+  shape regexes key on, so a fixture that follows it never needs a second
+  allowlist round.
+- **Every allowlist entry states why it exists** — a comment naming the fixture
+  family it covers. A bare regex nobody can explain is removed at the next
+  review.
+
+Ship-with-standards template: [`templates/.gitleaks.toml.example`](../../templates/.gitleaks.toml.example)
+(shape regexes for UUIDv7, naming-convention fakes, redaction output and
+repeated-character padding; stopwords; a last-resort path list). TruffleHog
+takes only path excludes (`.trufflehog-ignore`), so its per-finding
+suppression is the inline `trufflehog:ignore` marker. The scanner workflow
+itself is in §9.
+
 ### .env File Handling `[P1]`
 
 - **Never commit `.env` files to version control.** Add `.env` to `.gitignore`.
@@ -229,6 +266,33 @@ Never use these functions with untrusted input. If used with trusted input, add 
 
 - Pin major and minor versions in production dependencies.
 - Review and test dependency updates before merging.
+- A patch applied to a dependency (`patch-package`, pnpm `patchedDependencies`,
+  Cargo `[patch]`, a fork pin) is a fork you now maintain: it lives under
+  `patches/` and is recorded in `patches/README.md` with its reason, regression
+  test and removal criterion (core-standards, "Package Patches").
+
+### Automated Dependency Updates `[P2]`
+
+- **Grouped updates are required** for every ecosystem a bot (Dependabot,
+  Renovate) watches. One PR per package produces a queue nobody reviews: a
+  consumer hand-merged 10–13 bot PRs at a time in thirteen "omnibus" commits
+  because `cargo` had `groups` and `npm` did not. Batch minor + patch bumps per
+  ecosystem per week; keep majors as their own PRs (except GitHub Actions, where
+  majors are frequent and low-risk).
+- **Group partners that only break in company.** Packages that must move in
+  lockstep (`react` + `react-dom`, `@typescript-eslint/*`, `vite` + `@vitejs/*`,
+  `tokio` + `tokio-*`) break when one is bumped alone; a pattern group is the
+  only way a bot keeps them aligned. List the project's lockstep sets
+  explicitly in the config — the defaults do not know them.
+- Bot PRs are ordinary PRs: Conventional Commit prefix (`chore(deps)`), the full
+  CI gate, and the age gate below. A grouped PR that pulls in a version younger
+  than 72 hours waits like any other.
+- A patched package is re-patched when its group lands; `patches/README.md`
+  says how, and the regression test it names is what proves the patch survived.
+
+Template: [`templates/dependabot.yml.example`](../../templates/dependabot.yml.example)
+(npm, cargo and github-actions groups, with lockstep pattern groups and a
+separate security-update group).
 
 ### Dependency Age Gate `[P1]`
 
@@ -239,6 +303,57 @@ Never use these functions with untrusted input. If used with trusted input, add 
   1. Explicit approval from a team lead or security owner.
   2. A documented justification in the PR description.
   3. A follow-up review within 24 hours of the bypass.
+
+**Reference implementation: override label + 24 h follow-up.** The three
+conditions above are enforceable; make the bypass a visible, audited path
+rather than a disabled check. Consumers that lacked one ended up with
+"dep-age overridden" commits, a pin justified by "the audit lane is red on
+main", and no record of who agreed or when the pin was re-examined.
+
+1. **Label *and* body block, both required.** The age-gate job honors a failure
+   only when the PR carries the `dep-age-override` label **and** the PR body
+   contains a `Dep-age override:` block naming the advisory and the approver
+   (`Approved-by: @security-owner`). Either half alone keeps the gate red.
+   Nobody sets `continue-on-error`, deletes the job, or merges on red.
+2. **The label is privileged.** Only the security owner or team leads may apply
+   it (a label-permission bot or a `labeled`-event check on the actor); a label
+   the PR author applied to their own PR does not count.
+3. **The gate opens the follow-up.** When the override is honored, the job
+   creates an issue `dep-age follow-up: <package>@<version>`, labelled
+   `dep-age-follow-up`, assigned to the approver, due 24 h later, and links it
+   from the PR. It closes only when a reviewer confirms the version has passed
+   72 h with no yank or advisory, or the dependency was rolled back.
+4. **A red advisory lane is not an override.** Moving the CVE audit from the
+   required gate to a nightly job (arch-08 §2) is the right response to a
+   transitive advisory that would otherwise wedge every merge; it does not
+   waive the age gate for the pin that fixes it. The pin waits 72 h or goes
+   through the label.
+5. **The record is the label, the body block and the issue.** The nightly
+   audit job lists open `dep-age-follow-up` issues older than 24 h as
+   failures, so a forgotten follow-up surfaces on its own.
+
+```yaml
+# .github/workflows/dep-age-gate.yml (excerpt) — the override path
+- name: Dependency age gate (72 h)
+  id: age
+  run: ./scripts/dep-age-check.sh --max-age-hours 72 --report age-report.json
+  continue-on-error: true
+- name: Honor dep-age-override (label + body block, both required)
+  if: steps.age.outcome == 'failure'
+  env:
+    LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+    BODY: ${{ github.event.pull_request.body }}
+    PR_URL: ${{ github.event.pull_request.html_url }}
+    GH_TOKEN: ${{ github.token }}
+  run: |
+    case ",$LABELS," in *,dep-age-override,*) ;; *) echo "age gate failed; no dep-age-override label"; exit 1 ;; esac
+    printf '%s\n' "$BODY" | grep -q '^Dep-age override:' || { echo "label present, PR body has no 'Dep-age override:' block"; exit 1; }
+    approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
+    [ -n "$approver" ] || { echo "override block names no approver (Approved-by: @handle)"; exit 1; }
+    gh issue create --label dep-age-follow-up --assignee "$approver" \
+      --title "dep-age follow-up: $(jq -r '.youngest' age-report.json)" \
+      --body "Review within 24 h of merge: confirm no yank/advisory after 72 h, or roll back. PR: $PR_URL"
+```
 
 | Language | Registry / Publish Date Source |
 |----------|-------------------------------|
@@ -388,10 +503,14 @@ merge** per the P0 hardcoded-credentials rule above.
   removing from history.
 - **Suppress false positives at the finest granularity that works.** Prefer an
   inline `// trufflehog:ignore` comment on the exact offending line so the rest
-  of the file is still scanned. Reserve a committed `.trufflehog-ignore`
-  path-exclude file (consumed via `--exclude-paths`, one path **regex** per
-  line) for paths that are inherently all-noise. Never exclude a whole tree just
-  to silence one finding — that hides future real secrets.
+  of the file is still scanned (`// gitleaks:allow` is the Gitleaks
+  equivalent; use both when both scanners run). Reserve a committed
+  `.trufflehog-ignore` path-exclude file (consumed via `--exclude-paths`, one
+  path **regex** per line) for paths that are inherently all-noise. Never
+  exclude a whole tree just to silence one finding — that hides future real
+  secrets. Fixture-shaped noise (UUIDs, `test-`-prefixed fakes, redaction
+  output) is handled by the shape-based allowlist in §3, not by excluding
+  `tests/`.
 - **Common all-noise sources:** lockfiles and `*.checksums` (SHA/MD5 hashes trip
   generic detectors), minified/vendored `dist/` bundles, test fixtures and
   example/placeholder tokens, and binary assets that base64-decode to non-secret

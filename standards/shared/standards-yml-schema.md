@@ -155,6 +155,25 @@ commits:
 
 ---
 
+### `release`
+
+Type: object
+
+Release hygiene settings (proc-02 § 5). Read by the `changelog-tags` lint module, which asserts every released `## [x.y.z]` changelog heading has a matching git tag.
+
+| Sub-field | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `changelog` | string | first of `CHANGELOG.md`, `CHANGELOG`, `CHANGES.md`, `HISTORY.md` | Path (relative to the project root) of the Keep-a-Changelog file. A declared file that is missing or empty fails closed. |
+| `tag_prefix` | string | none (accept `v<version>` and `<version>`) | Makes one tag prefix authoritative, e.g. `release-` for `release-1.2.3`. An explicitly empty value (`tag_prefix: ""`) accepts bare `1.2.3` tags only. |
+
+```yaml
+release:
+  changelog: docs/CHANGES.md
+  tag_prefix: v
+```
+
+---
+
 ### `architecture`
 
 Type: string

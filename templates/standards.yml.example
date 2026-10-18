@@ -101,6 +101,15 @@ tests:
 #     - domain
 #     - ui
 
+# Release hygiene (proc-02 §5; lint-checks/common/changelog-tags.sh).
+# Every released `## [x.y.z]` changelog heading must have a matching git tag.
+# Defaults: CHANGELOG.md (or CHANGELOG, CHANGES.md, HISTORY.md) at the root;
+# tags `v<version>` or `<version>`. Declare to move the file or fix the prefix;
+# a declared changelog that is missing fails closed.
+# release:
+#   changelog: CHANGELOG.md
+#   tag_prefix: v          # "" (empty) means bare `1.2.3` tags only
+
 # Compliance linter options (lint-standards.sh)
 # exclude: project-relative paths that the banned-functions checks skip, in
 # addition to .gitignore and the built-in exclusions (node_modules, vendor,

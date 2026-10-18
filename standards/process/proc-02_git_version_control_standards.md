@@ -208,6 +208,19 @@ Format: `MAJOR.MINOR.PATCH` (e.g., `1.2.3`)
 * **Format:** `v1.2.3` (prefixed with `v`)
 * **Annotated Tags:** Use annotated tags for releases: `git tag -a v1.2.3 -m "Release 1.2.3"`
 * **Release Notes:** Include release notes in tag message or GitHub release
+* **Every released changelog heading is a tag.** A `CHANGELOG.md` that lists
+  0.1.4 and 0.1.5 while only `v0.1.2`/`v0.1.3` exist — and `package.json` still
+  says 0.1.3 — is a release process that stopped at the prose: nothing is
+  reproducible from the "released" versions. The tag step is part of the release
+  job; a release workflow that publishes an artifact without running `git tag`
+  is the same defect from the other side.
+* **Enforcement:** `scripts/lint-checks/common/changelog-tags.sh` (in
+  `make lint-standards` and the standards-review action) reads every released
+  `## [x.y.z]` heading and fails when one has no `v<version>` (or `<version>`)
+  tag; it warns when the root `package.json` / `Cargo.toml` / `pyproject.toml`
+  version is not the latest release, and when a shallow CI clone fetched no tags
+  (use `fetch-depth: 0` or `fetch-tags: true`). Declare `release.changelog` and
+  `release.tag_prefix` in `.standards.yml` when the file or the prefix differ.
 
 ### Release Process
 
