@@ -1,6 +1,6 @@
 #!/bin/bash
-# Resolve {{PROJECT_NAME}}, {{PROJECT_OVERVIEW}}, {{KEY_COMMANDS}} in
-# assembled agent-config output. Called by assemble-config.sh right before the
+# Resolve {{PROJECT_NAME}}, {{PROJECT_OVERVIEW}}, {{KEY_COMMANDS}} and
+# {{WORKTREE_DIR}} in assembled agent-config and skill output. Called by assemble-config.sh right before the
 # output file is written.
 #
 # Philosophy: fill what we can from package metadata and from the persisted
@@ -10,11 +10,18 @@
 # output.
 
 # yaml_block_scalar lives in lib/checksums.sh (the .standards.yml reader).
+_TV_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if ! declare -f yaml_block_scalar >/dev/null 2>&1; then
-    _TV_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     if [ -f "$_TV_LIB_DIR/checksums.sh" ]; then
         # shellcheck disable=SC1091
         source "$_TV_LIB_DIR/checksums.sh"
+    fi
+fi
+# worktree_root_dir lives in lib/worktrees.sh (`worktree_dir:` reader, #190).
+if ! declare -f worktree_root_dir >/dev/null 2>&1; then
+    if [ -f "$_TV_LIB_DIR/worktrees.sh" ]; then
+        # shellcheck disable=SC1091
+        source "$_TV_LIB_DIR/worktrees.sh"
     fi
 fi
 
@@ -69,6 +76,19 @@ resolve_key_commands() {
     fi
 }
 
+# The agent worktree root (#194): `worktree_dir:` in .standards.yml when
+# declared and valid, else the proc-04 default. Every agent's assembled text
+# names the same root, so Codex, Cursor and Claude Code no longer disagree
+# about where worktrees go.
+resolve_worktree_dir() {
+    local root="${1:-$(pwd)}"
+    if declare -f worktree_root_dir >/dev/null 2>&1; then
+        worktree_root_dir "$root"
+    else
+        printf '%s\n' "${WORKTREE_DIR_DEFAULT:-.claude/worktrees}"
+    fi
+}
+
 # Usage: resolve_template_vars <file> <project_root>
 # Rewrites the file in place.
 resolve_template_vars() {
@@ -80,6 +100,9 @@ resolve_template_vars() {
     project_name=$(resolve_project_name "$root")
     local project_name_escaped
     project_name_escaped=$(_escape_sed_replacement "$project_name")
+    local worktree_dir worktree_dir_escaped
+    worktree_dir=$(resolve_worktree_dir "$root")
+    worktree_dir_escaped=$(_escape_sed_replacement "$worktree_dir")
 
     local overview commands
     overview=$(resolve_project_overview "$root")
@@ -93,7 +116,8 @@ resolve_template_vars() {
     # whole block, which may span several lines.
     local tmp
     tmp=$(mktemp)
-    sed -e "s|{{PROJECT_NAME}}|${project_name_escaped}|g" "$file" \
+    sed -e "s|{{PROJECT_NAME}}|${project_name_escaped}|g" \
+        -e "s|{{WORKTREE_DIR}}|${worktree_dir_escaped}|g" "$file" \
         | TV_OVERVIEW="$overview" TV_COMMANDS="$commands" awk '
             # Literal replace-all (index/substr): the placeholders contain
             # braces, which BSD awk rejects inside a regex.

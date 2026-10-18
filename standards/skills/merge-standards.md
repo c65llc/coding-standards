@@ -75,7 +75,7 @@ Standards sections are identified by `##` headers injected by the assembler: `##
 - Pending version **changed a rule** (different wording for same concept) → update to the new version
 - Current file has **extra content** within a standards section (user additions like project-specific conventions) → preserve it
 
-**Content outside standards sections** (project overview, key commands, custom sections the user or /claude-md-improver added):
+**Content outside standards sections** (project overview, key commands, custom sections the user or a guide-improver tool added):
 
 - Always preserve the current version — never replace or remove user-authored sections
 - Project overview and key commands: persist the current text as `project_overview:` / `key_commands:` in `.standards.yml` when they are not there yet, so the merged file matches its next assembly

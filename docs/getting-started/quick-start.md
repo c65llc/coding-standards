@@ -37,12 +37,14 @@ git clone https://github.com/c65llc/coding-standards.git .standards
 
 Supported agents and the files setup assembles for them:
 
-- `CLAUDE.md` (and `.claude/settings.json`) for Claude Code
-- `.cursorrules` and `.cursor/commands/` for Cursor AI
-- `.github/copilot-instructions.md` for GitHub Copilot
+- `CLAUDE.md` (and `.claude/settings.json`, `.claude/skills/*.md`) for Claude Code
+- `.cursorrules` and `.cursor/commands/` (custom commands plus the skills) for Cursor AI
+- `.github/copilot-instructions.md` and `.github/prompts/*.prompt.md` for GitHub Copilot
 - `.gemini/GEMINI.md` and `.gemini/settings.json` for Gemini CLI
 - `AGENTS.md` for OpenAI Codex
 - `.aider-instructions.md` and `.aiderrc` for Aider
+
+The same skills (`merge-standards`, `standards-audit`, `security-gate`, …) reach every agent: as skill files, commands or prompt files for Claude Code, Cursor and Copilot, and as a `## Skills` index inside `AGENTS.md`, `GEMINI.md` and the Aider instructions. Every config names the same worktree root (`worktree_dir:` in `.standards.yml`).
 
 Pass an explicit `--agents` list (for example `--agents codex`) to install only that agent's artifacts: git hooks, git aliases, Cursor commands, `.claude/settings.json` and `.gemini/` are skipped unless the owning agent is listed. Unknown flags exit 2 without writing anything.
 

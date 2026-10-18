@@ -2,11 +2,18 @@
 # Assemble a single self-contained agent config from a base template + content blocks.
 #
 # Usage:
-#   assemble-config.sh [--project-root <path>] <agent> <blocks-dir> <base-template> <output-file> [block1 block2 ...]
+#   assemble-config.sh [--project-root <path>] [--skills-dir <path>] <agent> <blocks-dir> <base-template> <output-file> [block1 block2 ...]
 #
 # Options:
 #   --project-root <path> — Explicit consumer project root for template-var resolution.
 #                           Falls back to git rev-parse on output-file's dir, then pwd.
+#   --skills-dir <path>   — Source of the agent-neutral skills (default: the
+#                           standards/skills/ directory beside <blocks-dir>'s
+#                           standards tree). Agents that read a single config
+#                           file (codex, gemini, aider) get a "## Skills" index
+#                           of them; the file-based agents (claude-code,
+#                           cursor, copilot) get skill files from
+#                           assemble-skills.sh instead.
 #
 # Arguments:
 #   agent         — Agent name (claude-code, cursor, copilot, gemini, aider, codex)
@@ -22,14 +29,18 @@ set -e
 # ---------------------------------------------------------------------------
 
 PROJECT_ROOT_OVERRIDE=""
+SKILLS_DIR_OVERRIDE=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --project-root)
             PROJECT_ROOT_OVERRIDE="$2"
             shift 2
             ;;
+        --skills-dir)
+            SKILLS_DIR_OVERRIDE="$2"
+            shift 2
+            ;;
         --) shift; break ;;
-        -*) break ;;
         *)  break ;;
     esac
 done
@@ -70,6 +81,19 @@ fi
 
 ASSEMBLED_HEADER="<!-- Assembled by coding-standards setup.sh — do not edit above the PROJECT-SPECIFIC marker -->"
 SENTINEL="<!-- BEGIN PROJECT-SPECIFIC"
+
+# Agent-neutral skills (standards/skills/, #194). Agents that read one config
+# file get an index of them; see lib/skills.sh for the per-agent shapes.
+_SKILLS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/skills.sh"
+if [ -f "$_SKILLS_LIB" ]; then
+    # shellcheck disable=SC1090,SC1091
+    source "$_SKILLS_LIB"
+fi
+SKILLS_DIR="$SKILLS_DIR_OVERRIDE"
+if [ -z "$SKILLS_DIR" ]; then
+    # <standards>/shared/blocks → <standards>/skills
+    SKILLS_DIR="$(cd "$BLOCKS_DIR/../.." 2>/dev/null && pwd)/skills"
+fi
 
 # Common blocks always included in order
 COMMON_BLOCKS=(
@@ -145,6 +169,28 @@ derive_name() {
 OUTPUT_DIR="$(dirname "$OUTPUT_FILE")"
 mkdir -p "$OUTPUT_DIR"
 
+# The consumer project root: an explicit override (callers writing to temp
+# files), else git on the output file's directory, else pwd. Used for the
+# template variables and for the path the skills index points at.
+if [ -n "$PROJECT_ROOT_OVERRIDE" ]; then
+    _TV_ROOT="$PROJECT_ROOT_OVERRIDE"
+else
+    _TV_ROOT="$(git -C "$OUTPUT_DIR" rev-parse --show-toplevel 2>/dev/null || pwd)"
+fi
+
+# Where the skills index tells the agent to read the full runbooks: the
+# project-relative path when the skills directory is inside the project (the
+# .standards/ submodule), else the conventional submodule path.
+skills_runbook_ref() {
+    local abs_root abs_skills
+    abs_root="$(cd "$_TV_ROOT" 2>/dev/null && pwd -P)"
+    abs_skills="$(cd "$SKILLS_DIR" 2>/dev/null && pwd -P)"
+    case "$abs_skills" in
+        "$abs_root"/*) printf '%s\n' "${abs_skills#"$abs_root"/}" ;;
+        *)             printf '.standards/standards/skills\n' ;;
+    esac
+}
+
 TMPFILE="$(mktemp "${OUTPUT_DIR}/.assemble-config.XXXXXX")"
 trap 'rm -f "$TMPFILE"' EXIT
 
@@ -199,6 +245,17 @@ trap 'rm -f "$TMPFILE"' EXIT
         fi
     done
 
+    # Skills index (#194) for agents that read one config file. Claude Code,
+    # Cursor and Copilot discover the skill files assemble-skills.sh installs.
+    if declare -f render_skills_index >/dev/null 2>&1 && [ -d "$SKILLS_DIR" ]; then
+        case " $SKILLS_INDEX_AGENTS " in
+            *" $AGENT "*)
+                printf '\n## Skills\n\n'
+                render_skills_index "$SKILLS_DIR" "$(skills_runbook_ref)"
+                ;;
+        esac
+    fi
+
     # Project-specific section
     printf '\n'
     if [ -n "$PROJECT_SPECIFIC_CONTENT" ]; then
@@ -226,13 +283,6 @@ _TV_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/template-vars.sh"
 if [ -f "$_TV_LIB" ]; then
     # shellcheck disable=SC1090,SC1091
     source "$_TV_LIB"
-    # Prefer explicit override (passed by callers writing to temp files in pending/),
-    # then try git rev-parse on the output file's directory, then fall back to pwd.
-    if [ -n "$PROJECT_ROOT_OVERRIDE" ]; then
-        _TV_ROOT="$PROJECT_ROOT_OVERRIDE"
-    else
-        _TV_ROOT="$(git -C "$(dirname "$OUTPUT_FILE")" rev-parse --show-toplevel 2>/dev/null || pwd)"
-    fi
     resolve_template_vars "$OUTPUT_FILE" "$_TV_ROOT"
 fi
 

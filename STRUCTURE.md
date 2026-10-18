@@ -53,6 +53,16 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │   ├── shared/                   # Shared standards for all agents
 │   │   └── core-standards.md
 │   │
+│   ├── skills/                    # Agent-neutral runbooks, emitted per agent by scripts/assemble-skills.sh
+│   │   ├── merge-standards.md     # (.claude/skills/, .cursor/commands/, .github/prompts/, or a Skills index)
+│   │   ├── standards-audit.md
+│   │   ├── security-gate.md
+│   │   ├── coverage-enforcer.md
+│   │   ├── dependency-age-gate.md
+│   │   ├── naming-convention.md
+│   │   ├── config-assembly.md
+│   │   └── setup-wizard.md
+│   │
 │   └── agents/                    # AI agent-specific configurations
 │       ├── claude-code/
 │       │   ├── base-claude-code.md
@@ -86,7 +96,8 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │       ├── codex/                 # Note: Codex now reads AGENTS.md at project root (.codexrc is deprecated)
 │       │   └── .codexrc
 │       └── gemini/                # Note: Gemini CLI uses .gemini/ at root (Gemini CLI convention)
-│           └── (configs in .gemini/ at project root)
+│           ├── base-gemini.md
+│           └── antigravity.md     # Antigravity Mission Isolation appendix to proc-04
 │
 ├── templates/                      # 📄 Copy-and-fill templates for consumer projects
 │   ├── docs/                      # ADR, spec, plan, design-pass, verification docs
@@ -101,6 +112,8 @@ This document explains the reorganized file hierarchy for easier navigation and 
 ├── scripts/                        # 🔧 Automation scripts
 │   ├── setup.sh                   # Setup standards in a project
 │   ├── sync-standards.sh          # Sync standards updates
+│   ├── assemble-config.sh         # Assemble one agent config from base template + blocks (+ Skills index)
+│   ├── assemble-skills.sh         # Emit standards/skills/ per agent (Claude skills, Cursor commands, Copilot prompts)
 │   ├── doctor.sh                  # Standards health check (config, agents, hooks, worktrees)
 │   ├── worktree-gc.sh             # Remove merged, gone and idle agent worktrees
 │   ├── detect-languages.sh        # Detect project languages via manifest files

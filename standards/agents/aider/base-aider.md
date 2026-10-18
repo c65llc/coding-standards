@@ -14,6 +14,7 @@
 - **TDD:** Write failing tests before implementation. Red → Green → Refactor.
 - **Keep context lean:** `/add` only the files needed for the current task. `/drop` files when done.
 - Use `/ask` to clarify requirements before making significant structural changes.
+- **Worktrees:** work in `git worktree add {{WORKTREE_DIR}}/<branch> -b <branch>`, created from the main checkout (the root is `worktree_dir:` in `.standards.yml`); never work in the root checkout, never nest worktrees. One task = one branch = one worktree = one PR; run the project's full local gate (`make ci`, which must mirror CI) before pushing, and `git worktree remove {{WORKTREE_DIR}}/<branch>` after the merge.
 
 ## Constraints
 
@@ -21,7 +22,7 @@
 - Do not include secrets or credentials — check `.gitignore` before `/add`-ing config files.
 - Before changing a public API or function signature, check all callers first.
 - Conventional Commits are required: `type(scope): subject`.
-- If sync-standards reports customized files, pending updates are in `.standards-pending/`. See `.standards/docs/reference/merge-standards-prompt.md` to merge.
+- If sync-standards reports customized files, pending updates are in `.standards-pending/`. Follow the `merge-standards` runbook in the Skills section below, or see `.standards/docs/reference/merge-standards-prompt.md`.
 
 ## Known Traps
 

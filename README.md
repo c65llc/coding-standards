@@ -39,7 +39,7 @@ Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby
 
 ## Feature Highlights
 
-- **Multi-Agent Sync** -- One standards source, every AI agent stays consistent.
+- **Multi-Agent Sync** -- One standards source, every AI agent stays consistent. The workflow text is agent-neutral: every config names the same worktree root (`worktree_dir:` in `.standards.yml`), and the skills under `standards/skills/` reach each agent in its own shape -- Claude Code skills, Cursor commands, Copilot prompt files, a Skills index in `AGENTS.md` / `GEMINI.md` / the Aider instructions.
 - **Clean Architecture** -- Enforces domain-driven design across all languages.
 - **One-Command Setup** -- Install everything with a single command.
 - **Auto-Updating** -- Git hooks keep standards in sync whenever you pull.

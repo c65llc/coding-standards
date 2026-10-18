@@ -27,7 +27,16 @@ Instructions for OpenAI Codex CLI.
 - Do not add new dependencies without explaining why and listing alternatives considered.
 - Make minimal changes — touch only the files required to satisfy the task.
 - No secrets or credentials in any file; check before committing config files.
-- If sync-standards reports customized files, pending updates are in `.standards-pending/`. See `.standards/docs/reference/merge-standards-prompt.md` to merge.
+- If sync-standards reports customized files, pending updates are in `.standards-pending/`. Follow the `merge-standards` runbook in the Skills section below, or see `.standards/docs/reference/merge-standards-prompt.md`.
+
+## Agent Workflow
+
+1. Create worktree + branch from the main checkout: `git worktree add {{WORKTREE_DIR}}/<branch> -b <branch>` (the root is `worktree_dir:` in `.standards.yml`; never create a worktree from inside another worktree, never work in the root checkout).
+2. Write tests first (TDD). Red → Green → Refactor.
+3. Implement — minimum code to pass tests.
+4. Run the project's full local gate (`make ci`). It must mirror CI.
+5. Push branch and open PR from the worktree: `gh pr create --title "type(scope): description" --body "..."`. One task = one branch = one worktree = one PR.
+6. After merge, clean up: `git worktree remove {{WORKTREE_DIR}}/<branch>`
 
 ## Known Traps
 

@@ -65,17 +65,18 @@ This document explains the repository layout so you can find what you need quick
 │   │
 │   ├── catalog.tsv                 # Descriptions/triggers for generated standards lists
 │   │
+│   ├── skills/                     # Agent-neutral runbooks (merge-standards, standards-audit, ...)
+│   │                               # emitted per agent by scripts/assemble-skills.sh
+│   │
 │   └── agents/                     # AI agent configuration templates
 │       ├── claude-code/            # → assembled to CLAUDE.md
 │       │   └── base-claude-code.md
 │       ├── cursor/                 # → assembled to .cursorrules
-│       ├── copilot/
-│       │   └── .github/
-│       │       └── copilot-instructions.md
-│       ├── aider/
-│       │   └── .aiderrc
-│       └── codex/                  # legacy; Codex now reads AGENTS.md at root
-│           └── .codexrc
+│       ├── copilot/                # → assembled to .github/copilot-instructions.md
+│       ├── gemini/                 # → assembled to .gemini/GEMINI.md
+│       │   └── antigravity.md      # Antigravity Mission Isolation appendix (proc-04 §5)
+│       ├── aider/                  # → assembled to .aider-instructions.md + .aiderrc
+│       └── codex/                  # → assembled to AGENTS.md
 │
 ├── templates/                      # Copy-and-fill templates for consumer projects
 │   ├── docs/                       # ADR, spec, plan, design-pass, verification
@@ -84,6 +85,8 @@ This document explains the repository layout so you can find what you need quick
 ├── scripts/                        # Automation scripts
 │   ├── setup.sh                    # First-time project setup
 │   ├── sync-standards.sh           # Pull latest standards
+│   ├── assemble-config.sh          # Assemble one agent config (base + blocks + Skills index)
+│   ├── assemble-skills.sh          # Emit the skills per agent
 │   ├── setup-git-aliases.sh        # Configure git aliases
 │   ├── add-copilot-instructions-pr.sh  # PR to add Copilot instructions
 │   ├── fetch-pr-comments.sh        # Fetch unresolved PR comments

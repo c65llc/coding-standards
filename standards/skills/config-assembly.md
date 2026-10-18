@@ -20,6 +20,7 @@ Generate agent configuration files by composing content blocks based on the proj
    - `languages` — list of language keys (e.g., `[python, typescript]`)
    - `agents` — list of agent keys (e.g., `[claude-code, cursor, copilot]`)
    - `role` — project role (e.g., `service`, `library`, `app`, `data-pipeline`)
+   - `worktree_dir` — the agent worktree root (default `.claude/worktrees`); the assembler resolves `{{WORKTREE_DIR}}` in every template to it
 
 2. For each declared agent, determine the paths:
 
@@ -51,11 +52,19 @@ Generate agent configuration files by composing content blocks based on the proj
    5. `git-workflow.md`
    6. `documentation-policy.md`
 
-   Then appends the language and role blocks you specify.
+   Then appends the language and role blocks you specify. For `codex`, `gemini` and `aider` it also appends a `## Skills` index of `standards/skills/` (name, description, triggers, runbook path), since those agents read a single file.
 
-4. The assembler respects the `<!-- BEGIN PROJECT-SPECIFIC` sentinel — any content below it in an existing output file is preserved across re-assembly.
+4. Emit the skills for the file-based agents:
 
-5. If the output file has been customized (checksum mismatch), the assembler writes to `.standards-pending/` instead of overwriting. Use the `merge-standards` skill to resolve these.
+   ```bash
+   .standards/scripts/assemble-skills.sh <agent> [<agent> ...]
+   ```
+
+   `claude-code` → `.claude/skills/<name>.md`, `cursor` → `.cursor/commands/<name>.md`, `copilot` → `.github/prompts/<name>.prompt.md`. A file is rewritten only when its content changed.
+
+5. The assembler respects the `<!-- BEGIN PROJECT-SPECIFIC` sentinel — any content below it in an existing output file is preserved across re-assembly.
+
+6. If the output file has been customized (checksum mismatch), the assembler writes to `.standards-pending/` instead of overwriting. Use the `merge-standards` skill to resolve these.
 
 ## Checksum System
 

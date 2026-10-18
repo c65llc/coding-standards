@@ -4,5 +4,5 @@ Follow semantic versioning strictly: MAJOR breaking changes, MINOR backward-comp
 Minimize external dependencies. Never depend on application-layer frameworks (web servers, ORMs).
 Avoid singleton state and global mutable state.
 Document every public API item: parameters, return values, errors, and usage examples.
-Publish a CHANGELOG.md. Every release must have an entry.
+Publish release notes — a hand-maintained `CHANGELOG.md`, or the notes release automation generates. Every release must have an entry.
 Write tests that exercise the public API as a consumer would, not internal implementation details.

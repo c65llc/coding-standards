@@ -50,7 +50,9 @@ Present the available agents and ask which to configure:
 - **aider** — Aider (generates `.aider-instructions.md` + `.aiderrc`)
 - **codex** — OpenAI Codex (generates `AGENTS.md`)
 
-Default to all agents the user has tooling for, or `[claude-code]` if unsure.
+Default to the agents the user has tooling for (`.standards/scripts/setup.sh --agents detect` finds the ones already present); if unsure, ask rather than assume one agent.
+
+Every declared agent is treated the same way: its config is assembled from the same blocks, its worktree root comes from `worktree_dir:` in `.standards.yml` (default `.claude/worktrees`), and the standards skills reach it in its own shape (`.claude/skills/`, `.cursor/commands/`, `.github/prompts/`, or a `## Skills` index in `AGENTS.md` / `GEMINI.md` / the Aider instructions). Ask where the project keeps agent worktrees if it already has a convention (`.worktrees/`, `.codex/worktrees/`) and set `worktree_dir:` accordingly.
 
 ### Step 4: Generate .standards.yml
 

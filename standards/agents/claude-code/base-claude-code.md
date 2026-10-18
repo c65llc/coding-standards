@@ -14,29 +14,29 @@
 
 - **Commits:** Conventional Commits format: `type(scope): subject`
   - Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`, `build`
-- **Worktrees:** Use `git worktree add .claude/worktrees/<branch> -b <branch>` for isolated work
+- **Worktrees:** Use `git worktree add {{WORKTREE_DIR}}/<branch> -b <branch>` for isolated work (the root is `worktree_dir:` in `.standards.yml`; create worktrees from the main checkout, never from inside another worktree)
 - **Work tracking:** GitHub Issues for all bugs, features, and tech debt
   - Every `TODO`/`FIXME` in code must reference an issue number
 - **One task = one branch = one worktree = one PR.** Work is not done until a PR exists.
 - Never modify the root checkout from an automated agent session.
-- If sync-standards reports customized files, pending updates are in `.standards-pending/`. See `.standards/docs/reference/merge-standards-prompt.md` to merge.
+- If sync-standards reports customized files, pending updates are in `.standards-pending/`. Run the `merge-standards` skill (`.claude/skills/merge-standards.md`) or see `.standards/docs/reference/merge-standards-prompt.md`.
 
 ## How to Work
 
 1. **Read before modifying.** Understand the file's role and patterns before changing it.
 2. **Prefer editing over creating.** Modify existing files rather than adding new ones.
 3. **Minimal changes.** Make the smallest change that satisfies the requirement.
-4. **Run tests.** Verify nothing is broken after each change (`make ci` or equivalent).
+4. **Run tests.** Verify nothing is broken after each change (the project's local gate, `make ci` or equivalent).
 5. **Ask when blocked.** If requirements are unclear or a decision has significant trade-offs, stop and ask.
 
 ## Agent Workflow
 
-1. Create worktree + branch: `git worktree add .claude/worktrees/<branch> -b <branch>`
+1. Create worktree + branch: `git worktree add {{WORKTREE_DIR}}/<branch> -b <branch>`
 2. Write tests first (TDD). Red → Green → Refactor.
 3. Implement — minimum code to pass tests.
-4. Run `make ci` — full pipeline must pass.
+4. Run the project's full local gate (`make ci`). It must mirror CI; a gate that passes locally and fails in CI is a bug in the gate.
 5. Push branch and open PR: `gh pr create --title "type(scope): description" --body "..."`
-6. After merge, clean up: `git worktree remove .claude/worktrees/<branch>`
+6. After merge, clean up: `git worktree remove {{WORKTREE_DIR}}/<branch>`
 
 ## Known Traps
 

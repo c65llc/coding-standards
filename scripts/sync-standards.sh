@@ -278,17 +278,30 @@ sync_ai_agents() {
         echo "$NEW_CHECKSUMS" > "$CHECKSUMS_PATH"
     fi
 
-    # Copy merge-standards skill if it exists and has changed (claude-code only)
-    local SKILL_SOURCE="$AGENTS_DIR/claude-code/skills/merge-standards.md"
-    if agent_enabled claude-code && [ -f "$SKILL_SOURCE" ]; then
-        dry_run_mkdir "$PROJECT_ROOT/.claude/skills"
-        if [ "$DRY_RUN" = true ]; then
-            if ! cmp -s "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md" 2>/dev/null; then
-                echo "  [dry-run] Would sync: $SKILL_SOURCE → $PROJECT_ROOT/.claude/skills/merge-standards.md"
-            fi
-        elif ! cmp -s "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md" 2>/dev/null; then
-            cp "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md"
-            echo "✅ /merge-standards skill synced"
+    # Skills (#194): standards/skills/*.md emitted per declared agent — Claude
+    # Code skill files, Cursor commands, Copilot prompt files. Codex, Gemini
+    # and Aider carry a "## Skills" index in their assembled config instead.
+    # assemble-skills.sh rewrites a file only when its content changed.
+    local SKILLS_SCRIPT="" SKILLS_SOURCE="" skill_agents="" a
+    if [ -x "$SCRIPT_DIR/assemble-skills.sh" ]; then
+        SKILLS_SCRIPT="$SCRIPT_DIR/assemble-skills.sh"
+    elif [ -x "$STANDARDS_DIR/scripts/assemble-skills.sh" ]; then
+        SKILLS_SCRIPT="$STANDARDS_DIR/scripts/assemble-skills.sh"
+    fi
+    if [ -d "$STANDARDS_DIR/standards/skills" ]; then
+        SKILLS_SOURCE="$STANDARDS_DIR/standards/skills"
+    elif [ -d "$SCRIPT_DIR/../standards/skills" ]; then
+        SKILLS_SOURCE="$SCRIPT_DIR/../standards/skills"
+    fi
+    for a in claude-code cursor copilot; do
+        agent_enabled "$a" && skill_agents="${skill_agents:+$skill_agents }$a"
+    done
+    if [ -n "$SKILLS_SCRIPT" ] && [ -n "$SKILLS_SOURCE" ] && [ -n "$skill_agents" ]; then
+        local dry_flag=""
+        [ "$DRY_RUN" = true ] && dry_flag="--dry-run"
+        # shellcheck disable=SC2086
+        if ! "$SKILLS_SCRIPT" --project-root "$PROJECT_ROOT" --skills-dir "$SKILLS_SOURCE" --quiet $dry_flag $skill_agents; then
+            echo "⚠️  Failed to sync some skills (non-fatal, continuing...)"
         fi
     fi
 

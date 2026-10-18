@@ -11,7 +11,8 @@ This directory contains all coding standards documents organized by category.
 | `process/` | `proc-XX` | Documentation, git workflow, code review, agent workflow, test governance |
 | `security/` | `sec-XX` | Security guidelines with P0-P2 severity model |
 | `shared/` | — | Cross-cutting standards (`core-standards.md`) referenced by all agent configs |
-| `agents/` | — | Template configs for AI coding assistants (Claude Code, Cursor, Copilot, Aider, Codex, Gemini) |
+| `agents/` | — | Template configs for AI coding assistants (Claude Code, Cursor, Copilot, Aider, Codex, Gemini) and agent-specific appendices (`gemini/antigravity.md`) |
+| `skills/` | — | Agent-neutral runbooks emitted per agent by `scripts/assemble-skills.sh` (Claude Code skills, Cursor commands, Copilot prompts) and indexed in `AGENTS.md` / `GEMINI.md` / the Aider instructions |
 
 ## Naming Convention
 
@@ -96,6 +97,21 @@ Agent-specific behavioral rules. Combined with content blocks by `scripts/assemb
 - `gemini/base-gemini.md` → assembles `.gemini/GEMINI.md`
 - `aider/base-aider.md` + `aiderrc.template` → assembles `.aider-instructions.md` + `.aiderrc`
 - `codex/base-codex.md` → assembles `AGENTS.md`
+
+Every base template and the shared `git-workflow` block name the worktree root as `{{WORKTREE_DIR}}`; the assembler resolves it from `worktree_dir:` in the project's `.standards.yml` (default `.claude/worktrees`), so all of a project's agents agree on where worktrees go. Rules that exist for one agent only live beside its template as an appendix — `gemini/antigravity.md` holds Antigravity's Mission Isolation protocol — and `process/proc-04_agent_workflow_standards.md` stays agent-neutral.
+
+## Skills (`skills/`)
+
+Agent-neutral runbooks (`merge-standards`, `standards-audit`, `security-gate`, `coverage-enforcer`, `dependency-age-gate`, `naming-convention`, `config-assembly`, `setup-wizard`). Each is a Markdown file with a `name:` / `description:` frontmatter and a `## When to Use` section; `scripts/assemble-skills.sh` emits them per declared agent and `scripts/assemble-config.sh` indexes them for the agents that read a single file:
+
+| Agent | Shape |
+|-------|-------|
+| Claude Code | `.claude/skills/<name>.md` (frontmatter kept) |
+| Cursor | `.cursor/commands/<name>.md` (`description:` frontmatter) |
+| Copilot | `.github/prompts/<name>.prompt.md` (`description:` frontmatter) |
+| Codex, Gemini CLI, Aider | a `## Skills` section in `AGENTS.md`, `.gemini/GEMINI.md`, `.aider-instructions.md` — name, description, triggers and the runbook path |
+
+Write a skill once, for every agent: name the standards' scripts (`.standards/scripts/...`) rather than one agent's tooling, and keep the frontmatter to `name` and `description`.
 
 ## Document Templates (`../templates/docs/`)
 
