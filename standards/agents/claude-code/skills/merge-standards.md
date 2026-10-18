@@ -42,6 +42,14 @@ Sync and setup then never regenerate or stage it, `doctor` reports it as curated
 
 If `doctor` fails on `post-merge hook not installed` and the project manages its own hooks (`make hooks`, lefthook, husky), declare `hooks: custom` (or `lefthook` / `husky`) in `.standards.yml`.
 
+## After `setup.sh --migrate` (pre-1.2 install)
+
+When `MERGE_PLAN.md` has a **Migration** section, the pending files are the project's old hand-rolled configs (dead standards references already rewritten in place; originals kept as `<file>.pre-standards-setup`) staged beside the freshly assembled versions. Treat the assembled version as the base and carry over only genuinely project-specific text into its PROJECT-SPECIFIC section — the old files are mostly a stale copy of the standards themselves. Also:
+
+- `AGENTS.md` converted from `.codexrc` (or `.standards-pending/AGENTS.md.from-codexrc` when an `AGENTS.md` already existed): keep any project notes, adopt the assembled `AGENTS.md`, delete `.codexrc` if it is still there.
+- *Still cites a removed standard*: for each `file:line`, delete the sentence or point it at the replacement named in the Notes column of `.standards/docs/reference/renamed-files.md`.
+- The recorded checksum of a staged file is the **staged assembled version**, so adopting it as-is needs no checksum update; a merged file needs the recomputed hash as usual.
+
 ## Workflow
 
 1. List files in `.standards-pending/`. If the directory is empty or doesn't exist, report: "All agent configs are up to date — no pending standards updates."

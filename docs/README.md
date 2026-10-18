@@ -31,6 +31,7 @@ retires it.
 | [reference/agent-configs.md](reference/agent-configs.md) | live | Generated agent config files |
 | [reference/git-aliases.md](reference/git-aliases.md) | live | Aliases installed by `setup-git-aliases.sh` |
 | [reference/merge-standards-prompt.md](reference/merge-standards-prompt.md) | live | The `/merge-standards` handoff prompt |
+| [reference/renamed-files.md](reference/renamed-files.md) | live | Old path → new path map for renamed/removed standards; consumed by `setup.sh --migrate` |
 | [TOOLING.md](TOOLING.md) | live | GitHub project lifecycle automation |
 | [GH_TASK_GUIDE.md](GH_TASK_GUIDE.md) | live | `gh-task` CLI guide |
 | [GH_TASK_QUICKSTART.md](GH_TASK_QUICKSTART.md) | live | `gh-task` quick start |

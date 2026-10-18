@@ -17,3 +17,5 @@ For each entry:
 7. Delete the pending file.
 
 Finally, delete `.standards-pending/` if empty. If `doctor` fails on the post-merge hook and the project manages its own hooks, declare `hooks: custom` (or `lefthook` / `husky`) in `.standards.yml`.
+
+If the plan has a **Migration** section (`setup.sh --migrate` on a pre-1.2 install), the existing files are old hand-rolled configs: take the assembled version as the base, carry project-specific text into its PROJECT-SPECIFIC section, resolve each *still cites a removed standard* line (delete it or use the replacement from `.standards/docs/reference/renamed-files.md`), and delete `.codexrc` once `AGENTS.md` holds anything worth keeping from it. A staged file adopted as-is already matches its recorded checksum.

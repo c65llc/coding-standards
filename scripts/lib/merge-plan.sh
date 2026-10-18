@@ -5,19 +5,23 @@
 # (Cursor), and surfaced via `make merge-standards`.
 
 # Usage:
-#   write_merge_plan <project_root> <pending_list> <detected_agents> <requested_agents>
+#   write_merge_plan <project_root> <pending_list> <detected_agents> <requested_agents> [migration_notes]
 #
 # pending_list: space-separated basenames staged in .standards-pending/
 # detected_agents: space-separated agent names (as emitted by detect_installed_agents)
 # requested_agents: space- or comma-separated (ASSEMBLED_AGENTS_LIST uses commas)
+# migration_notes: newline-separated Markdown bullets from setup.sh --migrate
+#   (#184): what was rewritten or converted, and the removed-standard
+#   references left for a manual decision. Rendered as a Migration section.
 write_merge_plan() {
     local root="$1"
     local pending_list="$2"
     local detected="$3"
     local requested="$4"
+    local migration_notes="${5:-}"
     local pending_dir="$root/.standards-pending"
 
-    [ -n "$pending_list" ] || return 0
+    [ -n "$pending_list" ] || [ -n "$migration_notes" ] || return 0
     mkdir -p "$pending_dir"
 
     local plan="$pending_dir/MERGE_PLAN.md"
@@ -54,6 +58,12 @@ write_merge_plan() {
         echo ""
         for a in $(echo "$requested" | tr ',' ' '); do echo "- $a"; done
         echo ""
+        if [ -n "$migration_notes" ]; then
+            echo "## Migration (pre-1.2 install, setup.sh --migrate)"
+            echo ""
+            printf '%s\n' "$migration_notes"
+            echo ""
+        fi
         echo "## Open questions for your LLM"
         echo ""
         echo "1. Fill in any \`<!-- TODO(standards): -->\` markers in the pending files"

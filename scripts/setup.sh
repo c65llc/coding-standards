@@ -37,6 +37,15 @@ Options:
   --role <role>        Project role block to include (default: service)
   --workflow           Also install the opt-in GitHub workflow templates
                        (standards-review.yml, trufflehog.yml)
+  --migrate            Upgrade a pre-1.2 install (no .standards-checksums,
+                       agent configs citing renamed standards paths, a
+                       .codexrc): rewrite the dead references in place from
+                       docs/reference/renamed-files.md, convert .codexrc to
+                       AGENTS.md, raise legacy 90/80 coverage tiers to the
+                       95% floor, seed .standards.yml from detection plus a
+                       legacy .standards-config, then run the normal safe
+                       setup (assembled configs staged, checksums written,
+                       MERGE_PLAN.md with a Migration section).
   --dry-run            Print every write that would happen; modify nothing
   -h, --help           Show this help and exit
 
@@ -44,6 +53,7 @@ Examples:
   $0                                 # detect agents, full install
   $0 --agents codex                  # AGENTS.md + standards-owned files only
   $0 --agents claude-code,cursor --languages typescript
+  $0 --migrate                       # upgrade a pre-1.2 consumer
   $0 --dry-run
 EOF
 }
@@ -71,21 +81,29 @@ require_option_value() {
 
 # Parse arguments
 ROLE="service"
+ROLE_EXPLICIT=false
 AGENTS_OVERRIDE=""
 LANGUAGES_OVERRIDE=""
 DRY_RUN=false
 INSTALL_WORKFLOW=false
+MIGRATE=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --role)
             require_option_value "$@"
             ROLE="$2"
+            ROLE_EXPLICIT=true
             shift 2
             ;;
         --role=*)
             require_option_value "--role" "${1#--role=}"
             ROLE="${1#--role=}"
+            ROLE_EXPLICIT=true
+            shift
+            ;;
+        --migrate)
+            MIGRATE=true
             shift
             ;;
         --agents)
@@ -238,6 +256,11 @@ source "$SCRIPT_DIR/lib/members.sh"
 # gitignored by setup and guarded by the pre-commit template (proc-04, #190).
 # shellcheck source=lib/worktrees.sh disable=SC1091
 source "$SCRIPT_DIR/lib/worktrees.sh"
+
+# Pre-1.2 migration (#184): rename map, dead-reference rewriter, .codexrc
+# conversion, and the shape detection doctor.sh and sync-standards.sh share.
+# shellcheck source=lib/migrate.sh disable=SC1091
+source "$SCRIPT_DIR/lib/migrate.sh"
 
 # Filled-in Project Overview / Key Commands capture (#183)
 if [ -f "$SCRIPT_DIR/lib/project-sections.sh" ]; then
@@ -425,8 +448,26 @@ setup_ai_agents() {
                 fi
                 ;;
             2)
-                echo "⚠️  $agent config was manually created — backup in $PENDING_DIR/"
                 PENDING_LIST="${PENDING_LIST:+$PENDING_LIST }$(basename "$OUTPUT_PATH")"
+                if [ "$MIGRATE" = true ]; then
+                    echo "⚠️  $agent config predates 1.2 — assembled version staged to $PENDING_DIR/ for /merge-standards"
+                    # Migration baseline (#184): record the hash of the
+                    # assembled version staged in .standards-pending/, not of
+                    # the migrated file. sync then treats the migrated file as
+                    # customized — stages a fresh assembly, never overwrites
+                    # it — until the staged version is adopted or merged, at
+                    # which point the checksum matches. Recording the migrated
+                    # file's own hash would instead let the next sync replace
+                    # it wholesale.
+                    local staged="$PROJECT_ROOT/$PENDING_DIR/$(basename "$OUTPUT_PATH")"
+                    if [ "$DRY_RUN" = false ] && [ -f "$staged" ] && type compute_hash &>/dev/null; then
+                        local staged_hash
+                        staged_hash=$(compute_hash "$staged")
+                        NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$staged_hash" "$NEW_CHECKSUMS")
+                    fi
+                else
+                    echo "⚠️  $agent config was manually created — backup in $PENDING_DIR/"
+                fi
                 ;;
             3)
                 echo "⚠️  Failed to assemble $agent config (non-fatal, continuing...)"
@@ -446,15 +487,55 @@ setup_ai_agents() {
                 ;;
         esac
 
-        # Aider special handling: also copy aiderrc.template to .aiderrc
+        # Aider special handling: also copy aiderrc.template to .aiderrc.
+        # Checksum-guarded like sync-standards (#184): an existing .aiderrc
+        # that setup did not write (no stored hash) or that was edited since
+        # is never overwritten — the template is staged to .standards-pending/
+        # instead. A file identical to the template, or matching its stored
+        # hash, is simply refreshed.
         if [ "$agent" = "aider" ] && [ -f "$AGENTS_DIR/aider/aiderrc.template" ]; then
+            local rc_template="$AGENTS_DIR/aider/aiderrc.template"
+            local rc_target="$PROJECT_ROOT/.aiderrc"
+            local rc_stored="" rc_current="" rc_refresh=true
+            if [ -f "$rc_target" ]; then
+                if type read_stored_hash &>/dev/null; then
+                    rc_stored=$(read_stored_hash ".aiderrc" "$CHECKSUMS_PATH")
+                fi
+                rc_current=$(shasum -a 256 "$rc_target" | awk '{print $1}')
+                if [ -n "$rc_stored" ] && [ "$rc_current" = "$rc_stored" ]; then
+                    rc_refresh=true
+                elif cmp -s "$rc_template" "$rc_target" 2>/dev/null; then
+                    rc_refresh=true
+                else
+                    rc_refresh=false
+                fi
+            fi
             if [ "$DRY_RUN" = true ]; then
-                echo "  [dry-run] Would copy: $AGENTS_DIR/aider/aiderrc.template → $PROJECT_ROOT/.aiderrc"
-            elif cp "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
-                echo "   ✅ Aider .aiderrc installed"
-                if type compute_hash &>/dev/null; then
+                if [ "$rc_refresh" = true ]; then
+                    echo "  [dry-run] Would copy: $rc_template → $rc_target"
+                else
+                    echo "  [dry-run] Would stage: $rc_template → $PROJECT_ROOT/$PENDING_DIR/.aiderrc (.aiderrc differs and was not written by setup)"
+                fi
+            elif [ "$rc_refresh" = true ]; then
+                if cp "$rc_template" "$rc_target" 2>/dev/null; then
+                    echo "   ✅ Aider .aiderrc installed"
+                    if type compute_hash &>/dev/null; then
+                        local rc_hash
+                        rc_hash=$(shasum -a 256 "$rc_target" | awk '{print $1}')
+                        NEW_CHECKSUMS=$(update_checksum_entry ".aiderrc" "$rc_hash" "$NEW_CHECKSUMS")
+                    fi
+                fi
+            else
+                mkdir -p "$PROJECT_ROOT/$PENDING_DIR"
+                cp "$rc_template" "$PROJECT_ROOT/$PENDING_DIR/.aiderrc"
+                echo "   ⚠️  .aiderrc differs from aiderrc.template and was not written by setup — template staged to $PENDING_DIR/.aiderrc"
+                PENDING_LIST="${PENDING_LIST:+$PENDING_LIST }.aiderrc"
+                if [ "$MIGRATE" = true ] && type compute_hash &>/dev/null; then
+                    # Same baseline rule as the assembled configs above: the
+                    # staged template is the recorded version, so sync keeps
+                    # reporting .aiderrc as customized until it is adopted.
                     local rc_hash
-                    rc_hash=$(shasum -a 256 "$PROJECT_ROOT/.aiderrc" | awk '{print $1}')
+                    rc_hash=$(shasum -a 256 "$rc_template" | awk '{print $1}')
                     NEW_CHECKSUMS=$(update_checksum_entry ".aiderrc" "$rc_hash" "$NEW_CHECKSUMS")
                 fi
             fi
@@ -761,6 +842,107 @@ else
         exit 1
     fi
 
+    # --- Pre-1.2 migration (#184) ------------------------------------------
+    # Runs before agent detection (a converted AGENTS.md must be detected) and
+    # before anything reads or writes .standards.yml (a legacy
+    # .standards-config seeds it). Without --migrate a pre-1.2 shape is only
+    # reported, so a plain setup never rewrites a file the operator did not
+    # ask it to.
+    RENAME_MAP=$(rename_map_path "$STANDARDS_DIR" "$SCRIPT_DIR") || RENAME_MAP=""
+    PRE12_REASONS=$(pre12_shape "$PROJECT_ROOT" "$RENAME_MAP") || PRE12_REASONS=""
+    MIGRATE_EXTRA_AGENTS=""
+    SETUP_CMD="./scripts/setup.sh"
+    [ "$STANDARDS_DIR" = "$PROJECT_ROOT/.standards" ] && SETUP_CMD=".standards/scripts/setup.sh"
+
+    run_pre12_migration() {
+        local rel f
+        echo "$PRE12_REASONS" | sed 's/^/   - /'
+
+        # Legacy .standards-config (KEY=value) seeds the .standards.yml this run
+        # writes: role and languages unless given on the command line, agents
+        # in addition to the detected ones. It is then retired to a gitignored
+        # backup so doctor stops reporting the legacy format.
+        if [ -f "$PROJECT_ROOT/.standards-config" ] && [ ! -f "$PROJECT_ROOT/.standards.yml" ] \
+           && declare -f read_standards_config >/dev/null 2>&1 \
+           && read_standards_config "$PROJECT_ROOT" 2>/dev/null; then
+            if [ "$ROLE_EXPLICIT" = false ] && [ -n "${STD_ROLE:-}" ]; then
+                ROLE="$STD_ROLE"
+            fi
+            local legacy_langs
+            legacy_langs=$(trim_ws "${STD_LANGUAGES:-}")
+            if [ -z "$LANGUAGES_OVERRIDE" ] && [ -n "$legacy_langs" ]; then
+                LANGUAGES_OVERRIDE=$(echo "$legacy_langs" | tr ' ' ',')
+            fi
+            MIGRATE_EXTRA_AGENTS=$(trim_ws "${STD_AGENTS:-}")
+            echo "   📄 .standards-config: role=$ROLE languages=${legacy_langs:-<detect>} agents=${MIGRATE_EXTRA_AGENTS:-<detect>} → seeds .standards.yml"
+            if [ "$DRY_RUN" = true ]; then
+                echo "  [dry-run] Would retire .standards-config → .standards-config.pre-standards-setup"
+            else
+                mv "$PROJECT_ROOT/.standards-config" "$PROJECT_ROOT/.standards-config.pre-standards-setup"
+                echo "   ✅ .standards-config retired → .standards-config.pre-standards-setup (.standards.yml replaces it)"
+            fi
+        fi
+
+        # Dead standards references, rewritten in place from the rename map.
+        if [ -n "$RENAME_MAP" ]; then
+            echo "   🔁 Rewriting renamed standards references (map: ${RENAME_MAP#"$PROJECT_ROOT"/})"
+            for rel in $MIGRATE_AGENT_CONFIGS; do
+                [ "$rel" = ".codexrc" ] && continue   # converted below
+                f="$PROJECT_ROOT/$rel"
+                [ -f "$f" ] || continue
+                rewrite_dead_refs "$f" "$RENAME_MAP" "$DRY_RUN" "$PROJECT_ROOT"
+                if [ "$rel" = ".aiderrc" ]; then
+                    fix_legacy_tiers "$f" "$DRY_RUN" "$PROJECT_ROOT"
+                fi
+            done
+        else
+            echo "   ⚠️  docs/reference/renamed-files.md not found in $STANDARDS_DIR — dead references are not rewritten"
+        fi
+
+        # .codexrc → AGENTS.md (Codex reads AGENTS.md since #40).
+        if [ -f "$PROJECT_ROOT/.codexrc" ]; then
+            convert_codexrc "$PROJECT_ROOT" "$RENAME_MAP" "$DRY_RUN" "$PROJECT_ROOT/$PENDING_DIR"
+            MIGRATE_EXTRA_AGENTS="${MIGRATE_EXTRA_AGENTS:+$MIGRATE_EXTRA_AGENTS }codex"
+        fi
+
+        # Notes for the MERGE_PLAN Migration section.
+        _migrate_append MIGRATE_NOTES "- Rewrote $MIGRATE_REWRITES renamed standards reference(s) in place; each changed file's original is kept as \`<file>.pre-standards-setup\`. The map is \`.standards/docs/reference/renamed-files.md\`."
+        _migrate_append MIGRATE_NOTES "- The checksum baseline for every staged file is the **staged assembled version**, so \`sync-standards\` keeps staging a fresh assembly (never overwriting the migrated file) until you adopt or merge it; once adopted, the checksum matches."
+        local line
+        if [ -n "$MIGRATE_DROPPED" ]; then
+            _migrate_append MIGRATE_NOTES "- Dropped lines that only cited a removed standard:"
+            while IFS= read -r line; do
+                [ -n "$line" ] && _migrate_append MIGRATE_NOTES "  - \`$line\`"
+            done <<EOF
+$MIGRATE_DROPPED
+EOF
+        fi
+        if [ -n "$MIGRATE_UNRESOLVED" ]; then
+            _migrate_append MIGRATE_NOTES "- Still cites a removed standard (left in place — delete the sentence or point it at the replacement named in the map's Notes column):"
+            while IFS= read -r line; do
+                [ -n "$line" ] && _migrate_append MIGRATE_NOTES "  - \`$line\`"
+            done <<EOF
+$MIGRATE_UNRESOLVED
+EOF
+        fi
+    }
+
+    if [ "$MIGRATE" = true ]; then
+        echo ""
+        echo "🧭 Migrating a pre-1.2 install..."
+        if [ -z "$PRE12_REASONS" ]; then
+            echo "ℹ️  Nothing to migrate: no pre-1.2 artefacts found (.standards-checksums present, or no dead references, .codexrc or legacy .standards-config). Running a normal setup."
+        else
+            run_pre12_migration
+        fi
+    elif [ -n "$PRE12_REASONS" ]; then
+        echo ""
+        echo "⚠️  Pre-1.2 install detected:"
+        echo "$PRE12_REASONS" | sed 's/^/   - /'
+        echo "   Run: $SETUP_CMD --migrate  (rewrites the dead references, converts .codexrc, bootstraps .standards.yml and checksums; stages anything ambiguous)"
+        echo "   Map of renamed files: ${RENAME_MAP:-docs/reference/renamed-files.md}"
+    fi
+
     # Resolve monorepo members before anything rewrites the root .standards.yml.
     MEMBERS=$(resolve_members "$PROJECT_ROOT" 2>/dev/null | tr '\n' ' ' | sed 's/[[:space:]]*$//')
     if members_declared "$PROJECT_ROOT"; then
@@ -787,6 +969,11 @@ EOF
             # shellcheck disable=SC1091
             source "$SCRIPT_DIR/lib/detect-agents.sh"
             PRE_DETECTED_AGENTS=$(detect_installed_agents "$PROJECT_ROOT")
+        fi
+        # --migrate: a .codexrc means Codex (AGENTS.md is assembled for it),
+        # and a legacy .standards-config's agents: list still counts.
+        if [ -n "$MIGRATE_EXTRA_AGENTS" ]; then
+            PRE_DETECTED_AGENTS=$(dedupe_words "$PRE_DETECTED_AGENTS" "$MIGRATE_EXTRA_AGENTS")
         fi
     fi
 
@@ -819,11 +1006,13 @@ EOF
     echo "🤖 Setting up AI agent configurations..."
     setup_ai_agents "$STANDARDS_DIR" "$SCRIPT_DIR" "$PROJECT_ROOT"
 
-    # Emit MERGE_PLAN.md if setup staged any pending updates.
-    if [ -f "$SCRIPT_DIR/lib/merge-plan.sh" ] && [ -n "${PENDING_LIST:-}" ]; then
+    # Emit MERGE_PLAN.md if setup staged any pending updates (or --migrate has
+    # notes to hand over). Never in dry-run: nothing was staged.
+    if [ -f "$SCRIPT_DIR/lib/merge-plan.sh" ] && [ "$DRY_RUN" = false ] \
+       && { [ -n "${PENDING_LIST:-}" ] || [ -n "${MIGRATE_NOTES:-}" ]; }; then
         # shellcheck disable=SC1091
         source "$SCRIPT_DIR/lib/merge-plan.sh"
-        write_merge_plan "$PROJECT_ROOT" "$PENDING_LIST" "${DETECTED_AGENTS:-}" "${ASSEMBLED_AGENTS_LIST:-}"
+        write_merge_plan "$PROJECT_ROOT" "$PENDING_LIST" "${DETECTED_AGENTS:-}" "${ASSEMBLED_AGENTS_LIST:-}" "${MIGRATE_NOTES:-}"
         echo ""
         echo "📋 Pending updates staged. See .standards-pending/MERGE_PLAN.md or run:"
         echo "   Claude Code: /merge-standards"

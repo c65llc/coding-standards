@@ -77,6 +77,10 @@ echo "$hash  $(basename "$file")"
 
 Delete the consumed file from `.standards-pending/`. If the directory is now empty, remove it.
 
+## After `setup.sh --migrate`
+
+When `MERGE_PLAN.md` carries a **Migration** section, the project was set up before the 1.2 safe-setup and `setup.sh --migrate` has just run (see [Renamed Files](renamed-files.md)). The existing files are old hand-rolled configs whose dead standards references were rewritten in place (originals kept as `<file>.pre-standards-setup`), staged beside the freshly assembled versions. Take the assembled version as the base and carry only project-specific text into its PROJECT-SPECIFIC section — the old files are mostly a stale copy of the standards themselves. For `AGENTS.md` converted from `.codexrc` (or `.standards-pending/AGENTS.md.from-codexrc`), keep any project notes and delete `.codexrc` once they are in `AGENTS.md`. Each *still cites a removed standard* line is a manual decision: delete the sentence or use the replacement named in the map's Notes column. The recorded checksum of a staged file is the staged assembled version, so adopting it as-is needs no checksum update.
+
 ## Regenerating Pending Files
 
 If `.standards-pending/` was lost (branch switch, `git clean`), re-run `sync-standards` to regenerate pending files.

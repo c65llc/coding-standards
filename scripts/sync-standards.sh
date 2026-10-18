@@ -97,6 +97,14 @@ if [ -f "$SCRIPT_DIR/lib/project-sections.sh" ]; then
     source "$SCRIPT_DIR/lib/project-sections.sh"
 fi
 
+# Pre-1.2 shape detection (#184): a consumer with no checksums and configs
+# citing renamed standards paths is told to run setup.sh --migrate, because a
+# sync alone skips every such file as "manually created" and fixes nothing.
+if [ -f "$SCRIPT_DIR/lib/migrate.sh" ]; then
+    # shellcheck source=lib/migrate.sh disable=SC1091
+    source "$SCRIPT_DIR/lib/migrate.sh"
+fi
+
 # Function to sync AI agent configurations
 sync_ai_agents() {
     local STANDARDS_DIR="$1"
@@ -550,6 +558,17 @@ if agent_enabled cursor && [ -n "$CURSOR_COMMANDS_SOURCE" ] && [ -d "$CURSOR_COM
         echo "⚠️  Please fully quit and restart Cursor to load new commands"
     else
         echo "⚠️  Failed to sync Cursor commands (non-fatal, continuing...)"
+    fi
+fi
+
+# Pre-1.2 install (#184): point at the migration before the per-file skips.
+if declare -f pre12_shape >/dev/null 2>&1; then
+    PRE12_MAP=$(rename_map_path "$STANDARDS_DIR" "$SCRIPT_DIR") || PRE12_MAP=""
+    if PRE12_REASONS=$(pre12_shape "$PROJECT_ROOT" "$PRE12_MAP") && [ -n "$PRE12_REASONS" ]; then
+        echo ""
+        echo "⚠️  Pre-1.2 install detected — a sync skips these files as manually created and fixes nothing:"
+        echo "$PRE12_REASONS" | sed 's/^/   - /'
+        echo "   Run: .standards/scripts/setup.sh --migrate  (rewrites the dead references, converts .codexrc, bootstraps .standards.yml and checksums)"
     fi
 fi
 

@@ -35,33 +35,31 @@ GitHub Copilot reads this file as custom instructions for code generation and ch
 - Language-specific guidelines for supported languages
 - Testing and error handling requirements
 
-## Aider / Claude Code — `.aiderrc`
+## Aider — `.aiderrc` + `.aider-instructions.md`
 
-**Location:** Project root (`.aiderrc`)
+**Location:** Project root (`.aiderrc`, `.aider-instructions.md`)
 
-Aider reads this YAML configuration file on startup. It controls model settings, conventions, and architectural rules.
+Aider reads `.aiderrc` on startup; it is a short verbatim copy of `standards/agents/aider/aiderrc.template` (`read = .aider-instructions.md`, `auto-lint`, `show-diffs`, the file-ignore list). No model is pinned: Aider takes it from its own config or `--model`, so a standards sync never changes which model a project runs. The coding standards and behavioural rules live in the assembled `.aider-instructions.md`, with the same 95% coverage floor (domain 100%) as every other agent config.
 
-**Format:** YAML with specific Aider configuration keys.
+**Format:** Aider config keys (`.aiderrc`); Markdown (`.aider-instructions.md`).
 
-**Key settings:**
+A pre-1.2 `.aiderrc` copied from the old template carries `architecture_rules` / `testing_standards` blocks with 100/90/80 coverage tiers and a pinned `model =`; `setup.sh --migrate` raises the tiers to the floor, drops the template model line and rewrites its standards references (see [Renamed Files](renamed-files.md)).
 
-- `conventions` — coding style and architecture rules
-- `architect-mode` — enables architecture-aware suggestions
-- `read` — references to standards files Aider should be aware of
+## OpenAI Codex — `AGENTS.md`
 
-## OpenAI Codex — `.codexrc`
+**Location:** Project root (`AGENTS.md`)
 
-**Location:** Project root (`.codexrc`)
+OpenAI Codex CLI reads `AGENTS.md` for project-specific instructions. It is assembled from `standards/agents/codex/base-codex.md` plus the shared content blocks.
 
-OpenAI Codex CLI reads this configuration file for project-specific instructions.
-
-**Format:** YAML configuration.
+**Format:** Markdown.
 
 **What's included:**
 
-- Model and approval mode settings
+- Sandbox environment and approval-mode behaviour
 - Instructions referencing core standards
 - Architecture and testing requirements
+
+The pre-#40 template was a comment-style `.codexrc`, which Codex no longer reads. `setup.sh` and `sync-standards.sh` warn when one is present; `setup.sh --migrate` converts it to Markdown `AGENTS.md` (or stages the conversion as `.standards-pending/AGENTS.md.from-codexrc` when an `AGENTS.md` already exists) and keeps the original as `.codexrc.pre-standards-setup`.
 
 ## Gemini CLI & Antigravity — `.gemini/`
 

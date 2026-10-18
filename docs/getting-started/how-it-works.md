@@ -136,6 +136,16 @@ New standard committed   →   (nothing yet)
 
 You control when updates land. Pin to a tag for stability, or track `main` for the latest.
 
+### Upgrading a pre-1.2 install
+
+A project set up before the 1.2 safe-setup has no `.standards-checksums`, and its agent configs were copied from the old hand-rolled templates, so they cite standards files renamed in #21 or removed in #40 (`00_project_standards_and_architecture.md`, `03_python_standards.md`, `arch-03_cursor_automation_standards.md`). A sync skips every such file as "manually created" and fixes nothing. `make doctor` recognises the shape and prints the one command:
+
+```bash
+.standards/scripts/setup.sh --migrate            # add --dry-run to preview
+```
+
+It rewrites the dead references in place from the [Renamed Files](/reference/renamed-files/) map, converts `.codexrc` to `AGENTS.md`, seeds `.standards.yml` (from a legacy `.standards-config` where present), writes checksums, and stages the freshly assembled configs in `.standards-pending/` with a *Migration* section in `MERGE_PLAN.md`. Finish with `/merge-standards`. See [setup.sh](/reference/scripts/#setupsh) for the step-by-step.
+
 ## What Happens When You Add a Language
 
 1. A new `lang-XX_<language>_standards.md` file is added to `standards/languages/`
