@@ -5,10 +5,12 @@
 # the scan. Keep this list narrow — excluding whole trees can hide real secrets.
 #
 # For GRANULAR, per-finding suppression prefer an inline comment on the exact
-# line instead of excluding a whole path:
-#     const EXAMPLE_TOKEN = "AKIA...";  // trufflehog:ignore
+# line instead of excluding a whole path, in the file's own comment syntax
+# (TruffleHog matches the token, not the comment leader):
+#     const EXAMPLE_TOKEN = "AKIA...";  // trufflehog:ignore     (JS, Go, Rust)
+#     EXAMPLE_TOKEN = "AKIA..."  # trufflehog:ignore              (Python, shell, YAML)
 # That keeps the rest of the file scanned and documents the false positive in
-# place. Reserve this file for paths that are inherently all-noise.
+# place. Reserve this file for a named artifact that cannot carry a credential.
 #
 # Fixture-SHAPED noise (UUIDv7 ids, `test-`/`fake-`-prefixed passwords,
 # redaction output) is not a path problem: do not exclude `tests/` or

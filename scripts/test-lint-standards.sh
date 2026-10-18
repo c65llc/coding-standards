@@ -2972,12 +2972,18 @@ out_older=$(bash "$CHECKS/common/changelog-tags.sh" "$ct2c" 2>/dev/null || true)
 ct2d=$(make_project "ct-release-misprefixed")
 printf 'version: 1\nrelease:\n  tag_prefix: release-\n' > "$ct2d/.standards.yml"
 write_changelog "$ct2d/CHANGELOG.md" "## [0.2.0] - 2026-06-01" "## [0.1.0] - 2026-05-01"
-tag_all "$ct2d" release-0.1.0 prod-0.2.0   # newest tagged under a foreign prefix: misnamed, not in flight
+tag_all "$ct2d" release-0.1.0 prod-0.2.0   # a foreign-prefix lookalike: misnamed or unrelated — WARN naming it
 out_mis=$(bash "$CHECKS/common/changelog-tags.sh" "$ct2d" 2>/dev/null || true)
+ct2e=$(make_project "ct-release-vtag-under-prefix")
+printf 'version: 1\nrelease:\n  tag_prefix: release-\n' > "$ct2e/.standards.yml"
+write_changelog "$ct2e/CHANGELOG.md" "## [0.2.0] - 2026-06-01" "## [0.1.0] - 2026-05-01"
+tag_all "$ct2e" release-0.1.0 v0.2.0        # a default-form tag under a declared prefix: unambiguously misnamed — FAIL
+out_vtag=$(bash "$CHECKS/common/changelog-tags.sh" "$ct2e" 2>/dev/null || true)
 if echo "$out_flight" | grep -q '^WARN changelog-tags.*0.2.0.*in flight' && echo "$out_flight" | grep -q 'rc=2' \
    && echo "$out_older" | grep -q '^FAIL changelog-tags.*0.1.0' \
-   && echo "$out_mis" | grep -q '^FAIL changelog-tags.*release-0.2.0'; then pass; else
-    fail "in-flight: $out_flight | older-missing: $out_older | misprefixed: $out_mis"; fi
+   && echo "$out_mis" | grep -q '^WARN changelog-tags.*prod-0.2.0.*release-0.2.0' \
+   && echo "$out_vtag" | grep -q '^FAIL changelog-tags.*release-0.2.0'; then pass; else
+    fail "in-flight: $out_flight | older-missing: $out_older | lookalike: $out_mis | vtag-under-prefix: $out_vtag"; fi
 
 echo -n "Test 205: changelog-tags accepts bare tags, '## 1.2.3 (date)' headings, prereleases and [YANKED]... "
 ct3=$(make_project "ct-forms")

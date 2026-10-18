@@ -112,9 +112,13 @@ release:
 A release PR promotes `[Unreleased]` to a numbered heading before the tag
 exists (the tag is cut after merge), so the state "exactly the newest heading
 untagged, every older one tagged" exists legitimately for a short while and is
-reported as `WARN` — "release in flight" — rather than `FAIL`. Two or more
-untagged headings, or an older untagged heading while newer releases are
-tagged (the forgotten-tag pattern), fail. "Newest" is the topmost released
+reported as `WARN` — "release in flight" — rather than `FAIL`. When some other
+tag ends in that version (`prod-2.0.0`, `docs-preview-2.0.0`) the WARN names
+it, since a misnamed release tag and an unrelated operational tag look alike;
+a default-form tag (`v2.0.0`) while a different prefix is declared is
+unambiguously misnamed and fails. Two or more untagged headings, or an older
+untagged heading while newer releases are tagged (the forgotten-tag pattern),
+fail. "Newest" is the topmost released
 heading (Keep a Changelog lists releases newest first), not the greatest
 SemVer, so a maintenance line's `1.5.1` above an older `2.0.0` is the newest
 release on that branch; the manifest drift comparison uses the same heading.

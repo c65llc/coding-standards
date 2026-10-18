@@ -162,8 +162,12 @@ scanners get disabled; the P0 rule above only holds while the allowlist keeps
 signal high.
 
 - **Suppress at the finest granularity that works, in this order.** (1) An
-  inline marker on the exact line — `// trufflehog:ignore` for TruffleHog,
-  `// gitleaks:allow` for Gitleaks, both when both scanners run. (2) A
+  inline marker on the exact line, written in the file's own comment syntax
+  — `trufflehog:ignore` for TruffleHog, `gitleaks:allow` for Gitleaks, both
+  when both scanners run: `// gitleaks:allow` in JavaScript, Go or Rust,
+  `# gitleaks:allow` in Python, Ruby, shell, YAML or TOML. The scanners look
+  for the token, not the comment leader; a `//` pasted into a Python fixture
+  breaks the fixture. (2) A
   **shape-based** allowlist regex, global only when the shape cannot work as
   a credential anywhere (`REDACTED`/`****` redaction output). A shape a real
   secret *can* take — a UUID (many services issue UUID API keys), a

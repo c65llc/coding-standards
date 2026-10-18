@@ -20,8 +20,10 @@
 # exists.
 #
 # Two mechanisms, finest granularity first:
-#   1. Inline, on the exact line:   `… // gitleaks:allow`  (Gitleaks)
-#                                   `… // trufflehog:ignore` (TruffleHog)
+#   1. Inline, on the exact line, in the FILE'S comment syntax — the scanners
+#      match the token, not the comment leader:
+#        JS/Go/Rust:        … // gitleaks:allow   … // trufflehog:ignore
+#        Python/shell/YAML: … # gitleaks:allow    … # trufflehog:ignore
 #      Put BOTH markers on a line that trips both scanners. The marker
 #      documents the false positive where a reader meets it and keeps the rest
 #      of the file scanned. Prefer this for one-off constants.

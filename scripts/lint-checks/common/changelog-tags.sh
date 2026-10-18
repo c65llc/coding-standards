@@ -86,6 +86,10 @@ extract_versions() {
             if (p == 0) next
             h = substr(h, p + 3); incomment = 0
         }
+        # An inline code span is literal text: a `<!--` inside backticks must
+        # not open a comment. Version tokens never contain backticks, so the
+        # spans are replaced before the comment scan without affecting headings.
+        while (match(h, /`[^`]+`/)) h = substr(h, 1, RSTART - 1) "CODE" substr(h, RSTART + RLENGTH)
         while ((o = index(h, "<!--")) > 0) {
             rest = substr(h, o + 4)
             c = index(rest, "-->")
@@ -186,7 +190,8 @@ manifest_version_cargo_toml() {
     /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]]/, "", sect); next }
     (sect == "[package]" && /^[[:space:]]*version\.workspace[[:space:]]*=[[:space:]]*true/) ||
     (sect == "" && /^[[:space:]]*package\.version\.workspace[[:space:]]*=[[:space:]]*true/) { inherits = 1; next }
-    (sect == "[package]" && /^[[:space:]]*version[[:space:]]*=/) ||
+    # Bare or quoted key (`version = …` / `"version" = …`); strval strips to the `=`.
+    (sect == "[package]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
     (sect == "" && /^[[:space:]]*package\.version[[:space:]]*=/) { if (pkg == "") pkg = strval($0); next }
     # Inline table: `package = { name = "app", version = "1.2.3" }`. The key
     # must start at a table boundary (`{` or `,`) so `rust-version = "1.85"`
@@ -198,7 +203,7 @@ manifest_version_cargo_toml() {
         }
         next
     }
-    (sect == "[workspace.package]" && /^[[:space:]]*version[[:space:]]*=/) ||
+    (sect == "[workspace.package]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
     (sect == "[workspace]" && /^[[:space:]]*package\.version[[:space:]]*=/) ||
     (sect == "" && /^[[:space:]]*workspace\.package\.version[[:space:]]*=/) { if (ws == "") ws = strval($0); next }
     END {
@@ -223,9 +228,9 @@ manifest_version_pyproject() {
         return ""
     }
     /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]]/, "", sect); next }
-    (sect == "[project]" && /^[[:space:]]*version[[:space:]]*=/) ||
+    (sect == "[project]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
     (sect == "" && /^[[:space:]]*project\.version[[:space:]]*=/) { if (proj == "") proj = strval($0); next }
-    (sect == "[tool.poetry]" && /^[[:space:]]*version[[:space:]]*=/) ||
+    (sect == "[tool.poetry]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
     (sect == "" && /^[[:space:]]*tool\.poetry\.version[[:space:]]*=/) ||
     (sect == "[tool]" && /^[[:space:]]*poetry\.version[[:space:]]*=/) { if (poetry == "") poetry = strval($0); next }
     END {
@@ -306,6 +311,10 @@ a fence-looking line inside a comment must not open a fence
 -->
 ## [1.3.0] - 2026-01-02
 
+Prose with a literal opener in code: `<!--` is how a comment starts.
+
+## [1.2.5] - 2026-01-01
+
 ```not`a`fence
 ## [1.2.0] - 2026-01-01 — the line above is text (backtick in the info string), so this heading counts
 
@@ -316,7 +325,7 @@ a fence-looking line inside a comment must not open a fence
 ## [UNRELEASED]
 '
     got=$(printf '%s\n' "$fixture" | extract_versions | tr '\n' ' ')
-    want='1.10.0 1.9.1 1.9.0 2.0.0-rc.1 1.8.0 1.7.0 1.6.0 1.5.0 1.4.0 1.3.0 1.2.0 '
+    want='1.10.0 1.9.1 1.9.0 2.0.0-rc.1 1.8.0 1.7.0 1.6.0 1.5.0 1.4.0 1.3.0 1.2.5 1.2.0 '
     [ "$got" = "$want" ] || { echo "heading parser produced '$got' (expected '$want')"; return 1; }
     got=$(printf '## [Unreleased]\n## [unreleased] - soon\n## 1.2\n## 1.2.3.4\n' | extract_versions)
     [ -z "$got" ] || { echo "heading parser accepted a non-release heading: $got"; return 1; }
@@ -395,6 +404,12 @@ release-1.0.2'
     printf '[tool.poetry]\nname = "p"\nversion = "1.0.0"\n\n[project]\nname = "p"\nversion = "2.0.0"\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "2.0.0" ] || { rm -rf "$tmp"; echo "pyproject.toml reader preferred legacy [tool.poetry] over [project]: '$got'"; return 1; }
+    printf '[package]\nname = "q"\n"version" = "1.0.1"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "1.0.1" ] || { rm -rf "$tmp"; echo "Cargo.toml reader rejected a quoted version key: '$got'"; return 1; }
+    printf '[project]\nname = "q"\n"version" = "2.0.1"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "2.0.1" ] || { rm -rf "$tmp"; echo "pyproject.toml reader rejected a quoted version key: '$got'"; return 1; }
     printf '[build-system]\nrequires = ["hatchling"]\n\n[project]\nname = "p"\nversion = '"'"'4.5.6'"'"'\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "4.5.6" ] || { rm -rf "$tmp"; echo "pyproject.toml reader returned '$got'"; return 1; }
@@ -593,22 +608,28 @@ LATEST=$(printf '%s\n' "$VERSIONS" | head -1)
 if [ "$MISSING_COUNT" -gt 0 ]; then
     more=""
     if [ "$MISSING_COUNT" -gt "$MAX_LISTED" ]; then more=" (+$((MISSING_COUNT - MAX_LISTED)) more)"; fi
-    # A tag under ANY prefix that ends in the version (`prod-2.0.0`, `v2.0.0`,
-    # `2.0.0`) means the release was tagged, just not as declared: misnamed,
-    # not in flight. The version is regex-escaped before the suffix match, and
-    # a digit or dot directly before it is rejected so `v12.0.0` is not a tag
-    # for `2.0.0`.
-    latest_ere=$(printf '%s' "$LATEST" | sed 's/[][\.*^$+?(){}|\\]/\\&/g')
+    # Exactly the topmost heading untagged, every other one tagged: three
+    # readings, decided by what tags DO exist for that version.
+    #   1. A tag in a default release form (`v2.0.0` / `2.0.0`) while a prefix
+    #      is declared: unambiguously a misnamed release tag → FAIL below.
+    #   2. A tag under some other prefix ending in the version
+    #      (`prod-2.0.0`, `docs-preview-2.0.0`): a misnamed release and an
+    #      unrelated operational tag look identical here → WARN naming it.
+    #   3. No tag ends in the version: a release in flight (the release PR
+    #      promotes [Unreleased], the tag follows the merge) → WARN.
+    # A second untagged heading, or an older one while newer releases are
+    # tagged, is the forgotten-tag pattern and FAILs regardless.
     if [ "$MISSING_COUNT" -eq 1 ] && [ "$MISSING" = "$LATEST" ] \
-        && ! printf '%s\n' "$TAGS" | grep -Eq -- "(^|[^0-9.])${latest_ere}\$"; then
-        # A release in flight: the release PR promotes [Unreleased] to a
-        # numbered heading and the tag is cut after the merge (proc-02 §5), so
-        # between those two steps exactly the topmost heading has no tag at all.
-        # That is advisory. A tag that exists under the wrong prefix is not in
-        # flight (it is misnamed), and a second untagged heading, or an older
-        # one while newer releases are tagged, is the forgotten-tag pattern;
-        # both FAIL below.
+        && ! { [ "$TAG_PREFIX" != "__DEFAULT__" ] && tag_for "$LATEST" "$TAGS" __DEFAULT__ >/dev/null; }; then
         if [ "$TAG_PREFIX" = "__DEFAULT__" ]; then want_tag="v$LATEST"; else want_tag="${TAG_PREFIX}${LATEST}"; fi
+        # Regex-escaped suffix match; a digit or dot before the version is
+        # rejected so `v12.0.0` is not a tag for `2.0.0`.
+        latest_ere=$(printf '%s' "$LATEST" | sed 's/[][\.*^$+?(){}|\\]/\\&/g')
+        lookalike=$(printf '%s\n' "$TAGS" | grep -E -- "(^|[^0-9.])${latest_ere}\$" | head -1)
+        if [ -n "$lookalike" ]; then
+            echo "WARN $CHECK_NAME release $LATEST in $CHANGELOG_LABEL has no tag in the accepted form ($PREFIX_LABEL) but '$lookalike' ends in that version — if it is the release tag, rename it to $want_tag or declare release.tag_prefix; if it is unrelated, create $want_tag (proc-02 §5)"
+            exit 2
+        fi
         echo "WARN $CHECK_NAME release $LATEST in $CHANGELOG_LABEL has no tag yet — every older heading is tagged, so this looks like a release in flight: create $want_tag once it is merged (proc-02 §5); a second untagged heading would fail"
         exit 2
     fi
