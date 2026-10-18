@@ -64,14 +64,10 @@ extract_versions() {
     }
     # Fenced code blocks (``` or ~~~, three or more, same character to close):
     # a `## [9.9.9]` inside an example is code, not a release heading.
-    # The closer must use the same character, be at least as long as the
-    # opener, and carry nothing but whitespace — so a three-backtick line
-    # inside a four-backtick fence is content, not a close.
-    !infence && h ~ /^(```|~~~)/ {
-        fence = substr(h, 1, 1); flen = 0
-        while (substr(h, flen + 1, 1) == fence) flen++
-        infence = 1; next
-    }
+    # Inside a fence everything is code, `<!--` included. The closer must use
+    # the same character, be at least as long as the opener, and carry nothing
+    # but whitespace — so a three-backtick line inside a four-backtick fence
+    # is content, not a close.
     infence {
         if (substr(h, 1, 1) == fence) {
             n = 0
@@ -80,7 +76,8 @@ extract_versions() {
         }
         next
     }
-    # HTML comments: a commented-out template heading (`<!-- ## [x.y.z] -->`)
+    # HTML comments come BEFORE fence openers: inside a comment a ``` line is
+    # text, not a fence. A commented-out template heading (`<!-- ## [x.y.z] -->`)
     # is not a release. Strip complete `<!-- … -->` spans on the line; a span
     # that opens without closing hides every following line until `-->`.
     {
@@ -96,6 +93,16 @@ extract_versions() {
             h = substr(h, 1, o - 1) substr(rest, c + 3)
         }
         if (h ~ /^[[:space:]]*$/) next
+    }
+    # Fence opener (CommonMark): three or more backticks or tildes. The info
+    # string of a backtick fence may not itself contain a backtick, so a line
+    # such as "```foo`bar" is ordinary text and opens nothing. (No apostrophes
+    # in these comments: the whole awk program is a single-quoted string.)
+    h ~ /^(```|~~~)/ {
+        fence = substr(h, 1, 1); flen = 0
+        while (substr(h, flen + 1, 1) == fence) flen++
+        if (fence == "`" && index(substr(h, flen + 1), "`") > 0) { }   # not an opener; fall through
+        else { infence = 1; next }
     }
     h ~ /^##[[:blank:]]/ {
         # A space or a tab may follow the `##` (CommonMark).
@@ -181,10 +188,12 @@ manifest_version_cargo_toml() {
     (sect == "" && /^[[:space:]]*package\.version\.workspace[[:space:]]*=[[:space:]]*true/) { inherits = 1; next }
     (sect == "[package]" && /^[[:space:]]*version[[:space:]]*=/) ||
     (sect == "" && /^[[:space:]]*package\.version[[:space:]]*=/) { if (pkg == "") pkg = strval($0); next }
-    # Inline table: `package = { name = "app", version = "1.2.3" }`.
+    # Inline table: `package = { name = "app", version = "1.2.3" }`. The key
+    # must start at a table boundary (`{` or `,`) so `rust-version = "1.85"`
+    # is not mistaken for it.
     sect == "" && /^[[:space:]]*package[[:space:]]*=[[:space:]]*\{/ {
         line = $0
-        if (match(line, /version[[:space:]]*=[[:space:]]*("[^"]*"|'"'"'[^'"'"']*'"'"')/)) {
+        if (match(line, /[{,][[:space:]]*version[[:space:]]*=[[:space:]]*("[^"]*"|'"'"'[^'"'"']*'"'"')/)) {
             if (pkg == "") pkg = strval(substr(line, RSTART, RLENGTH))
         }
         next
@@ -292,8 +301,13 @@ self_test() {
 <!-- ## [6.6.6] - a commented-out template heading -->
 <!--
 ## [5.5.5] - inside a multi-line comment
+```
+a fence-looking line inside a comment must not open a fence
 -->
 ## [1.3.0] - 2026-01-02
+
+```not`a`fence
+## [1.2.0] - 2026-01-01 — the line above is text (backtick in the info string), so this heading counts
 
     ## [0.0.1] - code block, not a heading
 
@@ -302,7 +316,7 @@ self_test() {
 ## [UNRELEASED]
 '
     got=$(printf '%s\n' "$fixture" | extract_versions | tr '\n' ' ')
-    want='1.10.0 1.9.1 1.9.0 2.0.0-rc.1 1.8.0 1.7.0 1.6.0 1.5.0 1.4.0 1.3.0 '
+    want='1.10.0 1.9.1 1.9.0 2.0.0-rc.1 1.8.0 1.7.0 1.6.0 1.5.0 1.4.0 1.3.0 1.2.0 '
     [ "$got" = "$want" ] || { echo "heading parser produced '$got' (expected '$want')"; return 1; }
     got=$(printf '## [Unreleased]\n## [unreleased] - soon\n## 1.2\n## 1.2.3.4\n' | extract_versions)
     [ -z "$got" ] || { echo "heading parser accepted a non-release heading: $got"; return 1; }
@@ -369,9 +383,9 @@ release-1.0.2'
     printf 'workspace.members = ["a"]\nworkspace.package.version = "2.0.1"\n' > "$tmp/Cargo.toml"
     got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
     [ "$got" = "2.0.1" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed the fully dotted workspace.package.version: '$got'"; return 1; }
-    printf 'package = { name = "app", edition = "2021", version = "1.2.3" }\n\n[dependencies]\nfoo = { version = "9.9.9" }\n' > "$tmp/Cargo.toml"
+    printf 'package = { name = "app", rust-version = "1.85", edition = "2021", version = "1.2.3" }\n\n[dependencies]\nfoo = { version = "9.9.9" }\n' > "$tmp/Cargo.toml"
     got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
-    [ "$got" = "1.2.3" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed an inline package table: '$got'"; return 1; }
+    [ "$got" = "1.2.3" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed an inline package table or took rust-version: '$got'"; return 1; }
     printf 'project.name = "p"\nproject.version = "4.5.8"\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "4.5.8" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed the dotted key project.version: '$got'"; return 1; }
@@ -531,11 +545,23 @@ if [ -n "$VERSIONS" ]; then
 fi
 
 if [ "$VERSION_COUNT" -eq 0 ]; then
-    if [ "$TAG_COUNT" -gt 0 ]; then
-        echo "WARN $CHECK_NAME $CHANGELOG_LABEL has no release heading (## [x.y.z]) but the repository has $TAG_COUNT tag(s) — releases are tagged but not recorded (proc-02 §5)"
+    # Only RELEASE-shaped tags count here: an operational tag such as
+    # `docs-preview-2026-01-01` is not an unrecorded release.
+    # (The SemVer regex is a literal here: awk -v would process its backslashes.)
+    RELEASE_TAG_COUNT=$(printf '%s\n' "$TAGS" | awk -v prefix="$TAG_PREFIX" '
+        NF == 0 { next }
+        {
+            t = $0
+            if (prefix == "__DEFAULT__") sub(/^v/, "", t)
+            else if (prefix != "") { if (index(t, prefix) != 1) next; t = substr(t, length(prefix) + 1) }
+            if (t ~ /^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/) n++
+        }
+        END { print n + 0 }')
+    if [ "$RELEASE_TAG_COUNT" -gt 0 ]; then
+        echo "WARN $CHECK_NAME $CHANGELOG_LABEL has no release heading (## [x.y.z]) but the repository has $RELEASE_TAG_COUNT release tag(s) — releases are tagged but not recorded (proc-02 §5)"
         exit 2
     fi
-    echo "PASS $CHECK_NAME $CHANGELOG_LABEL lists 0 release headings (Unreleased only) and the repository has no tags — nothing to reconcile yet"
+    echo "PASS $CHECK_NAME $CHANGELOG_LABEL lists 0 release headings (Unreleased only) and the repository has no release tags — nothing to reconcile yet"
     exit 0
 fi
 

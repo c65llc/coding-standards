@@ -3099,6 +3099,13 @@ out_b=$(bash "$CHECKS/common/changelog-tags.sh" "$ct8b" 2>/dev/null || true)
 if echo "$out" | grep -q '^WARN changelog-tags.*no release heading' && echo "$out_b" | grep -q '^PASS changelog-tags.*0 release'; then pass; else
     fail "tags-no-headings: $out | unreleased-only: $out_b"; fi
 
+echo -n "Test 210b: changelog-tags ignores non-release tags when the changelog is Unreleased-only (PASS, not WARN)... "
+ct8c=$(make_project "ct-unreleased-optag")
+write_changelog "$ct8c/CHANGELOG.md"
+tag_all "$ct8c" docs-preview-2026-01-01 deploy/staging
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct8c" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS changelog-tags.*0 release'; then pass; else fail "expected PASS despite operational tags, got: $out"; fi
+
 echo -n "Test 211: runner treats changelog-tags as repo-wide (once at the root, not per member)... "
 ct9=$(make_project "ct-members")
 mkdir -p "$ct9/apps/web" "$ct9/apps/api"
