@@ -353,7 +353,11 @@ override path around it.
    the head the gate is running on. A comment cannot be authored by someone
    else, and the SHA cannot be backdated or edited into existence by the
    author, so a push after approval needs a fresh comment for the new head.
-   The label remains the visible signal the merge-time job keys on.
+   The label remains the visible signal the merge-time job keys on, and it is
+   also the trigger: comments are not `pull_request` events, so the approver
+   posts the comment first and then applies the label (re-applies it after a
+   push), and removing the label is how an approval is revoked — the run
+   re-evaluates and goes red regardless of what comments exist.
 3. **Merging opens the follow-up.** A second, trusted workflow runs when the
    PR is merged (`pull_request_target` on `closed`, base-repository context,
    nothing from the PR checked out or executed) and creates an issue
@@ -402,6 +406,10 @@ on:
     # The default types (opened, synchronize, reopened) would leave a green
     # check attached to the commit after the label or the body block changed.
     # Label and body edits re-run the gate so removing either turns it red.
+    # Comments are not pull_request events, so the LABEL is the trigger: the
+    # approver posts `Dep-age approved: <sha>` first, then applies the label
+    # (re-applies it after a push); removing the label revokes — the run goes
+    # red whatever comments exist.
     types: [opened, synchronize, reopened, labeled, unlabeled, edited]
 # ci-hygiene: paths-exempt this is a REQUIRED check, so it must create a check
 # run on every PR — a `paths:` filter would leave non-manifest PRs waiting on a
@@ -441,10 +449,15 @@ jobs:
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
-          git show "origin/$BASE_REF:scripts/dep-age-check.sh" > /tmp/dep-age-check.sh \
+          # The report lives OUTSIDE the checkout ($RUNNER_TEMP) and any file of
+          # that name inside the checkout is removed first, so a PR cannot
+          # commit an offenders list of its own choosing for the override step
+          # to read when the checker fails before writing one.
+          rm -f age-offenders.txt "$RUNNER_TEMP/age-offenders.txt"
+          git show "origin/$BASE_REF:scripts/dep-age-check.sh" > "$RUNNER_TEMP/dep-age-check.sh" \
             || { echo "no dep-age-check.sh on the base branch"; exit 1; }
-          chmod +x /tmp/dep-age-check.sh
-          /tmp/dep-age-check.sh --max-age-hours 72 --offenders age-offenders.txt
+          chmod +x "$RUNNER_TEMP/dep-age-check.sh"
+          "$RUNNER_TEMP/dep-age-check.sh" --max-age-hours 72 --offenders "$RUNNER_TEMP/age-offenders.txt"
         continue-on-error: true
       - name: Refuse a stale dep-age-override label
         # The merge-time job opens the follow-up whenever the label is present,
@@ -491,8 +504,11 @@ jobs:
           # matched literally (so `@scope/pkg@1.2.3` works) and followed by a
           # justification. A grouped bump with three young versions needs
           # three lines; a body naming some other package proves nothing.
-          # At least one well-formed `<package>@<version>` line — a file holding only a newline is not a report.
-          grep -Eq '^[^[:space:]]+@[^[:space:]]+$' age-offenders.txt 2>/dev/null \
+          # The report the TRUSTED checker wrote, outside the checkout. At least one
+          # well-formed `<package>@<version>` line — a missing file (the checker
+          # errored before reporting) or one holding only a newline is not a report.
+          offenders="$RUNNER_TEMP/age-offenders.txt"
+          grep -Eq '^[^[:space:]]+@[^[:space:]]+$' "$offenders" 2>/dev/null \
             || { echo "the age checker failed without naming offenders; cannot honor an override"; exit 1; }
           rc=0
           while IFS= read -r offender; do
@@ -502,11 +518,11 @@ jobs:
             # that is itself not a separator — `foo@1.2.3 —` alone does not pass.
             printf '%s\n' "$BODY" | grep -Eq "^Dep-age override:[[:space:]]*${lit}[[:space:]]+([-—–:]+[[:space:]]+)?[^[:space:]—–:-]" \
               || { echo "no 'Dep-age override: $offender — <advisory>' line with advisory text for an offender the checker named"; rc=1; }
-          done < age-offenders.txt
+          done < "$offenders"
           [ "$rc" -eq 0 ] || exit 1
           approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
           [ "$approver" = "$actor" ] || { echo "Approved-by: @$approver does not match the approval comment's author @$actor"; exit 1; }
-          echo "override honored for $(tr '\n' ' ' < age-offenders.txt)(approved by @$actor); the follow-up issue opens at merge"
+          echo "override honored for $(tr '\n' ' ' < "$offenders")(approved by @$actor); the follow-up issue opens at merge"
 ```
 
 ```yaml
@@ -627,8 +643,8 @@ jobs:
             --search 'dep-age-follow-up-for-pr- in:body author:app/github-actions' --json number --jq '.[].number') \
             || { echo "::error::could not enumerate closed follow-ups"; exit 1; }
           for number in $open_ids $closed_ids; do
-            gh issue view "$number" --repo "$REPO" --json state,closedAt,body,comments \
-              --jq '{state, closedAt, body, cs: [.comments[] | {a: .author.login, t: .createdAt, b: .body}]}' > "issue.json"
+            gh issue view "$number" --repo "$REPO" --json state,closedAt,createdAt,body,comments \
+              --jq '{state, closedAt, createdAt, body, cs: [.comments[] | {a: .author.login, t: .createdAt, b: .body}]}' > "issue.json"
             # Deadlines and approver come from IMMUTABLE data, not the editable
             # issue body: the PR number is in the marker; its mergedAt and head
             # SHA are fixed; the approver is the author of the pre-merge
@@ -649,6 +665,14 @@ jobs:
               || { echo "::error::#$number: could not read PR #$pr comments"; rc=1; continue; }
             [ -n "$pr" ] && [ -n "$merged_at" ] && [ -n "$head_sha" ] && [ -n "$approver" ] \
               || { echo "::error::#$number cannot be tied to a merged PR with a pre-merge approval comment by a listed approver (marker/mergedAt/head/approver missing)"; rc=1; continue; }
+            # The marker line is editable; the issue's creation time is not. The
+            # follow-up job opens the issue right after the merge, so an issue
+            # created more than two hours after the PR it now claims to track
+            # was re-pointed. Flag it rather than audit the wrong PR.
+            created_at=$(jq -r .createdAt issue.json)
+            latest_ok=$(date -u -d "$merged_at + 2 hours" +%Y-%m-%dT%H:%M:%SZ)
+            if [ "$created_at" \< "$merged_at" ] || [ "$created_at" \> "$latest_ok" ]; then
+              echo "::error::#$number was created at $created_at but claims PR #$pr merged at $merged_at — the marker was edited; restore it"; rc=1; continue; fi
             due=$(date -u -d "$merged_at + 24 hours" +%Y-%m-%dT%H:%M:%SZ)
             matures=$(date -u -d "$merged_at + 72 hours" +%Y-%m-%dT%H:%M:%SZ)
             state=$(jq -r .state issue.json); closed_at=$(jq -r '.closedAt // ""' issue.json)

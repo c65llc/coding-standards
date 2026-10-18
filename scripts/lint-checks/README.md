@@ -131,9 +131,10 @@ a pass, and never as a `FAIL` the full history would contradict. With
 `fetch-tags: true` the history is still shallow but the tag namespace is
 complete; the check recognises that when the local tag set equals
 `git ls-remote --tags origin` and verifies normally. The converse holds too: a
-full-history `git clone --no-tags` (which persists `remote.origin.tagOpt`) has
-every tag missing without being shallow, and is reported as unverifiable
-(`WARN`), not as untagged.
+full-history repository that never fetched its tags (`git clone --no-tags`,
+`git fetch --no-tags`) has them missing without being shallow; when an
+`origin` exists the check asks it, and a remote tag the clone lacks makes the
+result unverifiable (`WARN`), not untagged. Offline, the local view is trusted.
 
 ## File enumeration and exclusions
 

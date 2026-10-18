@@ -3038,6 +3038,18 @@ out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct4d" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL changelog-tags.*2 of 2' && ! echo "$out" | grep -q 'shallow'; then pass; else
     fail "expected FAIL for two untagged headings (remote has no tags, namespace complete), got: $out"; fi
 
+echo -n "Test 206f: changelog-tags WARNs (not FAILs) after 'git init && git fetch --no-tags' (full history, no tagOpt persisted)... "
+ct4fsrc=$(make_project "ct-fetch-notags-src")
+write_changelog "$ct4fsrc/CHANGELOG.md" "## [1.0.0] - 2026-05-01"
+( cd "$ct4fsrc" && git add CHANGELOG.md && git -c user.email="t@t.local" -c user.name="T" commit -q -m "docs: 1.0.0" )
+tag_all "$ct4fsrc" v1.0.0
+ct4f="$TMP_BASE/ct-fetch-notags"
+mkdir -p "$ct4f"
+( cd "$ct4f" && git init -q && git remote add origin "file://$ct4fsrc" && git fetch -q --no-tags origin 2>/dev/null && git checkout -q FETCH_HEAD 2>/dev/null )
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct4f" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN changelog-tags.*no-tags' && ! echo "$out" | grep -q '^FAIL'; then pass; else
+    fail "expected WARN (remote has the tag, clone did not fetch it), got: $out"; fi
+
 echo -n "Test 206e: changelog-tags WARNs (not FAILs) in a full-history 'git clone --no-tags' whose remote has the tags... "
 ct4esrc=$(make_project "ct-notags-clone-src")
 write_changelog "$ct4esrc/CHANGELOG.md" "## [1.0.0] - 2026-05-01"

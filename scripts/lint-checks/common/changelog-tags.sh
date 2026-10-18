@@ -190,11 +190,13 @@ manifest_version_cargo_toml() {
     # Section header, normalised: comment stripped, whitespace removed, and
     # quoted table names (`["package"]`) unquoted so they compare like bare ones.
     /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]"'"'"']/, "", sect); next }
-    (sect == "[package]" && /^[[:space:]]*version\.workspace[[:space:]]*=[[:space:]]*true/) ||
-    (sect == "" && /^[[:space:]]*package\.version\.workspace[[:space:]]*=[[:space:]]*true/) { inherits = 1; next }
+    # Dotted keys may quote any segment (`"package"."version" = …`); the
+    # matches below allow an optional quote around each segment.
+    (sect == "[package]" && /^[[:space:]]*"?version"?\."?workspace"?[[:space:]]*=[[:space:]]*true/) ||
+    (sect == "" && /^[[:space:]]*"?package"?\."?version"?\."?workspace"?[[:space:]]*=[[:space:]]*true/) { inherits = 1; next }
     # Bare or quoted key (`version = …` / `"version" = …`); strval strips to the `=`.
     (sect == "[package]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
-    (sect == "" && /^[[:space:]]*package\.version[[:space:]]*=/) { if (pkg == "") pkg = strval($0); next }
+    (sect == "" && /^[[:space:]]*"?package"?\."?version"?[[:space:]]*=/) { if (pkg == "") pkg = strval($0); next }
     # Inline table: `package = { name = "app", version = "1.2.3" }`. The key
     # must start at a table boundary (`{` or `,`) so `rust-version = "1.85"`
     # is not mistaken for it.
@@ -206,8 +208,8 @@ manifest_version_cargo_toml() {
         next
     }
     (sect == "[workspace.package]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
-    (sect == "[workspace]" && /^[[:space:]]*package\.version[[:space:]]*=/) ||
-    (sect == "" && /^[[:space:]]*workspace\.package\.version[[:space:]]*=/) { if (ws == "") ws = strval($0); next }
+    (sect == "[workspace]" && /^[[:space:]]*"?package"?\."?version"?[[:space:]]*=/) ||
+    (sect == "" && /^[[:space:]]*"?workspace"?\."?package"?\."?version"?[[:space:]]*=/) { if (ws == "") ws = strval($0); next }
     END {
         if (pkg != "" && !inherits) print pkg
         else if (ws != "") print ws
@@ -231,7 +233,7 @@ manifest_version_pyproject() {
     }
     /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]"'"'"']/, "", sect); next }
     (sect == "[project]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
-    (sect == "" && /^[[:space:]]*project\.version[[:space:]]*=/) { if (proj == "") proj = strval($0); next }
+    (sect == "" && /^[[:space:]]*"?project"?\."?version"?[[:space:]]*=/) { if (proj == "") proj = strval($0); next }
     # Inline table: `project = { name = "demo", version = "1.2.3" }`.
     sect == "" && /^[[:space:]]*project[[:space:]]*=[[:space:]]*\{/ {
         line = $0
@@ -241,8 +243,8 @@ manifest_version_pyproject() {
         next
     }
     (sect == "[tool.poetry]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
-    (sect == "" && /^[[:space:]]*tool\.poetry\.version[[:space:]]*=/) ||
-    (sect == "[tool]" && /^[[:space:]]*poetry\.version[[:space:]]*=/) { if (poetry == "") poetry = strval($0); next }
+    (sect == "" && /^[[:space:]]*"?tool"?\."?poetry"?\."?version"?[[:space:]]*=/) ||
+    (sect == "[tool]" && /^[[:space:]]*"?poetry"?\."?version"?[[:space:]]*=/) { if (poetry == "") poetry = strval($0); next }
     END {
         if (proj != "") print proj
         else if (poetry != "") print poetry
@@ -411,6 +413,12 @@ release-1.0.2'
     printf '["package"]\nname = "app"\nversion = "1.2.6"\n' > "$tmp/Cargo.toml"
     got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
     [ "$got" = "1.2.6" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed a quoted table name: '$got'"; return 1; }
+    printf '"package"."name" = "app"\n"package"."version" = "1.2.7"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "1.2.7" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed quoted dotted-key segments: '$got'"; return 1; }
+    printf '"project"."version" = "2.0.4"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "2.0.4" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed quoted dotted-key segments: '$got'"; return 1; }
     printf '["project"]\nname = "p"\nversion = "2.0.2"\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "2.0.2" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed a quoted table name: '$got'"; return 1; }
@@ -573,19 +581,18 @@ if [ "$IS_SHALLOW" = true ]; then
         missing_remote=$(comm -13 <(printf '%s\n' "$local_tags") <(printf '%s\n' "$remote_tags") | grep -c . || true)
         [ "$missing_remote" -eq 0 ] && IS_SHALLOW=false
     fi
-elif [ "$(git -C "$PROJECT_ROOT" config --get remote.origin.tagOpt 2>/dev/null)" = "--no-tags" ]; then
-    # A FULL-history clone made with `git clone --no-tags` persists
-    # remote.origin.tagOpt=--no-tags, so no fetch ever brings the tags: every
-    # heading would look untagged. Treat it like a shallow clone — not
-    # fetched is not the same as not tagged — unless the remote agrees that
-    # there is nothing missing.
+elif git -C "$PROJECT_ROOT" config --get remote.origin.url >/dev/null 2>&1; then
+    # A FULL-history repository can still lack tags: `git clone --no-tags`
+    # (which persists remote.origin.tagOpt) or `git init && git fetch
+    # --no-tags` (which persists nothing). Whenever an origin exists, ask it:
+    # a remote tag the clone lacks means "not fetched", which is not the same
+    # as "not tagged", and the result is the unverifiable WARN. Offline, the
+    # local view is trusted (a full clone normally has every tag).
     if remote_raw=$(git -C "$PROJECT_ROOT" ls-remote --tags --refs origin 2>/dev/null); then
         remote_tags=$(printf '%s\n' "$remote_raw" | sed -n 's|.*refs/tags/||p' | sort)
         local_tags=$(printf '%s\n' "$TAGS" | grep . | sort || true)
         missing_remote=$(comm -13 <(printf '%s\n' "$local_tags") <(printf '%s\n' "$remote_tags") | grep -c . || true)
         [ "$missing_remote" -eq 0 ] || IS_SHALLOW=true
-    else
-        IS_SHALLOW=true
     fi
 fi
 
