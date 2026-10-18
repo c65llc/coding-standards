@@ -28,11 +28,13 @@
 #   2. This file, for a shape that recurs across many fixtures.
 #
 # Blocks below, in increasing reach:
-#   A. Global shapes — regexes that match ONLY a form no real secret takes.
-#   B. Fixture path AND shape — forms a real secret CAN take (a UUID, a token
-#      that happens to contain "example"), suppressed only inside test paths.
-#      Not a path exclude: a non-matching secret in a test file is reported.
-#   C. Path excludes — all-noise paths, last resort.
+#   A. Global shapes — regexes that match ONLY a form that cannot work as a
+#      credential anywhere (redaction output). Deliberately tiny.
+#   B. Fixture path AND shape — forms a real secret CAN take (a UUID, a weak
+#      default like `changeme`, a repeated-character pad, a token that
+#      contains "example"), suppressed only inside test paths. Not a path
+#      exclude: a non-matching secret in a test file is reported.
+#   C. Path excludes — none by default; a commented per-artifact example.
 # No block sets `regexTarget`, so Gitleaks tests the regexes against the
 # extracted SECRET (the rule's capture group), which is what anchored shapes
 # expect — `password = "test-foo"` is suppressed because `test-foo` matches,
@@ -46,40 +48,43 @@ title = "project gitleaks config"
 useDefault = true
 
 # ---------------------------------------------------------------------------
-# A. Global shapes — forms no real secret takes, anywhere in the repository
+# A. Global shapes — forms that cannot work as a credential anywhere. Only
+#    redaction output qualifies: a value like `changeme`, `hunter2` or
+#    `xxxxxxxxxxxxxxxx` in production config is a weak DEFAULT credential
+#    (sec-01 §6, P0), not a fixture, so those shapes live in block B.
 # ---------------------------------------------------------------------------
 [[allowlists]]
-description = "Shapes no real secret takes (sec-01 §3)"
+description = "Redaction output — never a working credential (sec-01 §3)"
 regexes = [
-  # Fake passwords by naming convention: a value that announces itself
-  # (test-, fake-, dummy-, example-, not-a-real-, changeme) is a fixture, not
-  # a credential. Keep the convention and the scanner stays quiet.
-  '''^(test|fake|dummy|example|placeholder|not-a-real|changeme|hunter2)[-_a-zA-Z0-9]*$''',
   # Redaction-test output: the scanner sees the redacted form, which is only
-  # asterisks or the literal REDACTED marker, never a secret.
+  # asterisks or the literal REDACTED marker.
   '''^(\*{4,}|\[?REDACTED\]?|<redacted>)$''',
-  # Repeated-character fixtures (`xxxxxxxx…`, `0000…`, `aaaa…`) used to pad a
-  # token to the right length in a parser test. RE2 has no backreference, so
-  # the usual padding characters are enumerated; add yours to the alternation.
-  '''(?i)^(0{16,}|1{16,}|9{16,}|a{16,}|f{16,}|x{16,}|z{16,})$''',
 ]
 
 # ---------------------------------------------------------------------------
 # B. Fixture path AND shape — both conditions must hold (`condition = "AND"`
-#    spans every condition a block declares, so the UUID shapes and the
-#    stopwords sit in separate blocks: a UUID need not also contain a word).
+#    spans every condition TYPE a block declares: the path must match AND one
+#    of the regexes must match. Stopwords sit in a separate block so a UUID
+#    need not also contain a word).
 # ---------------------------------------------------------------------------
 [[allowlists]]
-description = "UUID-shaped ids in test fixtures only (sec-01 §3)"
-# A UUID is a shape many services issue API keys in, so the shape alone does
-# not make a value safe; it is accepted only inside a test or fixture path.
+description = "Fixture-shaped values in test paths only (sec-01 §3)"
 condition = "AND"
 paths = [
   '''(^|/)(tests?|__tests__|spec|fixtures)/''',
   '''(_test|\.test|\.spec|_spec)\.[A-Za-z0-9]+$''',
 ]
 regexes = [
+  # Fake credentials by naming convention: a value that announces itself
+  # (test-, fake-, dummy-, example-, not-a-real-, changeme). Outside a test
+  # path the same value is a default credential and is reported.
+  '''^(test|fake|dummy|example|placeholder|not-a-real|changeme|hunter2)[-_a-zA-Z0-9]*$''',
+  # Repeated-character pads (`xxxxxxxx…`, `0000…`, `aaaa…`) that bring a token
+  # to the right length in a parser test. RE2 has no backreference, so the
+  # usual padding characters are enumerated; add yours to the alternation.
+  '''(?i)^(0{16,}|1{16,}|9{16,}|a{16,}|f{16,}|x{16,}|z{16,})$''',
   # UUIDv7 (version nibble 7, variant 8-b): time-ordered fixture primary keys.
+  # A UUID is a shape many services issue API keys in, hence test paths only.
   '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$''',
   # Any RFC 4122 UUID (v1–v5) for fixtures that are not time-ordered.
   '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$''',
@@ -105,25 +110,21 @@ stopwords = [
 ]
 
 # ---------------------------------------------------------------------------
-# C. Path excludes — the LAST resort. Each one covers a path that is all-noise
-#    by construction: lockfiles, whose content is integrity hashes and registry
-#    URLs the package manager wrote. Never exclude `tests/` or `fixtures/`
-#    wholesale: block B covers the fixture shapes, and a real secret pasted
-#    into a test file must still be caught. Generated bundles (`dist/`,
-#    `*.min.js`) are NOT excluded by default: a committed bundle is exactly
-#    where a build-time-injected credential ends up, and a path exclude drops
-#    the finding whatever its shape. Exclude a bundle only when you know its
-#    build injects no configuration, and name that artifact, not the tree.
+# C. Path excludes — the LAST resort, and this template ships NONE. A path
+#    exclude drops every finding in the file whatever its value, so it is
+#    only right for a file that cannot carry a credential at all, and few can:
+#    a committed bundle (`dist/`, `*.min.js`) is where a build-time-injected
+#    credential lands; a lockfile (`package-lock.json`, `yarn.lock`) carries
+#    the registry URLs the package manager wrote, token and all, when someone
+#    installed from a private URL. Lockfile hash noise is handled by
+#    Gitleaks' default rules (`useDefault = true` above), not by excluding the
+#    file. Never exclude `tests/` or `fixtures/` wholesale: block B covers the
+#    fixture shapes, and a real secret pasted into a test file must be caught.
+#    If a specific artifact is provably credential-free, name that artifact:
+#
+# [[allowlists]]
+# description = "vendored highlight.js build: upstream artifact, no config injected"
+# paths = [
+#   '''^public/vendor/highlight\.min\.js$''',
+# ]
 # ---------------------------------------------------------------------------
-[[allowlists]]
-description = "All-noise paths (sec-01 §3, last resort)"
-paths = [
-  '''(^|/)pnpm-lock\.yaml$''',
-  '''(^|/)package-lock\.json$''',
-  '''(^|/)yarn\.lock$''',
-  '''(^|/)Cargo\.lock$''',
-  '''(^|/)poetry\.lock$''',
-  '''(^|/)Package\.resolved$''',
-  # Opt in per artifact, never per tree — see the note above:
-  # '''^public/vendor/highlight\.min\.js$''',
-]

@@ -18,11 +18,11 @@
 #     or `release.changelog` in .standards.yml (a declared file that is missing
 #     fails closed).
 #   - Manifest drift (WARN): when any root package.json / Cargo.toml /
-#     pyproject.toml carries a version that is not the latest released heading
-#     (SemVer precedence), the manifest was not bumped in the release commit.
-#     Every root manifest with a static version is checked, not just the first.
-#   - Release in flight (WARN): exactly the NEWEST heading untagged, every
-#     older one tagged — a release PR promotes [Unreleased] and the tag is cut
+#     pyproject.toml carries a version that is not the topmost released
+#     heading (Keep a Changelog: newest first), the manifest was not bumped in
+#     the release commit. Every root manifest with a static version is checked.
+#   - Release in flight (WARN): exactly the TOPMOST heading untagged, every
+#     other one tagged — a release PR promotes [Unreleased] and the tag is cut
 #     after merge, so this state exists legitimately for a short while. Two or
 #     more untagged headings, or an older untagged heading while newer ones
 #     are tagged (the forgotten-tag pattern from the consumer survey), FAIL.
@@ -52,8 +52,13 @@ SEMVER_ERE='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
 # ---------------------------------------------------------------------------
 extract_versions() {
     awk '
-    /^## / {
-        s = substr($0, 4)
+    {
+        # CommonMark allows up to three leading spaces before an ATX heading;
+        # four would be a code block, so at most three are stripped.
+        h = $0; sub(/^ /, "", h); sub(/^ /, "", h); sub(/^ /, "", h)
+    }
+    h ~ /^## / {
+        s = substr(h, 4)
         sub(/^[[:space:]]+/, "", s)
         sub(/^\[/, "", s)
         # Cut at the end of the version token: closing bracket, space, "(" or ":".
@@ -65,52 +70,6 @@ extract_versions() {
     }'
 }
 
-# newest_version < versions → the highest version in the list under SemVer
-# precedence (semver.org §11): major/minor/patch compared numerically (so
-# `1.10.0` > `1.9.0`), a prerelease ranks below its release, prerelease
-# identifiers are compared one by one — numeric ones numerically (`rc.10` >
-# `rc.2`), numeric below alphanumeric, a longer identifier list winning a tie —
-# and build metadata is ignored. POSIX awk only.
-newest_version() {
-    awk '
-    function isnum(s) { return s ~ /^[0-9]+$/ }
-    # cmpnum(a, b): compare two digit strings as integers of any size — strip
-    # leading zeros, then shorter is smaller, then lexical. No float coercion,
-    # so components beyond 2^53 stay distinct.
-    function cmpnum(a, b) {
-        sub(/^0+/, "", a); sub(/^0+/, "", b)
-        if (length(a) != length(b)) return (length(a) < length(b)) ? -1 : 1
-        if (a == b) return 0
-        return (a "" < b "") ? -1 : 1
-    }
-    # parse(v, out): out[1..3] = core components, out["pre"] = prerelease or ""
-    function parse(v, out,    d) {
-        sub(/\+.*$/, "", v)
-        d = index(v, "-")
-        if (d > 0) { split(substr(v, 1, d - 1), out, "."); out["pre"] = substr(v, d + 1) }
-        else { split(v, out, "."); out["pre"] = "" }
-    }
-    # cmpver(a, b): negative when a < b, 0 when equal, positive when a > b
-    function cmpver(a, b,    A, B, i, na, nb, pa, pb, an, bn, r) {
-        parse(a, A); parse(b, B)
-        for (i = 1; i <= 3; i++) { r = cmpnum(A[i], B[i]); if (r != 0) return r }
-        if (A["pre"] == "" && B["pre"] == "") return 0
-        if (A["pre"] == "") return 1
-        if (B["pre"] == "") return -1
-        na = split(A["pre"], pa, "."); nb = split(B["pre"], pb, ".")
-        for (i = 1; i <= na && i <= nb; i++) {
-            an = isnum(pa[i]); bn = isnum(pb[i])
-            if (an && bn) { r = cmpnum(pa[i], pb[i]); if (r != 0) return r }
-            else if (an) return -1
-            else if (bn) return 1
-            else if (pa[i] != pb[i]) return (pa[i] "" < pb[i] "") ? -1 : 1
-        }
-        if (na != nb) return (na < nb) ? -1 : 1
-        return 0
-    }
-    NF > 0 { if (!seen || cmpver($0, best) > 0) best = $0; seen = 1 }
-    END { if (seen) print best }'
-}
 
 # tag_for <version> <tags-newline-list> <prefix-or-__DEFAULT__> → prints the
 # matching tag name, or returns 1 when none matches
@@ -190,20 +149,29 @@ manifest_version_cargo_toml() {
 }
 
 manifest_version_pyproject() {
-    # `version = "x"` under [project] or [tool.poetry]; `dynamic = ["version"]`
-    # projects have no static version and print nothing.
+    # `[project] version` is authoritative (PEP 621); `[tool.poetry] version`
+    # is the legacy field and applies only when [project] declares none —
+    # independent of section order, so a migration-era file that still
+    # carries a stale poetry value is read correctly. `dynamic = ["version"]`
+    # projects have no static version and print nothing. Dotted-key
+    # spellings are read too (top-level `project.version` /
+    # `tool.poetry.version`, `poetry.version` under `[tool]`).
     awk '
-    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]]/, "", sect); next }
-    # `version = …` inside the section, or the dotted-key spelling: top-level
-    # `project.version` / `tool.poetry.version`, or `poetry.version` under
-    # `[tool]`.
-    ((sect == "[project]" || sect == "[tool.poetry]") && /^[[:space:]]*version[[:space:]]*=/) ||
-    (sect == "" && /^[[:space:]]*(project|tool\.poetry)\.version[[:space:]]*=/) ||
-    (sect == "[tool]" && /^[[:space:]]*poetry\.version[[:space:]]*=/) {
-        line = $0
+    function strval(line) {
         sub(/^[^=]*=[[:space:]]*/, "", line)
-        if (match(line, /"[^"]*"/)) { print substr(line, RSTART + 1, RLENGTH - 2); exit }
-        if (match(line, /'"'"'[^'"'"']*'"'"'/)) { print substr(line, RSTART + 1, RLENGTH - 2); exit }
+        if (match(line, /"[^"]*"/)) return substr(line, RSTART + 1, RLENGTH - 2)
+        if (match(line, /'"'"'[^'"'"']*'"'"'/)) return substr(line, RSTART + 1, RLENGTH - 2)
+        return ""
+    }
+    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]]/, "", sect); next }
+    (sect == "[project]" && /^[[:space:]]*version[[:space:]]*=/) ||
+    (sect == "" && /^[[:space:]]*project\.version[[:space:]]*=/) { if (proj == "") proj = strval($0); next }
+    (sect == "[tool.poetry]" && /^[[:space:]]*version[[:space:]]*=/) ||
+    (sect == "" && /^[[:space:]]*tool\.poetry\.version[[:space:]]*=/) ||
+    (sect == "[tool]" && /^[[:space:]]*poetry\.version[[:space:]]*=/) { if (poetry == "") poetry = strval($0); next }
+    END {
+        if (proj != "") print proj
+        else if (poetry != "") print poetry
     }' "$1"
 }
 
@@ -249,32 +217,20 @@ self_test() {
 
 ## [1.8.0]: 2026-03-01
 
+   ## [1.7.0] - 2026-02-01
+
+    ## [0.0.1] - code block, not a heading
+
 ## Not a version
 
 ## [UNRELEASED]
 '
     got=$(printf '%s\n' "$fixture" | extract_versions | tr '\n' ' ')
-    want='1.10.0 1.9.1 1.9.0 2.0.0-rc.1 1.8.0 '
+    want='1.10.0 1.9.1 1.9.0 2.0.0-rc.1 1.8.0 1.7.0 '
     [ "$got" = "$want" ] || { echo "heading parser produced '$got' (expected '$want')"; return 1; }
     got=$(printf '## [Unreleased]\n## [unreleased] - soon\n## 1.2\n## 1.2.3.4\n' | extract_versions)
     [ -z "$got" ] || { echo "heading parser accepted a non-release heading: $got"; return 1; }
 
-    got=$(printf '1.9.0\n1.10.0\n1.9.1\n' | newest_version)
-    [ "$got" = "1.10.0" ] || { echo "newest_version picked '$got' (expected 1.10.0: numeric component sort)"; return 1; }
-    got=$(printf '2.0.0-rc.1\n2.0.0\n' | newest_version)
-    [ "$got" = "2.0.0" ] || { echo "newest_version ranked a prerelease above its release: $got"; return 1; }
-    got=$(printf '1.0.0-rc.10\n1.0.0-rc.2\n1.0.0-rc.9\n' | newest_version)
-    [ "$got" = "1.0.0-rc.10" ] || { echo "newest_version compared numeric prerelease identifiers textually: $got (expected 1.0.0-rc.10)"; return 1; }
-    got=$(printf '1.0.0-beta\n1.0.0-alpha.1\n1.0.0-alpha\n1.0.0-1\n' | newest_version)
-    [ "$got" = "1.0.0-beta" ] || { echo "newest_version broke SemVer prerelease precedence: $got (expected 1.0.0-beta)"; return 1; }
-    got=$(printf '1.0.0-alpha\n1.0.0-alpha.1\n' | newest_version)
-    [ "$got" = "1.0.0-alpha.1" ] || { echo "newest_version did not rank the longer identifier list higher: $got"; return 1; }
-    got=$(printf '1.0.0+build.2\n1.0.0-rc.1+build.9\n' | newest_version)
-    [ "$got" = "1.0.0+build.2" ] || { echo "newest_version let build metadata affect precedence: $got"; return 1; }
-    got=$(printf '9007199254740993.0.0\n9007199254740992.0.0\n' | newest_version)
-    [ "$got" = "9007199254740993.0.0" ] || { echo "newest_version collapsed integers beyond 2^53: $got"; return 1; }
-    got=$(printf '1.0.0-rc.9007199254740993\n1.0.0-rc.9007199254740992\n' | newest_version)
-    [ "$got" = "1.0.0-rc.9007199254740993" ] || { echo "newest_version collapsed prerelease integers beyond 2^53: $got"; return 1; }
 
     tags='v1.0.0
 1.0.1
@@ -338,6 +294,9 @@ release-1.0.2'
     printf '[tool]\npoetry.name = "p"\npoetry.version = "4.5.9"\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "4.5.9" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed poetry.version under [tool]: '$got'"; return 1; }
+    printf '[tool.poetry]\nname = "p"\nversion = "1.0.0"\n\n[project]\nname = "p"\nversion = "2.0.0"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "2.0.0" ] || { rm -rf "$tmp"; echo "pyproject.toml reader preferred legacy [tool.poetry] over [project]: '$got'"; return 1; }
     printf '[build-system]\nrequires = ["hatchling"]\n\n[project]\nname = "p"\nversion = '"'"'4.5.6'"'"'\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "4.5.6" ] || { rm -rf "$tmp"; echo "pyproject.toml reader returned '$got'"; return 1; }
@@ -496,7 +455,11 @@ done <<EOF
 $VERSIONS
 EOF
 
-LATEST=$(printf '%s\n' "$VERSIONS" | newest_version)
+# Keep a Changelog lists releases newest first, so the topmost released heading
+# is the newest release on this branch. File order, not SemVer: a maintenance
+# line's `1.5.1` above an older `2.0.0` is the newer release here, and the
+# manifest on this branch should carry it.
+LATEST=$(printf '%s\n' "$VERSIONS" | head -1)
 
 if [ "$MISSING_COUNT" -gt 0 ]; then
     more=""
@@ -511,7 +474,7 @@ if [ "$MISSING_COUNT" -gt 0 ]; then
         && ! printf '%s\n' "$TAGS" | grep -Eq -- "(^|[^0-9.])${latest_ere}\$"; then
         # A release in flight: the release PR promotes [Unreleased] to a
         # numbered heading and the tag is cut after the merge (proc-02 §5), so
-        # between those two steps exactly the newest heading has no tag at all.
+        # between those two steps exactly the topmost heading has no tag at all.
         # That is advisory. A tag that exists under the wrong prefix is not in
         # flight (it is misnamed), and a second untagged heading, or an older
         # one while newer releases are tagged, is the forgotten-tag pattern;

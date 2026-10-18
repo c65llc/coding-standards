@@ -164,17 +164,18 @@ signal high.
 - **Suppress at the finest granularity that works, in this order.** (1) An
   inline marker on the exact line — `// trufflehog:ignore` for TruffleHog,
   `// gitleaks:allow` for Gitleaks, both when both scanners run. (2) A
-  **shape-based** allowlist regex that matches the fixture's form (a
-  `test-`/`fake-`/`not-a-real-`-prefixed value, a `REDACTED`/`****`
-  redaction output, a repeated-character pad) and nothing a real secret
-  would take. A shape a real secret *can* take — a UUID, since many services
-  issue UUID API keys — is never allowlisted globally; it is confined to
-  fixture locations with a path-AND-shape condition (Gitleaks ≥ 8.25
-  `[[allowlists]] condition = "AND"`) or marked inline. (3) A path exclude,
-  only for a path that is all-noise by construction (lockfiles). A committed
-  build output (`dist/`, `*.min.js`) is not all-noise — it is where a
-  build-time-injected credential lands — so it is excluded per named
-  artifact, if at all, never per tree.
+  **shape-based** allowlist regex, global only when the shape cannot work as
+  a credential anywhere (`REDACTED`/`****` redaction output). A shape a real
+  secret *can* take — a UUID (many services issue UUID API keys), a
+  `test-`/`changeme`-style value or a repeated-character pad (in production
+  config those are weak *default* credentials, §6 P0) — is never allowlisted
+  globally; it is confined to fixture locations with a path-AND-shape
+  condition (Gitleaks ≥ 8.25 `[[allowlists]] condition = "AND"`) or marked
+  inline. (3) A path exclude, only for a named artifact that provably cannot
+  carry a credential. Neither a committed build output (`dist/`, `*.min.js`:
+  where a build-time-injected credential lands) nor a lockfile (registry URLs
+  the package manager wrote, token and all) qualifies, so the template ships
+  no path excludes.
 - **Never exclude `tests/`, `fixtures/` or `__tests__/` wholesale.** A real
   secret pasted into a test file must still be caught; the shape allowlist
   covers the fixture forms without opening that hole.
@@ -188,9 +189,10 @@ signal high.
   review.
 
 Ship-with-standards template: [`templates/.gitleaks.toml.example`](../../templates/.gitleaks.toml.example)
-(Gitleaks ≥ 8.25: global shape regexes for naming-convention fakes, redaction
-output and repeated-character padding; path-AND-shape blocks for UUID fixtures
-and fixture stopwords; a lockfile-only path list). TruffleHog
+(Gitleaks ≥ 8.25: one global shape for redaction output; path-AND-shape blocks
+for naming-convention fakes, repeated-character padding, UUID fixtures and
+fixture stopwords; no path excludes, with a commented per-artifact example).
+TruffleHog
 takes only path excludes (`.trufflehog-ignore`), so its per-finding
 suppression is the inline `trufflehog:ignore` marker. The scanner workflow
 itself is in §9.
