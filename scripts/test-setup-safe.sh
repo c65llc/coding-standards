@@ -1358,7 +1358,7 @@ errs=""
 [ -L "$proj/.aiderrc" ]                                                    || errs="$errs link-replaced"
 grep -q 'lang-01_python_standards.md' "$proj/config/aiderrc"               || errs="$errs target-not-rewritten"
 grep -q '^model = ' "$proj/config/aiderrc"                                 && errs="$errs model-kept"
-mode=$(stat -f %Lp "$proj/config/aiderrc" 2>/dev/null || stat -c %a "$proj/config/aiderrc" 2>/dev/null)
+if stat -c %a / >/dev/null 2>&1; then mode=$(stat -c %a "$proj/config/aiderrc"); else mode=$(stat -f %Lp "$proj/config/aiderrc"); fi   # GNU, then BSD
 [ "$mode" = "640" ]                                                        || errs="$errs mode=$mode"
 [ "$(find "$proj/config" -mindepth 1 ! -name aiderrc | wc -l | tr -d ' ')" = "0" ] || errs="$errs temp-left:$(find "$proj/config" -mindepth 1 ! -name aiderrc -exec basename {} \; | tr '\n' ',')"
 grep -q '03_python_standards.md' "$proj/.aiderrc.pre-standards-setup" 2>/dev/null || errs="$errs backup-not-original"
