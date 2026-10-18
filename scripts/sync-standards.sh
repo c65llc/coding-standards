@@ -91,6 +91,12 @@ source "$SCRIPT_DIR/lib/languages.sh"
 # shellcheck source=lib/members.sh disable=SC1091
 source "$SCRIPT_DIR/lib/members.sh"
 
+# Filled-in Project Overview / Key Commands capture (#183)
+if [ -f "$SCRIPT_DIR/lib/project-sections.sh" ]; then
+    # shellcheck source=lib/project-sections.sh disable=SC1091
+    source "$SCRIPT_DIR/lib/project-sections.sh"
+fi
+
 # Function to sync AI agent configurations
 sync_ai_agents() {
     local STANDARDS_DIR="$1"
@@ -191,9 +197,26 @@ sync_ai_agents() {
                     NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$new_hash" "$NEW_CHECKSUMS")
                 fi
                 ;;
-            1) echo "⚠️  $agent config customized — update staged to $PENDING_DIR/" ;;
+            1)
+                echo "⚠️  $agent config customized — update staged to $PENDING_DIR/"
+                # Filled-in overview/commands that .standards.yml does not persist
+                # are the usual reason a config can never match its checksum (#183).
+                if declare -f print_capture_hint >/dev/null 2>&1; then
+                    print_capture_hint "$PROJECT_ROOT" "$OUTPUT_PATH" "${OUTPUT_PATH#"$PROJECT_ROOT"/}" || true
+                fi
+                ;;
             2) echo "⚠️  $agent config was manually created — skipping, backup in $PENDING_DIR/" ;;
             3) echo "⚠️  Failed to sync $agent config (non-fatal, continuing...)" ;;
+            4)
+                echo "ℹ️  $agent config is curated (managed: false in .standards.yml) — not regenerated."
+                echo "   Review upstream template changes with diff-standards.sh."
+                # Keep a checksum baseline for the curated file (see setup.sh).
+                if [ "$DRY_RUN" = false ] && [ -f "$OUTPUT_PATH" ]; then
+                    local curated_hash
+                    curated_hash=$(compute_hash "$OUTPUT_PATH")
+                    NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$curated_hash" "$NEW_CHECKSUMS")
+                fi
+                ;;
         esac
 
         # Aider special handling: also sync aiderrc.template to .aiderrc

@@ -2651,6 +2651,104 @@ if json_valid "$TMP_BASE/quote.sarif" && grep -q '"uri": "a%22b"' "$TMP_BASE/quo
    && tr -d '\n' < "$TMP_BASE/quote.sarif" | grep -q '"properties": *{ *"member": *"a\\"b"'; then pass; else
     fail "uris: $(grep -o '"uri": "[^"]*"' "$TMP_BASE/quote.sarif" | sort -u | tr '\n' ' ') props: $(grep -o '"member": "[^,}]*' "$TMP_BASE/quote.sarif" | sort -u | tr '\n' ' ')"; fi
 
+# --- #183: curated agent configs (doctor.sh, diff-standards.sh, yaml readers) --
+
+echo -n "Test 183: yaml_block_scalar reads literal blocks (interior blank kept, trailing dropped) and plain scalars (a quoted # is data)... "
+yb="$TMP_BASE/yaml-block.yml"
+printf 'version: 1\nproject_overview: |\n  First paragraph.\n\n  Second paragraph.\n\nkey_commands: "make test # unit tests"   # trailing comment\nhooks: custom   # comment\nrole: '"'"'svc # one'"'"'\n' > "$yb"
+out=$(bash -c "source '$REPO_ROOT/scripts/lib/checksums.sh'; yaml_block_scalar project_overview '$yb'; echo '<<'; yaml_block_scalar key_commands '$yb'; echo '<<'; yaml_block_scalar hooks '$yb'; echo '<<'; yaml_block_scalar role '$yb'; echo '<<'; yaml_block_scalar missing '$yb'; echo '<<'")
+expected=$(printf 'First paragraph.\n\nSecond paragraph.\n<<\nmake test # unit tests\n<<\ncustom\n<<\nsvc # one\n<<\n<<')
+if [ "$out" = "$expected" ]; then pass; else fail "got: $(printf '%s' "$out" | tr '\n' '|')"; fi
+
+echo -n "Test 184: file_managed reads block and inline managed: maps by basename or relative path... "
+mp="$TMP_BASE/managed-block"; mkdir -p "$mp"
+printf 'version: 1\nmanaged:\n  CLAUDE.md: false   # curated\n  .github/copilot-instructions.md: "no"   # quoted\n  AGENTS.md: true\n' > "$mp/.standards.yml"
+mi="$TMP_BASE/managed-inline"; mkdir -p "$mi"
+printf 'version: 1\nmanaged: { .cursorrules: false, AGENTS.md: true }\n' > "$mi/.standards.yml"
+out=$(bash -c "source '$REPO_ROOT/scripts/lib/checksums.sh'
+    file_managed '$mp' CLAUDE.md; echo \"claude=\$?\"
+    file_managed '$mp' '$mp/.github/copilot-instructions.md'; echo \"copilot=\$?\"
+    file_managed '$mp' copilot-instructions.md; echo \"copilot-base=\$?\"
+    file_managed '$mp' AGENTS.md; echo \"agents=\$?\"
+    file_managed '$mp' .cursorrules; echo \"undeclared=\$?\"
+    file_managed '$mi' .cursorrules; echo \"inline-cursor=\$?\"
+    file_managed '$mi' AGENTS.md; echo \"inline-agents=\$?\"
+    file_managed '$TMP_BASE' CLAUDE.md; echo \"no-yml=\$?\"" | tr '\n' ' ')
+if [ "$out" = "claude=1 copilot=1 copilot-base=1 agents=0 undeclared=0 inline-cursor=1 inline-agents=0 no-yml=0 " ]; then pass; else fail "got: $out"; fi
+
+echo -n "Test 185: doctor.sh reports a drifted file as WARN, then as curated PASS once managed: false is declared... "
+dc=$(make_project "doctor-curated")
+fake_standards "$dc"
+printf 'version: 1\nlanguages:\n  - typescript\nagents:\n  - codex\nrole: service\n' > "$dc/.standards.yml"
+( cd "$dc" && bash "$REPO_ROOT/scripts/setup.sh" --agents codex --languages typescript >/dev/null 2>&1 ) || true
+{ head -1 "$dc/AGENTS.md"; echo "# curated local rule"; tail -n +2 "$dc/AGENTS.md"; } > "$dc/AGENTS.md.tmp" && mv "$dc/AGENTS.md.tmp" "$dc/AGENTS.md"
+out1=$(cd "$dc" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+printf 'managed:\n  AGENTS.md: false\n' >> "$dc/.standards.yml"
+out2=$(cd "$dc" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+errs=""
+echo "$out1" | grep 'Checksums' | grep -q 'WARN'                                  || errs="$errs drift-not-warned"
+echo "$out1" | grep 'Checksums' | grep -q 'AGENTS.md'                             || errs="$errs drifted-file-not-named"
+echo "$out2" | grep 'Checksums' | grep -q 'PASS'                                  || errs="$errs curated-not-pass"
+echo "$out2" | grep 'Checksums' | grep -q 'curated, not drifted: AGENTS.md'       || errs="$errs curated-not-named"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$out1" | grep 'Checksums') / $(echo "$out2" | grep 'Checksums')"; fi
+
+echo -n "Test 186: diff-standards.sh shows a curated file's upstream differences but --exit-code stays 0... "
+out=$(cd "$dc" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code 2>&1); rc=$?
+errs=""
+[ "$rc" -eq 0 ]                                                  || errs="$errs exit=$rc"
+echo "$out" | grep -q 'Curated (managed: false)'                 || errs="$errs not-labelled-curated"
+echo "$out" | grep -q '^.*-# curated local rule'                 || errs="$errs diff-not-shown"
+echo "$out" | grep -q '1 curated (manual review)'                || errs="$errs summary-missing"
+echo "$out" | grep -q '0 would change'                           || errs="$errs counted-as-change"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$out" | grep -E 'Curated|Summary' | tr '\n' '|')"; fi
+
+echo -n "Test 187: diff-standards.sh carries the project-specific section through (never shown as deleted)... "
+pp=$(make_project "diff-project-section")
+fake_standards "$pp"
+printf 'version: 1\nlanguages:\n  - typescript\nagents:\n  - codex\nrole: service\n' > "$pp/.standards.yml"
+( cd "$pp" && bash "$REPO_ROOT/scripts/setup.sh" --agents codex --languages typescript >/dev/null 2>&1 ) || true
+printf '\n## Jesinia specifics\n\nProject-owned content that sync keeps.\n' >> "$pp/AGENTS.md"
+{ head -1 "$pp/AGENTS.md"; echo "# local drift"; tail -n +2 "$pp/AGENTS.md"; } > "$pp/AGENTS.md.tmp" && mv "$pp/AGENTS.md.tmp" "$pp/AGENTS.md"
+out=$(cd "$pp" && bash "$REPO_ROOT/scripts/diff-standards.sh" --exit-code 2>&1); rc=$?
+errs=""
+[ "$rc" -eq 1 ]                                                       || errs="$errs exit=$rc"
+echo "$out" | grep -q -- '-# local drift'                             || errs="$errs drift-not-shown"
+echo "$out" | grep -q -- '-## Jesinia specifics'                      && errs="$errs project-section-shown-deleted"
+echo "$out" | grep -q -- '-Project-owned content that sync keeps.'    && errs="$errs project-content-shown-deleted"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 188: doctor.sh accepts hooks: custom for the post-merge check... "
+hc=$(make_project "doctor-hooks-custom")
+printf 'version: 1\nlanguages: []\nagents: []\nhooks: custom\n' > "$hc/.standards.yml"
+out=$(cd "$hc" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Git Hooks' | grep -q 'PASS' && echo "$out" | grep 'Git Hooks' | grep -q 'hooks: custom' \
+   && ! echo "$out" | grep -q 'post-merge hook not installed'; then pass; else
+    fail "expected custom PASS: $(echo "$out" | grep 'Git Hooks')"; fi
+
+echo -n "Test 189: doctor.sh warns when hooks: lefthook is declared but no lefthook.yml exists... "
+hl=$(make_project "doctor-hooks-lefthook-missing")
+printf 'version: 1\nlanguages: []\nagents: []\nhooks: lefthook\n' > "$hl/.standards.yml"
+out=$(cd "$hl" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Git Hooks' | grep -q 'WARN' && echo "$out" | grep 'Git Hooks' | grep -q 'hooks: lefthook declared' \
+   && ! echo "$out" | grep -q 'post-merge hook not installed'; then pass; else
+    fail "expected lefthook-declared WARN: $(echo "$out" | grep 'Git Hooks')"; fi
+
+echo -n "Test 190: doctor.sh warns on an unrecognised hooks: value and falls back to detection... "
+hb=$(make_project "doctor-hooks-bogus")
+printf 'version: 1\nlanguages: []\nagents: []\nhooks: bogus\n' > "$hb/.standards.yml"
+out=$(cd "$hb" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Git Hooks' | grep -q "hooks: 'bogus' is not recognised" && echo "$out" | grep -q 'post-merge hook not installed'; then pass; else
+    fail "expected unrecognised WARN + native FAIL: $(echo "$out" | grep 'Git Hooks' | tr '\n' '|')"; fi
+
+echo -n "Test 191: doctor.sh with hooks: husky ignores a stray lefthook.yml and checks .husky/... "
+hh=$(make_project "doctor-hooks-husky")
+printf 'version: 1\nlanguages: []\nagents: []\nhooks: husky\n' > "$hh/.standards.yml"
+printf 'pre-commit:\n  commands: {}\n' > "$hh/lefthook.yml"
+mkdir -p "$hh/.husky"
+out=$(cd "$hh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Git Hooks' | grep -qi 'husky' && ! echo "$out" | grep 'Git Hooks' | grep -qi 'lefthook'; then pass; else
+    fail "expected husky branch: $(echo "$out" | grep 'Git Hooks' | tr '\n' '|')"; fi
+
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

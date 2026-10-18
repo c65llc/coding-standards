@@ -212,6 +212,73 @@ See `scripts/lint-checks/README.md` for the full list and matching rules.
 
 ---
 
+### `project_overview`, `key_commands`
+
+Type: string (literal block `|` or one-line scalar)
+
+The text the assembler writes into `{{PROJECT_OVERVIEW}}` and `{{KEY_COMMANDS}}` in the base agent templates — the `## Project Overview` paragraph and the `## Key Commands` code block of `CLAUDE.md`. Read by `scripts/lib/template-vars.sh` through `assemble-config.sh`, so `setup.sh`, `sync-standards.sh` and `diff-standards.sh` all see the same text.
+
+With both keys declared a re-assembly reproduces a filled-in config byte for byte: its checksum stays stable, `doctor.sh` reports it as matching, and `sync-standards.sh` keeps regenerating it instead of staging a pending copy. Without them the assembler writes `<!-- TODO(standards): -->` markers. When an existing config already has these sections filled in by hand (what the merge skill used to instruct) and the yml lacks them, `setup.sh` and `sync-standards.sh` print the YAML to add; `/merge-standards` writes it for you. Once the keys are in, the next sync notices the assembly matches the installed file and records the baseline.
+
+`key_commands` is written inside the template's ```` ```bash ```` fence, so give it the commands only, one per line.
+
+```yaml
+project_overview: |
+  Widget service that renders dashboards for the billing team. A Python API
+  (`server/`) and a TypeScript front end (`web/`).
+key_commands: |
+  make test        # run the test suite
+  make lint        # lint and format checks
+```
+
+---
+
+### `managed`
+
+Type: mapping of config path → boolean
+
+Per-file management. Every assembled agent config is managed by default: `sync-standards.sh` regenerates it when its checksum matches the last assembly and stages a pending copy to `.standards-pending/` when it does not. Declaring a file `false` marks it **curated** — the project owns it:
+
+| Script | Behaviour for a curated file |
+|--------|------------------------------|
+| `setup.sh`, `sync-standards.sh` | Never regenerated or staged; reported as `curated (managed: false)`. A curated file that does not exist yet is still created once. |
+| `doctor.sh` | A checksum mismatch counts as `curated, not drifted` and the `Checksums` check still passes. |
+| `diff-standards.sh` | Upstream template changes are still shown (`Curated (managed: false): +N/-M lines ...`) for manual review, counted separately in the summary and **not** as pending changes, so `--exit-code` stays 0. |
+
+Keys are the config's project-relative path or its basename, quoted if YAML needs it; the inline form works too. Values `false`, `no` and `off` (any case) mean curated; anything else means managed.
+
+```yaml
+managed:
+  CLAUDE.md: false
+  .github/copilot-instructions.md: false
+# or: managed: { CLAUDE.md: false }
+```
+
+Prefer `project_overview` / `key_commands` when the only customisation is the filled-in overview and commands — that keeps the file managed and still updated by sync. Use `managed: false` for a config you maintain by hand end to end.
+
+---
+
+### `hooks`
+
+Type: string
+
+The git hook manager that owns the post-merge standards-sync reminder and the Conventional Commits `commit-msg` hook.
+
+| Value | Meaning |
+|-------|---------|
+| `standards` (default when absent) | `setup.sh` writes the native `.git/hooks/post-merge`; `doctor.sh` auto-detects `lefthook.yml` / `.husky/` and otherwise checks the native hook. |
+| `lefthook` | `doctor.sh` checks the lefthook config (and warns when no `lefthook.yml` exists, even if a `.husky/` directory is present); `setup.sh` does not install the native hook. |
+| `husky` | Same for `.husky/` (a stray `lefthook.yml` is ignored). |
+| `custom` | The project's own manager (`make hooks`, a pre-commit framework, …). `setup.sh` leaves the native hook alone and `doctor.sh`'s `Git Hooks` check passes without inspecting it. |
+
+An unrecognised value is a `WARN` in `doctor.sh`, which then falls back to detection, and a warning in `setup.sh`, which then installs the native hook as if `hooks:` were absent. `setup.sh` carries `hooks:`, `managed:`, `project_overview:` and `key_commands:` verbatim into the `.standards.yml` it regenerates.
+
+```yaml
+hooks: custom
+```
+
+---
+
 ## Migration from `.standards-config`
 
 The legacy `.standards-config` file used `KEY=VALUE` format:
