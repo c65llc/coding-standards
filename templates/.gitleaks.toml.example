@@ -30,10 +30,13 @@ useDefault = true
 
 [allowlist]
 description = "Shape-based allowlist for test fixtures (sec-01 §3)"
-# "match" applies the regexes to the matched secret itself, not the whole
-# line, so an allowlisted shape cannot accidentally cover a real secret that
-# happens to share a line with a fixture.
-regexTarget = "match"
+# No `regexTarget`: Gitleaks then tests these regexes against the extracted
+# SECRET (the rule's capture group). That is what the anchored shapes below
+# expect — `password = "test-foo"` is suppressed because the secret
+# `test-foo` matches, and a real secret that shares a line with a fixture is
+# still reported. `regexTarget = "match"` would test the rule's whole match
+# (key name and `=` included) and `"line"` the entire line; neither fits an
+# anchored shape. Regexes are Go RE2: no backreferences, no lookaround.
 
 regexes = [
   # UUIDv7 (version nibble 7, variant 8-b): time-ordered ids used as fixture
@@ -50,8 +53,9 @@ regexes = [
   # asterisks or the literal REDACTED marker, never a secret.
   '''^(\*{4,}|\[?REDACTED\]?|<redacted>)$''',
   # Repeated-character fixtures (`xxxxxxxx…`, `0000…`, `aaaa…`) used to pad a
-  # token to the right length in a parser test.
-  '''^([a-zA-Z0-9])\1{15,}$''',
+  # token to the right length in a parser test. RE2 has no backreference, so
+  # the usual padding characters are enumerated; add yours to the alternation.
+  '''(?i)^(0{16,}|1{16,}|9{16,}|a{16,}|f{16,}|x{16,}|z{16,})$''',
 ]
 
 # Stopwords are matched against the secret itself (case-insensitive). A token

@@ -322,7 +322,15 @@ main", and no record of who agreed or when the pin was re-examined.
    creates an issue `dep-age follow-up: <package>@<version>`, labelled
    `dep-age-follow-up`, assigned to the approver, due 24 h later, and links it
    from the PR. It closes only when a reviewer confirms the version has passed
-   72 h with no yank or advisory, or the dependency was rolled back.
+   72 h with no yank or advisory, or the dependency was rolled back. Two
+   things make this step work on the day it is needed: the job declares
+   `permissions: issues: write` (the default `GITHUB_TOKEN` on a Dependabot or
+   fork `pull_request` run is read-only, and `gh issue create` fails with
+   "Resource not accessible by integration"), and the `dep-age-follow-up`
+   label exists (`gh issue create --label` only applies an existing label).
+   Provision both labels once (`gh label create dep-age-override`,
+   `gh label create dep-age-follow-up`) and let the step re-assert the
+   follow-up label idempotently, as the excerpt does.
 4. **A red advisory lane is not an override.** Moving the CVE audit from the
    required gate to a nightly job (arch-08 §2) is the right response to a
    transitive advisory that would otherwise wedge every merge; it does not
@@ -334,25 +342,39 @@ main", and no record of who agreed or when the pin was re-examined.
 
 ```yaml
 # .github/workflows/dep-age-gate.yml (excerpt) — the override path
-- name: Dependency age gate (72 h)
-  id: age
-  run: ./scripts/dep-age-check.sh --max-age-hours 72 --report age-report.json
-  continue-on-error: true
-- name: Honor dep-age-override (label + body block, both required)
-  if: steps.age.outcome == 'failure'
-  env:
-    LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-    BODY: ${{ github.event.pull_request.body }}
-    PR_URL: ${{ github.event.pull_request.html_url }}
-    GH_TOKEN: ${{ github.token }}
-  run: |
-    case ",$LABELS," in *,dep-age-override,*) ;; *) echo "age gate failed; no dep-age-override label"; exit 1 ;; esac
-    printf '%s\n' "$BODY" | grep -q '^Dep-age override:' || { echo "label present, PR body has no 'Dep-age override:' block"; exit 1; }
-    approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
-    [ -n "$approver" ] || { echo "override block names no approver (Approved-by: @handle)"; exit 1; }
-    gh issue create --label dep-age-follow-up --assignee "$approver" \
-      --title "dep-age follow-up: $(jq -r '.youngest' age-report.json)" \
-      --body "Review within 24 h of merge: confirm no yank/advisory after 72 h, or roll back. PR: $PR_URL"
+jobs:
+  dep-age:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      # Dependabot- and fork-triggered pull_request runs get a read-only
+      # GITHUB_TOKEN by default; the follow-up issue needs this grant.
+      issues: write
+    steps:
+      - uses: actions/checkout@<pinned-sha> # vN
+      - name: Dependency age gate (72 h)
+        id: age
+        run: ./scripts/dep-age-check.sh --max-age-hours 72 --report age-report.json
+        continue-on-error: true
+      - name: Honor dep-age-override (label + body block, both required)
+        if: steps.age.outcome == 'failure'
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          BODY: ${{ github.event.pull_request.body }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          case ",$LABELS," in *,dep-age-override,*) ;; *) echo "age gate failed; no dep-age-override label"; exit 1 ;; esac
+          printf '%s\n' "$BODY" | grep -q '^Dep-age override:' || { echo "label present, PR body has no 'Dep-age override:' block"; exit 1; }
+          approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
+          [ -n "$approver" ] || { echo "override block names no approver (Approved-by: @handle)"; exit 1; }
+          # `gh issue create --label` only applies an existing label; --force makes this idempotent.
+          gh label create dep-age-follow-up --color D93F0B --force \
+            --description "Dependency age-gate override awaiting its 24 h follow-up (sec-01 §5)"
+          gh issue create --label dep-age-follow-up --assignee "$approver" \
+            --title "dep-age follow-up: $(jq -r '.youngest' age-report.json)" \
+            --body "Review within 24 h of merge: confirm no yank/advisory after 72 h, or roll back. PR: $PR_URL"
 ```
 
 | Language | Registry / Publish Date Source |

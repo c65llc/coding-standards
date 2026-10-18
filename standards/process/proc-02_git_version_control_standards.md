@@ -218,8 +218,10 @@ Format: `MAJOR.MINOR.PATCH` (e.g., `1.2.3`)
   `make lint-standards` and the standards-review action) reads every released
   `## [x.y.z]` heading and fails when one has no `v<version>` (or `<version>`)
   tag; it warns when the root `package.json` / `Cargo.toml` / `pyproject.toml`
-  version is not the latest release, and when a shallow CI clone fetched no tags
-  (use `fetch-depth: 0` or `fetch-tags: true`). Declare `release.changelog` and
+  version is not the latest release, and when a shallow CI clone cannot see a
+  heading's tag (use `fetch-depth: 0` or `fetch-tags: true`; a `--depth` clone
+  only carries the tags inside the fetched history, so that case is
+  unverifiable rather than a failure). Declare `release.changelog` and
   `release.tag_prefix` in `.standards.yml` when the file or the prefix differ.
 
 ### Release Process

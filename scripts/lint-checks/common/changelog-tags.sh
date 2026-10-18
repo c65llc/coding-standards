@@ -20,8 +20,11 @@
 #   - Manifest drift (WARN): when a root package.json / Cargo.toml /
 #     pyproject.toml carries a version that is not the latest released heading,
 #     the manifest was not bumped in the release commit.
-#   - Shallow clone with no tags (WARN, never PASS): the check cannot run, so
-#     it says so — actions/checkout needs `fetch-depth: 0` or `fetch-tags: true`.
+#   - Shallow clone (WARN, never PASS or FAIL on a missing tag): a `--depth`
+#     clone only carries the tags that point inside the fetched history, so a
+#     heading without a visible tag is unverifiable rather than untagged. The
+#     check says so — actions/checkout needs `fetch-depth: 0` or
+#     `fetch-tags: true`. Tags that ARE visible still verify their headings.
 #
 # Gate rules (proc-05 § 7, scripts/lint-checks/README.md "Writing a gate"):
 #   - self-tests the heading parser, the tag matcher and the manifest readers
@@ -56,19 +59,42 @@ extract_versions() {
     }'
 }
 
-# newest_version < versions → the highest semver in the list (prerelease sorts
-# below the release it precedes). Numeric component sort keeps `1.10.0` above
-# `1.9.0`, which a textual sort would not.
+# newest_version < versions → the highest version in the list under SemVer
+# precedence (semver.org §11): major/minor/patch compared numerically (so
+# `1.10.0` > `1.9.0`), a prerelease ranks below its release, prerelease
+# identifiers are compared one by one — numeric ones numerically (`rc.10` >
+# `rc.2`), numeric below alphanumeric, a longer identifier list winning a tie —
+# and build metadata is ignored. POSIX awk only.
 newest_version() {
-    awk '{
-        v = $0
-        pre = 1
-        base = v
-        sub(/\+.*$/, "", base)
-        if (index(base, "-") > 0) { pre = 0; sub(/-.*$/, "", base) }
-        n = split(base, p, ".")
-        if (n == 3) printf "%d %d %d %d %s\n", p[1], p[2], p[3], pre, v
-    }' | sort -k1,1n -k2,2n -k3,3n -k4,4n | tail -1 | awk '{ print $5 }'
+    awk '
+    function isnum(s) { return s ~ /^[0-9]+$/ }
+    # parse(v, out): out[1..3] = core components, out["pre"] = prerelease or ""
+    function parse(v, out,    d) {
+        sub(/\+.*$/, "", v)
+        d = index(v, "-")
+        if (d > 0) { split(substr(v, 1, d - 1), out, "."); out["pre"] = substr(v, d + 1) }
+        else { split(v, out, "."); out["pre"] = "" }
+    }
+    # cmpver(a, b): negative when a < b, 0 when equal, positive when a > b
+    function cmpver(a, b,    A, B, i, na, nb, pa, pb, an, bn) {
+        parse(a, A); parse(b, B)
+        for (i = 1; i <= 3; i++) if (A[i] + 0 != B[i] + 0) return (A[i] + 0 < B[i] + 0) ? -1 : 1
+        if (A["pre"] == "" && B["pre"] == "") return 0
+        if (A["pre"] == "") return 1
+        if (B["pre"] == "") return -1
+        na = split(A["pre"], pa, "."); nb = split(B["pre"], pb, ".")
+        for (i = 1; i <= na && i <= nb; i++) {
+            an = isnum(pa[i]); bn = isnum(pb[i])
+            if (an && bn) { if (pa[i] + 0 != pb[i] + 0) return (pa[i] + 0 < pb[i] + 0) ? -1 : 1 }
+            else if (an) return -1
+            else if (bn) return 1
+            else if (pa[i] != pb[i]) return (pa[i] "" < pb[i] "") ? -1 : 1
+        }
+        if (na != nb) return (na < nb) ? -1 : 1
+        return 0
+    }
+    NF > 0 { if (!seen || cmpver($0, best) > 0) best = $0; seen = 1 }
+    END { if (seen) print best }'
 }
 
 # tag_for <version> <tags-newline-list> <prefix-or-__DEFAULT__> → prints the
@@ -174,6 +200,14 @@ self_test() {
     [ "$got" = "1.10.0" ] || { echo "newest_version picked '$got' (expected 1.10.0: numeric component sort)"; return 1; }
     got=$(printf '2.0.0-rc.1\n2.0.0\n' | newest_version)
     [ "$got" = "2.0.0" ] || { echo "newest_version ranked a prerelease above its release: $got"; return 1; }
+    got=$(printf '1.0.0-rc.10\n1.0.0-rc.2\n1.0.0-rc.9\n' | newest_version)
+    [ "$got" = "1.0.0-rc.10" ] || { echo "newest_version compared numeric prerelease identifiers textually: $got (expected 1.0.0-rc.10)"; return 1; }
+    got=$(printf '1.0.0-beta\n1.0.0-alpha.1\n1.0.0-alpha\n1.0.0-1\n' | newest_version)
+    [ "$got" = "1.0.0-beta" ] || { echo "newest_version broke SemVer prerelease precedence: $got (expected 1.0.0-beta)"; return 1; }
+    got=$(printf '1.0.0-alpha\n1.0.0-alpha.1\n' | newest_version)
+    [ "$got" = "1.0.0-alpha.1" ] || { echo "newest_version did not rank the longer identifier list higher: $got"; return 1; }
+    got=$(printf '1.0.0+build.2\n1.0.0-rc.1+build.9\n' | newest_version)
+    [ "$got" = "1.0.0+build.2" ] || { echo "newest_version let build metadata affect precedence: $got"; return 1; }
 
     tags='v1.0.0
 1.0.1
@@ -341,6 +375,13 @@ EOF
 if [ "$MISSING_COUNT" -gt 0 ]; then
     more=""
     if [ "$MISSING_COUNT" -gt "$MAX_LISTED" ]; then more=" (+$((MISSING_COUNT - MAX_LISTED)) more)"; fi
+    if [ "$IS_SHALLOW" = true ]; then
+        # A depth-limited clone carries only the tags that point inside the
+        # fetched history (e.g. the tip's tag), so an older release's tag may
+        # exist beyond the boundary. Unverifiable, not untagged.
+        echo "WARN $CHECK_NAME $MISSING_COUNT of $VERSION_COUNT release heading(s) in $CHANGELOG_LABEL have no visible tag ($MISSING$more) but this is a shallow clone — tags outside the fetched history are invisible, cannot verify; use actions/checkout with fetch-depth: 0 or fetch-tags: true"
+        exit 2
+    fi
     if [ "$TAG_PREFIX" = "__DEFAULT__" ]; then
         expected="v<version> or <version>"
     else

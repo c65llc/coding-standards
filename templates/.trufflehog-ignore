@@ -31,8 +31,8 @@
 # (^|/)dist/
 # \.min\.(js|css)$
 #
-# Test fixtures and example/placeholder tokens:
-# (^|/)(tests?|__tests__|fixtures|examples)/
+# (No `tests/`, `__tests__/`, `fixtures/` or `examples/` entry on purpose:
+# fixture noise is shape-shaped, not path-shaped — see the note above.)
 #
 # Binary/asset data that base64-decodes to non-secrets (fonts, image URIs):
 # \.(woff2?|ttf|eot|png|jpe?g|gif|ico)$
