@@ -187,9 +187,12 @@ manifest_version_cargo_toml() {
         if (match(line, /'"'"'[^'"'"']*'"'"'/)) return substr(line, RSTART + 1, RLENGTH - 2)
         return ""
     }
+    # TOML literal quotes (single) are normalised to basic quotes (double)
+    # up front, so every quoted-key matcher below reads both spellings.
+    { gsub(/'"'"'/, "\"") }
     # Section header, normalised: comment stripped, whitespace removed, and
     # quoted table names (`["package"]`) unquoted so they compare like bare ones.
-    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]"'"'"']/, "", sect); next }
+    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]"]/, "", sect); next }
     # Dotted keys may quote any segment (`"package"."version" = …`); the
     # matches below allow an optional quote around each segment.
     (sect == "[package]" && /^[[:space:]]*"?version"?\."?workspace"?[[:space:]]*=[[:space:]]*true/) ||
@@ -231,7 +234,8 @@ manifest_version_pyproject() {
         if (match(line, /'"'"'[^'"'"']*'"'"'/)) return substr(line, RSTART + 1, RLENGTH - 2)
         return ""
     }
-    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]"'"'"']/, "", sect); next }
+    { gsub(/'"'"'/, "\"") }   # literal (single) quotes read like basic (double) quotes
+    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]"]/, "", sect); next }
     (sect == "[project]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
     (sect == "" && /^[[:space:]]*"?project"?\."?version"?[[:space:]]*=/) { if (proj == "") proj = strval($0); next }
     # Inline table: `project = { name = "demo", version = "1.2.3" }`.
@@ -416,6 +420,12 @@ release-1.0.2'
     printf '"package"."name" = "app"\n"package"."version" = "1.2.7"\n' > "$tmp/Cargo.toml"
     got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
     [ "$got" = "1.2.7" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed quoted dotted-key segments: '$got'"; return 1; }
+    printf "['package']\nname = 'app'\n'version' = '1.2.8'\n" > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "1.2.8" ] || { rm -rf "$tmp"; echo "Cargo.toml reader missed literal-quoted table and key: '$got'"; return 1; }
+    printf "['project']\n'version' = '2.0.5'\n" > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "2.0.5" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed literal-quoted table and key: '$got'"; return 1; }
     printf '"project"."version" = "2.0.4"\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "2.0.4" ] || { rm -rf "$tmp"; echo "pyproject.toml reader missed quoted dotted-key segments: '$got'"; return 1; }
@@ -593,6 +603,10 @@ elif git -C "$PROJECT_ROOT" config --get remote.origin.url >/dev/null 2>&1; then
         local_tags=$(printf '%s\n' "$TAGS" | grep . | sort || true)
         missing_remote=$(comm -13 <(printf '%s\n' "$local_tags") <(printf '%s\n' "$remote_tags") | grep -c . || true)
         [ "$missing_remote" -eq 0 ] || IS_SHALLOW=true
+    elif [ "$(git -C "$PROJECT_ROOT" config --get remote.origin.tagOpt 2>/dev/null)" = "--no-tags" ]; then
+        # Offline, but the clone itself says it never fetched tags: still
+        # unverifiable. Only a clone without that marker is trusted offline.
+        IS_SHALLOW=true
     fi
 fi
 
