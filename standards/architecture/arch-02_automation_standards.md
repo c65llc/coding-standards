@@ -327,4 +327,4 @@ done < <(git grep -n 'workaround-expiry: date ' -- . ':!scripts/check-workaround
 exit "$rc"
 ```
 
-A `version <tool> <min>` marker compares `<tool> --version` (normalised to `major.minor.patch`) against `<min>` with the same numeric component ordering the changelog-tags check uses; a tool that is not installed in CI is reported as "cannot evaluate", never as passed.
+A `version <tool> <min>` marker compares `<tool> --version` (normalised to `major.minor.patch`) against `<min>` numerically per component — never lexically, where `10.0.0` sorts below `9.0.0`. A portable comparator is one `sort`: `[ "$(printf '%s\n%s\n' "$have" "$min" | sort -t. -k1,1n -k2,2n -k3,3n | head -1)" = "$min" ]` is true when `have >= min`, which is when the workaround has expired. A tool that is not installed in CI is reported as "cannot evaluate", never as passed.

@@ -349,7 +349,8 @@ override path around it.
    assigned to the approver, with two checkpoints computed from `merged_at`
    and a stable marker `dep-age-follow-up-for-pr-<n>` so a rerun finds the
    existing issue instead of opening a duplicate. `Due:` (24 h) is the review:
-   the assignee comments that the advisory still stands and the version shows
+   the approver — the actor of the `labeled` event, recorded in the issue and
+   immutable — comments that the advisory still stands and the version shows
    no yank or new advisory so far. `Matures:` (72 h) is the close condition:
    the version has aged past the gate with no yank or advisory, or it was
    rolled back. Two dates because a one-hour-old emergency pin cannot be
@@ -370,11 +371,13 @@ override path around it.
    through the label.
 5. **The record is the label, the body block and the issue.** A nightly
    audit (third excerpt below) finds follow-ups by their marker in every
-   state and fails on one that passed `Due:` with no assignee comment posted
-   before it, one still open a day past `Matures:`, or one closed before
-   `Matures:` without a `Rolled back:` comment from an assignee posted by the
-   close, so a forgotten, late or prematurely closed follow-up surfaces on
-   its own.
+   state and fails on one that passed `Due:` with no `Reviewed:` comment from
+   the approver posted before it, one still open a day past `Matures:`, or
+   one closed before `Matures:` without a `Rolled back:` comment from the
+   approver posted by the close. Deadlines are recomputed from the PR's
+   `mergedAt` and the approver from the label event, so editing the issue
+   body or reassigning it changes nothing; a forgotten, late or prematurely
+   closed follow-up surfaces on its own.
 
 ```yaml
 # .github/workflows/dep-age-gate.yml (excerpt) — the gate, on the PR.
@@ -510,10 +513,18 @@ jobs:
           # author filter `app/github-actions`, marker in the body, any state,
           # any label (a label removed in triage still counts). An issue a
           # third party opened with a guessed marker does not suppress ours.
+          # Fail CLOSED if the lookup itself fails (auth, rate limit, outage):
+          # an empty result from an error must not read as "already exists".
           existing=$(gh issue list --repo "$REPO" --state all \
-            --search "$marker in:body author:app/github-actions" --json number --jq 'length')
+            --search "$marker in:body author:app/github-actions" --json number --jq 'length') \
+            || { echo "could not query existing follow-ups; refusing to guess — rerun this job"; exit 1; }
+          case "$existing" in ''|*[!0-9]*) echo "unexpected lookup result '$existing'"; exit 1 ;; esac
           [ "$existing" -eq 0 ] || { echo "follow-up for #$PR already exists (marker $marker)"; exit 0; }
-          approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
+          # The approver of record is the actor who applied the label (immutable
+          # timeline event), not a body line anyone with edit rights could change.
+          approver=$(gh api "repos/$REPO/issues/$PR/timeline" --paginate --slurp \
+            --jq '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override")] | last | .actor.login // empty')
+          [ -n "$approver" ] || { echo "no dep-age-override labeled event on #$PR; refusing to open a follow-up without an approver"; exit 1; }
           # Every override line goes into the issue: each bypassed version
           # gets its own yank/advisory review, not just the first.
           overrides=$(printf '%s\n' "$BODY" | sed -n 's/^Dep-age override:[[:space:]]*/- /p')
@@ -527,7 +538,7 @@ jobs:
             --description "Dependency age-gate override awaiting its follow-up (sec-01 §5)"
           gh issue create --repo "$REPO" --label dep-age-follow-up --assignee "$approver" \
             --title "$title" \
-            --body "$(printf '%s\n\nOverrides honored (review each):\n%s\n\nDue: %s — 24 h review: an assignee comments, starting with "Reviewed:", that for each override the advisory still stands and the version shows no yank or new advisory so far.\nMatures: %s — 72 h after merge at %s: confirm no yank or advisory and close, or roll back and close with an assignee comment starting "Rolled back:".\nPR: %s\n' "$marker" "$overrides" "$due" "$matures" "$MERGED_AT" "$PR_URL")"
+            --body "$(printf '%s\nApprover: @%s\n\nOverrides honored (review each):\n%s\n\nDue: %s — 24 h review: the approver comments, starting with "Reviewed:", that for each override the advisory still stands and the version shows no yank or new advisory so far.\nMatures: %s — 72 h after merge at %s: confirm no yank or advisory and close, or roll back and close with an approver comment starting "Rolled back:".\nPR: %s\n(The audit recomputes Due/Matures from the PR merge time and takes the approver from the label event; editing these lines changes nothing.)\n' "$marker" "$approver" "$overrides" "$due" "$matures" "$MERGED_AT" "$PR_URL")"
 ```
 
 ```yaml
@@ -547,6 +558,7 @@ jobs:
     permissions:
       contents: read
       issues: read
+      pull-requests: read   # mergedAt and the label timeline of the originating PR
     steps:
       - env:
           REPO: ${{ github.repository }}
@@ -563,27 +575,34 @@ jobs:
                             --search 'dep-age-follow-up-for-pr- in:body author:app/github-actions' --json number --jq '.[].number'
                           gh issue list --repo "$REPO" --state closed --limit 1000 \
                             --search "dep-age-follow-up-for-pr- in:body author:app/github-actions closed:>=$since" --json number --jq '.[].number'); do
-            gh issue view "$number" --repo "$REPO" --json state,closedAt,body,assignees,comments \
-              --jq '{state, closedAt, body, as: [.assignees[].login],
-                     cs: [.comments[] | {a: .author.login, t: .createdAt, b: .body}]}' > "issue.json"
-            due=$(jq -r .body issue.json | sed -n 's/^Due: \([0-9T:Z-]*\).*/\1/p' | head -1)
-            matures=$(jq -r .body issue.json | sed -n 's/^Matures: \([0-9T:Z-]*\).*/\1/p' | head -1)
-            [ -n "$due" ] && [ -n "$matures" ] || { echo "::error::#$number has no Due:/Matures: lines"; rc=1; continue; }
+            gh issue view "$number" --repo "$REPO" --json state,closedAt,body,comments \
+              --jq '{state, closedAt, body, cs: [.comments[] | {a: .author.login, t: .createdAt, b: .body}]}' > "issue.json"
+            # Deadlines and approver come from IMMUTABLE data, not the editable
+            # issue body: the PR number is in the marker, its mergedAt is fixed,
+            # and the approver is the actor of the `labeled` timeline event.
+            pr=$(jq -r .body issue.json | sed -n 's/^dep-age-follow-up-for-pr-\([0-9]*\)$/\1/p' | head -1)
+            merged_at=$(gh pr view "$pr" --repo "$REPO" --json mergedAt --jq '.mergedAt // empty')
+            approver=$(gh api "repos/$REPO/issues/$pr/timeline" --paginate --slurp \
+              --jq '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override")] | last | .actor.login // empty')
+            [ -n "$pr" ] && [ -n "$merged_at" ] && [ -n "$approver" ] \
+              || { echo "::error::#$number cannot be tied to a merged, label-approved PR (marker/mergedAt/approver missing)"; rc=1; continue; }
+            due=$(date -u -d "$merged_at + 24 hours" +%Y-%m-%dT%H:%M:%SZ)
+            matures=$(date -u -d "$merged_at + 72 hours" +%Y-%m-%dT%H:%M:%SZ)
             state=$(jq -r .state issue.json); closed_at=$(jq -r '.closedAt // ""' issue.json)
             grace=$(date -u -d "$matures + 24 hours" +%Y-%m-%dT%H:%M:%SZ)
-            # The review is a comment BY AN ASSIGNEE, BEFORE Due:, that STARTS
+            # The review is a comment BY THE APPROVER, BEFORE Due:, that STARTS
             # with "Reviewed:" — "looking into this" is not a review.
-            reviewed=$(jq -r --arg due "$due" '.as as $as | [.cs[] | select(($as | index(.a)) != null and (.b | test("^Reviewed:")) and .t <= $due)] | length' issue.json)
-            # A rollback note counts only when an ASSIGNEE wrote it, it starts
+            reviewed=$(jq -r --arg who "$approver" --arg due "$due" '[.cs[] | select(.a == $who and (.b | test("^Reviewed:")) and .t <= $due)] | length' issue.json)
+            # A rollback note counts only when THE APPROVER wrote it, it starts
             # with "Rolled back:" (so "this was not rolled back" does not match),
             # and it was posted no later than the close.
-            rolled_back=$(jq -r --arg closed "${closed_at:-9999}" '.as as $as | [.cs[] | select(($as | index(.a)) != null and (.b | test("^Rolled back:")) and .t <= $closed)] | length' issue.json)
+            rolled_back=$(jq -r --arg who "$approver" --arg closed "${closed_at:-9999}" '[.cs[] | select(.a == $who and (.b | test("^Rolled back:")) and .t <= $closed)] | length' issue.json)
             if [ ! "$due" \> "$now" ] && [ "$reviewed" -eq 0 ]; then
-              echo "::error::#$number missed its 24 h review: no assignee comment before $due"; rc=1; fi
+              echo "::error::#$number missed its 24 h review: no 'Reviewed:' comment from @$approver before $due"; rc=1; fi
             if [ "$state" = "OPEN" ] && [ ! "$grace" \> "$now" ]; then
               echo "::error::#$number is still open a day past maturity ($matures)"; rc=1; fi
             if [ "$state" = "CLOSED" ] && [ "$closed_at" \< "$matures" ] && [ "$rolled_back" -eq 0 ]; then
-              echo "::error::#$number was closed at $closed_at, before maturity $matures, with no 'Rolled back:' comment from an assignee — reopen it, or an assignee records the rollback"; rc=1; fi
+              echo "::error::#$number was closed at $closed_at, before maturity $matures, with no 'Rolled back:' comment from @$approver — reopen it, or the approver records the rollback"; rc=1; fi
           done
           exit "$rc"
 ```

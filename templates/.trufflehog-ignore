@@ -29,7 +29,13 @@
 #     inline marker and the Gitleaks shape allowlist exist for.
 #
 # Exclude a specific artifact only when it is provably credential-free, and
-# name that artifact, never the tree (regexes, so `\.` escapes a dot):
+# name that artifact, never the tree. One regex per line, `\.` escapes a dot,
+# and NO trailing comment on a pattern line: TruffleHog compiles the whole
+# line, so an inline note would become part of the regex. Put the reason on
+# the line above, as these examples do.
 #
-# ^public/vendor/highlight\.min\.js$          # upstream build, no config injected
-# ^assets/fonts/[^/]+\.(woff2?|ttf|eot)$      # binary font files in one directory
+# upstream highlight.js build; no configuration is injected into it
+# ^public/vendor/highlight\.min\.js$
+#
+# binary font files in one directory
+# ^assets/fonts/[^/]+\.(woff2?|ttf|eot)$

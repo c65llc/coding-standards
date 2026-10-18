@@ -57,8 +57,10 @@ extract_versions() {
     awk '
     {
         # CommonMark allows up to three leading spaces before an ATX heading;
-        # four would be a code block, so at most three are stripped.
-        h = $0; sub(/^ /, "", h); sub(/^ /, "", h); sub(/^ /, "", h)
+        # four would be a code block, so at most three are stripped. A CRLF
+        # file leaves a carriage return on every line; drop it first.
+        h = $0; sub(/\r$/, "", h)
+        sub(/^ /, "", h); sub(/^ /, "", h); sub(/^ /, "", h)
     }
     # Fenced code blocks (``` or ~~~, three or more, same character to close):
     # a `## [9.9.9]` inside an example is code, not a release heading.
@@ -273,6 +275,8 @@ self_test() {
     [ "$got" = "$want" ] || { echo "heading parser produced '$got' (expected '$want')"; return 1; }
     got=$(printf '## [Unreleased]\n## [unreleased] - soon\n## 1.2\n## 1.2.3.4\n' | extract_versions)
     [ -z "$got" ] || { echo "heading parser accepted a non-release heading: $got"; return 1; }
+    got=$(printf '## v3.3.3\r\n## [3.3.2] - 2026-01-01\r\n' | extract_versions | tr '\n' ' ')
+    [ "$got" = "3.3.3 3.3.2 " ] || { echo "heading parser choked on CRLF line endings: '$got'"; return 1; }
 
 
     tags='v1.0.0
@@ -465,11 +469,14 @@ elif [ -z "$shallow_answer" ] || [ "$shallow_answer" = "--is-shallow-repository"
 fi
 # A shallow HISTORY with a complete TAG namespace (actions/checkout with
 # `fetch-tags: true` and a positive depth) is verifiable: when the local tag
-# count equals the remote's, a heading with no tag is genuinely untagged, not
-# hidden beyond the fetch boundary. No remote or no network → stays shallow.
+# SET equals the remote's (same names, not merely the same count — a
+# local-only tag must not mask a missing remote one), a heading with no tag
+# is genuinely untagged, not hidden beyond the fetch boundary. No remote or
+# no network → stays shallow.
 if [ "$IS_SHALLOW" = true ] && [ "$TAG_COUNT" -gt 0 ]; then
-    remote_tag_count=$(git -C "$PROJECT_ROOT" ls-remote --tags --refs origin 2>/dev/null | grep -c . || true)
-    if [ -n "$remote_tag_count" ] && [ "$remote_tag_count" -eq "$TAG_COUNT" ]; then
+    remote_tags=$(git -C "$PROJECT_ROOT" ls-remote --tags --refs origin 2>/dev/null | sed 's|.*refs/tags/||' | sort)
+    local_tags=$(printf '%s\n' "$TAGS" | sort)
+    if [ -n "$remote_tags" ] && [ "$remote_tags" = "$local_tags" ]; then
         IS_SHALLOW=false
     fi
 fi
