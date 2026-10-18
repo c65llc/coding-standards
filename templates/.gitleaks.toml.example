@@ -18,9 +18,10 @@
 #   2. This file, for a shape that recurs across many fixtures. Each regex
 #      below is anchored to the shape and names the fixture family it covers.
 #
-# Gitleaks ≥ 8.21 also accepts `[[allowlists]]` blocks that target specific
-# rules (`targetRules`) and AND their conditions (`condition = "AND"`); the
-# single `[allowlist]` form below works on every 8.x release.
+# The single `[allowlist]` form below works on every 8.x release. The
+# `[[allowlists]]` block further down (Gitleaks ≥ 8.21) ANDs a path condition
+# with a shape, which is how a shape that a real secret can also take (a UUID)
+# is confined to fixture locations instead of being allowlisted globally.
 
 title = "project gitleaks config"
 
@@ -39,12 +40,9 @@ description = "Shape-based allowlist for test fixtures (sec-01 §3)"
 # anchored shape. Regexes are Go RE2: no backreferences, no lookaround.
 
 regexes = [
-  # UUIDv7 (version nibble 7, variant 8-b): time-ordered ids used as fixture
-  # primary keys. A real token is never a well-formed UUID.
-  '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$''',
-  # Any RFC 4122 UUID (v1–v5) in the same position, for fixtures that are not
-  # time-ordered. Remove this line if your real secrets are UUID-shaped.
-  '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$''',
+  # (UUID-shaped values are NOT allowlisted here: many services issue API
+  # keys that are UUIDs, so a global UUID shape would silently drop a real
+  # finding. UUID fixtures are handled by the scoped block further down.)
   # Fake passwords by naming convention: a value that announces itself
   # (test-, fake-, dummy-, example-, not-a-real-, changeme) is a fixture, not
   # a credential. Keep the convention and the scanner stays quiet.
@@ -56,6 +54,26 @@ regexes = [
   # token to the right length in a parser test. RE2 has no backreference, so
   # the usual padding characters are enumerated; add yours to the alternation.
   '''(?i)^(0{16,}|1{16,}|9{16,}|a{16,}|f{16,}|x{16,}|z{16,})$''',
+]
+
+# UUID fixtures (Gitleaks ≥ 8.21). A UUID is a shape a real API key can take,
+# so the shape alone does not make a value safe. This block suppresses a
+# UUID-shaped secret ONLY when it sits in a test or fixture path — both
+# conditions must hold (`condition = "AND"`). It is not a path exclude: a
+# non-UUID secret in a test file is still reported. On Gitleaks < 8.21 the
+# table is ignored; mark UUID fixture lines inline (`// gitleaks:allow`).
+[[allowlists]]
+description = "UUID-shaped ids in test fixtures only (sec-01 §3)"
+condition = "AND"
+paths = [
+  '''(^|/)(tests?|__tests__|spec|fixtures)/''',
+  '''(_test|\.test|\.spec|_spec)\.[A-Za-z0-9]+$''',
+]
+regexes = [
+  # UUIDv7 (version nibble 7, variant 8-b): time-ordered fixture primary keys.
+  '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-7[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$''',
+  # Any RFC 4122 UUID (v1–v5) for fixtures that are not time-ordered.
+  '''^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$''',
 ]
 
 # Stopwords are matched against the secret itself (case-insensitive). A token

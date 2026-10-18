@@ -165,25 +165,30 @@ signal high.
   inline marker on the exact line — `// trufflehog:ignore` for TruffleHog,
   `// gitleaks:allow` for Gitleaks, both when both scanners run. (2) A
   **shape-based** allowlist regex that matches the fixture's form (a
-  well-formed UUID, a `test-`/`fake-`/`not-a-real-`-prefixed value, a
-  `REDACTED`/`****` redaction output, a repeated-character pad) and nothing a
-  real secret would take. (3) A path exclude, only for a path that is
-  all-noise by construction (lockfiles, generated bundles).
+  `test-`/`fake-`/`not-a-real-`-prefixed value, a `REDACTED`/`****`
+  redaction output, a repeated-character pad) and nothing a real secret
+  would take. A shape a real secret *can* take — a UUID, since many services
+  issue UUID API keys — is never allowlisted globally; it is confined to
+  fixture locations with a path-AND-shape condition (Gitleaks ≥ 8.21
+  `[[allowlists]] condition = "AND"`) or marked inline. (3) A path exclude,
+  only for a path that is all-noise by construction (lockfiles, generated
+  bundles).
 - **Never exclude `tests/`, `fixtures/` or `__tests__/` wholesale.** A real
   secret pasted into a test file must still be caught; the shape allowlist
   covers the fixture forms without opening that hole.
 - **Name fixtures so the scanner can tell.** Fake credentials carry a `test-`,
   `fake-`, `dummy-`, `example-` or `not-a-real-` prefix (or are the literal
-  `changeme`); id fixtures are well-formed UUIDs. The convention is what the
-  shape regexes key on, so a fixture that follows it never needs a second
-  allowlist round.
+  `changeme`); id fixtures are well-formed UUIDs that live in test paths. The
+  convention is what the shape regexes key on, so a fixture that follows it
+  never needs a second allowlist round.
 - **Every allowlist entry states why it exists** — a comment naming the fixture
   family it covers. A bare regex nobody can explain is removed at the next
   review.
 
 Ship-with-standards template: [`templates/.gitleaks.toml.example`](../../templates/.gitleaks.toml.example)
-(shape regexes for UUIDv7, naming-convention fakes, redaction output and
-repeated-character padding; stopwords; a last-resort path list). TruffleHog
+(shape regexes for naming-convention fakes, redaction output and
+repeated-character padding; a path-AND-shape block for UUID fixtures;
+stopwords; a last-resort path list). TruffleHog
 takes only path excludes (`.trufflehog-ignore`), so its per-finding
 suppression is the inline `trufflehog:ignore` marker. The scanner workflow
 itself is in §9.
@@ -267,9 +272,11 @@ Never use these functions with untrusted input. If used with trusted input, add 
 - Pin major and minor versions in production dependencies.
 - Review and test dependency updates before merging.
 - A patch applied to a dependency (`patch-package`, pnpm `patchedDependencies`,
-  Cargo `[patch]`, a fork pin) is a fork you now maintain: it lives under
-  `patches/` and is recorded in `patches/README.md` with its reason, regression
-  test and removal criterion (core-standards, "Package Patches").
+  Cargo `[patch]`, a fork pin) is a fork you now maintain: a patch file lives
+  under `patches/`, and every override — file-backed or manifest-only (a
+  `[patch]` table, a git `rev` pin) — is recorded in `patches/README.md` with
+  its reason, regression test and removal criterion (core-standards, "Package
+  Patches").
 
 ### Automated Dependency Updates `[P2]`
 
@@ -352,6 +359,10 @@ main", and no record of who agreed or when the pin was re-examined.
 # write token, and this job does not need one.
 on:
   pull_request:
+    # The default types (opened, synchronize, reopened) would leave a green
+    # check attached to the commit after the label or the body block changed.
+    # Label and body edits re-run the gate so removing either turns it red.
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
 jobs:
   dep-age:
     runs-on: ubuntu-latest
@@ -367,6 +378,7 @@ jobs:
       - name: Honor dep-age-override (privileged label + body block, both required)
         if: steps.age.outcome == 'failure'
         env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           BODY: ${{ github.event.pull_request.body }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
           PR: ${{ github.event.pull_request.number }}
@@ -374,16 +386,20 @@ jobs:
           APPROVERS: ${{ vars.DEP_AGE_APPROVERS }}  # repository variable: comma-separated handles
           GH_TOKEN: ${{ github.token }}
         run: |
-          # The labels array does not say who applied a label; the timeline does.
+          # The label must be on the PR now (the follow-up job keys on it too) …
+          case ",$LABELS," in *,dep-age-override,*) ;; *) echo "age gate failed; no dep-age-override label"; exit 1 ;; esac
+          # … and the labels array does not say who applied it; the timeline does.
           actor=$(gh api "repos/$REPO/issues/$PR/timeline" --paginate --slurp \
             --jq '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override")] | last | .actor.login // empty')
-          [ -n "$actor" ] || { echo "age gate failed; no dep-age-override label"; exit 1; }
+          [ -n "$actor" ] || { echo "dep-age-override label has no labeled event"; exit 1; }
           case ",$APPROVERS," in *,"$actor",*) ;; *) echo "dep-age-override was applied by @$actor, who is not in DEP_AGE_APPROVERS"; exit 1 ;; esac
           [ "$actor" != "$AUTHOR" ] || { echo "the PR author cannot approve their own override"; exit 1; }
-          printf '%s\n' "$BODY" | grep -q '^Dep-age override:' || { echo "label present, PR body has no 'Dep-age override:' block"; exit 1; }
+          subject=$(printf '%s\n' "$BODY" | sed -n 's/^Dep-age override:[[:space:]]*//p' | head -1)
+          printf '%s\n' "$subject" | grep -q '[^[:space:]]@[^[:space:]].*[^[:space:]]' \
+            || { echo "PR body needs 'Dep-age override: <package>@<version> — <advisory>' with a real subject and justification"; exit 1; }
           approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
           [ "$approver" = "$actor" ] || { echo "Approved-by: @$approver does not match the label's actor @$actor"; exit 1; }
-          echo "override honored (approved by @$actor); the follow-up issue opens at merge"
+          echo "override honored for $subject (approved by @$actor); the follow-up issue opens at merge"
 ```
 
 ```yaml

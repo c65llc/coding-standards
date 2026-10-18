@@ -124,19 +124,34 @@ tag_for() {
 # Manifest readers — root manifests only; each prints a version or nothing.
 # ---------------------------------------------------------------------------
 manifest_version_package_json() {
-    # First `"version": "x.y.z"` anywhere in the file, so a compacted
-    # one-line manifest reads the same as a pretty-printed one. The root
-    # object's own "version" is conventionally near the top; package.json's
-    # dependency tables map names to ranges and never use "version" as a key
-    # (that is package-lock.json, which is not read here).
+    # The ROOT object's "version" string, whatever the formatting (pretty or
+    # one line) and wherever it sits among the keys. A tiny JSON walker tracks
+    # string state and nesting depth, so a nested `"version"` inside e.g.
+    # `"releaseConfig": {…}` or a dependency table is never mistaken for it.
     awk '
-    {
-        if (match($0, /"version"[[:space:]]*:[[:space:]]*"[^"]*"/)) {
-            s = substr($0, RSTART, RLENGTH)
-            sub(/^"version"[[:space:]]*:[[:space:]]*"/, "", s)
-            sub(/"$/, "", s)
-            print s
-            exit
+    { buf = buf $0 "\n" }
+    END {
+        n = length(buf); depth = 0; instr = 0; esc = 0; tok = ""; key = ""; want = 0
+        for (i = 1; i <= n; i++) {
+            c = substr(buf, i, 1)
+            if (instr) {
+                if (esc) { esc = 0; tok = tok c; continue }
+                if (c == "\\") { esc = 1; tok = tok c; continue }
+                if (c == "\"") {
+                    instr = 0
+                    if (depth == 1) {
+                        if (want) { print tok; exit }
+                        key = tok
+                    }
+                    continue
+                }
+                tok = tok c; continue
+            }
+            if (c == "\"") { instr = 1; tok = ""; continue }
+            if (c == "{" || c == "[") { depth++; key = ""; want = 0; continue }
+            if (c == "}" || c == "]") { depth--; key = ""; want = 0; continue }
+            if (c == ":") { if (depth == 1 && key == "version") want = 1; key = ""; continue }
+            if (c == ",") { key = ""; want = 0; continue }
         }
     }' "$1"
 }
@@ -149,7 +164,9 @@ manifest_version_cargo_toml() {
     (sect == "[package]" || sect == "[workspace.package]") && /^[[:space:]]*version[[:space:]]*=/ {
         line = $0
         sub(/^[[:space:]]*version[[:space:]]*=[[:space:]]*/, "", line)
+        # TOML basic ("…") and literal ('"'"'…'"'"') strings are both legal here.
         if (match(line, /"[^"]*"/)) { print substr(line, RSTART + 1, RLENGTH - 2); exit }
+        if (match(line, /'"'"'[^'"'"']*'"'"'/)) { print substr(line, RSTART + 1, RLENGTH - 2); exit }
     }' "$1"
 }
 
@@ -253,6 +270,12 @@ release-1.0.2'
     printf '{"name":"x","version":"0.2.0","dependencies":{"left-pad":"1.3.0"}}' > "$tmp/package.json"
     got=$(manifest_version_package_json "$tmp/package.json")
     [ "$got" = "0.2.0" ] || { rm -rf "$tmp"; echo "package.json reader missed a compact one-line manifest: '$got'"; return 1; }
+    printf '{\n  "releaseConfig": { "version": "9.9.9", "tags": ["v:1"] },\n  "scripts": { "x": "echo \\"version\\": {" },\n  "version": "0.4.0"\n}\n' > "$tmp/package.json"
+    got=$(manifest_version_package_json "$tmp/package.json")
+    [ "$got" = "0.4.0" ] || { rm -rf "$tmp"; echo "package.json reader took a nested version instead of the root one: '$got'"; return 1; }
+    printf '{\n  "name": "x",\n  "private": true\n}\n' > "$tmp/package.json"
+    got=$(manifest_version_package_json "$tmp/package.json")
+    [ -z "$got" ] || { rm -rf "$tmp"; echo "package.json reader invented a version for a versionless manifest: '$got'"; return 1; }
     printf '{\n  "name": "x",\n  "version": "0.3.0"\n}\n' > "$tmp/package.json"
     printf '[package]\nname = "x"\nversion = "0.2.9"\n' > "$tmp/Cargo.toml"
     got=$(root_manifest_versions "$tmp" | tr '\n' ' ')
@@ -264,6 +287,9 @@ release-1.0.2'
     printf '[package]\nname = "m"\nversion.workspace = true\n\n[dependencies]\nfoo = { version = "9.9.9" }\n' > "$tmp/Cargo.toml"
     got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
     [ -z "$got" ] || { rm -rf "$tmp"; echo "Cargo.toml reader took a dependency version: '$got'"; return 1; }
+    printf '[package]\nname = "m"\nversion = '"'"'0.9.0'"'"'\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "0.9.0" ] || { rm -rf "$tmp"; echo "Cargo.toml reader rejected a TOML literal string: '$got'"; return 1; }
     printf '[build-system]\nrequires = ["hatchling"]\n\n[project]\nname = "p"\nversion = '"'"'4.5.6'"'"'\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "4.5.6" ] || { rm -rf "$tmp"; echo "pyproject.toml reader returned '$got'"; return 1; }

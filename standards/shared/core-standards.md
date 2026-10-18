@@ -195,7 +195,7 @@ Flaky and slow tests, change-scoped suites, and gates that can pass without runn
 
 ### Package Patches (`patches/`)
 
-A patch to a third-party package (`patch-package`, pnpm `patchedDependencies`, Cargo `[patch]`, a vendored diff, a fork pin) is a fork you now maintain. Every patch is recorded in `patches/README.md`, one entry per patch file, with three fields:
+A patch to a third-party package (`patch-package`, pnpm `patchedDependencies`, Cargo `[patch]`, a vendored diff, a fork pin) is a fork you now maintain. Every override is recorded in `patches/README.md`, one entry per overridden dependency, identified by its patch file path or — for a manifest-only override such as a Cargo `[patch]` table or a fork pin — by the manifest coordinate and the pinned revision (`[patch.crates-io] foo = { git = "…", rev = "abc123" }`), with three fields:
 
 - **Why** — the upstream bug or missing hook, with the upstream issue or PR link.
 - **Regression test** — the test in this repo that fails without the patch, so a bot bump that silently drops it is caught by CI rather than in production.
