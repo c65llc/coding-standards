@@ -18,6 +18,16 @@ commit-msg:
       # Also enforces `commits.scopes` from .standards.yml when configured.
       run: .standards/scripts/check-commit-message.sh --file {1}
 
+# Refuses a commit that stages a path under the agent worktree root
+# (worktree_dir: in .standards.yml, default .claude/worktrees) — a worktree
+# committed as a submodule is the failure this prevents (proc-04 § Worktree
+# Hygiene). setup.sh installs the same guard natively when lefthook is not
+# in use.
+pre-commit:
+  commands:
+    worktree-guard:
+      run: sh .standards/templates/pre-commit-worktree-guard.example
+
 # Once lefthook is installed it owns core.hooksPath, so the native
 # .git/hooks/post-merge reminder that setup.sh writes no longer runs.
 # This block restores it with the same logic (no Make target required).

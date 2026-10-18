@@ -110,7 +110,9 @@ After enumeration the list is filtered by:
   `.standards`, `.standards_tmp`, `vendor`, `third_party`, `dist`, `build`,
   `.build`, `target`, `.next`, `__pycache__`, `.venv`, `venv`, `.tox`,
   `coverage`, `.pnpm-store`, `.wrangler`, `DerivedData`, `.worktrees`,
-  `.claude/worktrees`, `.Codex/worktrees`, `.workspaces`.
+  `.claude/worktrees`, `.Codex/worktrees`, `.workspaces`, plus the worktree
+  root `worktree_dir:` in `.standards.yml` declares (proc-04 § Worktree
+  Hygiene), so a non-hidden root such as `worktrees/` is never scanned either.
 - **`lint.exclude` in `.standards.yml`** — project-relative path prefixes or
   shell-style globs (`*` within a segment, `**` any run of characters,
   `**/` zero or more whole segments, so `**/*.py` also matches a top-level

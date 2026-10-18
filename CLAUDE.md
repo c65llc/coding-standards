@@ -18,7 +18,8 @@ make sync-standards          # Sync standards files and re-assemble declared age
 make diff-standards          # Preview what sync-standards would change (no files modified)
 make setup-agents            # Setup AI agent configurations
 make add-copilot-instructions # Create PR to add Copilot instructions
-make doctor                  # Run standards health check (audits config, agents, checksums, git hooks)
+make doctor                  # Run standards health check (audits config, agents, checksums, git hooks, worktrees)
+make worktree-gc             # Remove merged, gone and idle agent worktrees; report the rest (ARGS="--dry-run")
 make lint-standards          # Run standards compliance linter (common + language-specific checks)
 make generate-standards-lists # Regenerate the standards lists inside agent configs from standards/
 make check-agent-configs     # Fail if any agent config is stale, cites a missing standard, or omits one
@@ -139,5 +140,6 @@ Copy-and-fill templates for the documents proc-01 asks for: `adr.md` (bullet met
 - **Generated standards lists**: The standards file lists and language-detection maps in `.cursorrules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `CLAUDE.md`, and `standards/README.md` live between `<!-- BEGIN GENERATED: ... -->` / `<!-- END GENERATED: ... -->` sentinels and are rendered from the `standards/` tree by `scripts/generate-standards-lists.sh`. Never edit inside the sentinels. After adding, renaming, or removing a standards file: add or fix its row in `standards/catalog.tsv` (description + language triggers), run `make generate-standards-lists`, and commit. CI's `Agent Config Drift` job fails on any diff, on a reference to a missing file, or on an omitted one.
 - **Shell scripts**: Must pass `bash -n` syntax validation.
 - **Safety**: Never modify `.standards_tmp/`, `.secret`, or `.tfstate` files. Always preserve standards file numbering.
+- **Worktree hygiene (proc-04)**: one gitignored worktree root per repo (`worktree_dir:` in `.standards.yml`, default `.claude/worktrees`), created from the main checkout only — never from inside another worktree. `setup.sh` gitignores the root and installs `templates/pre-commit-worktree-guard.example`; `make doctor` reports count/age/size; `make worktree-gc` collects merged, gone and idle worktrees. Tests: `scripts/test-worktree-gc.sh`.
 - **Safe setup (1.2+)**: `setup.sh` never clobbers existing agent configs. Customized files are staged to `.standards-pending/` with a `MERGE_PLAN.md` describing how to reconcile them. The merge skill (`/merge-standards` in Claude Code / Cursor, `make merge-standards` via CLI) drives the agent-agnostic handoff.
 - **Curated configs (#183)**: `project_overview:` / `key_commands:` in `.standards.yml` are the source for `{{PROJECT_OVERVIEW}}` / `{{KEY_COMMANDS}}` (filled-in text stays checksum-stable); `managed: { CLAUDE.md: false }` marks a config hand-curated (sync/setup leave it, doctor reports curated, diff-standards still previews upstream changes); `hooks: custom|lefthook|husky|standards` tells doctor and setup who owns the git hooks. Readers live in `scripts/lib/checksums.sh` (`yaml_block_scalar`, `yaml_map_value`, `file_managed`) and `scripts/lib/project-sections.sh` (capture hint).

@@ -1,0 +1,58 @@
+#!/bin/sh
+# .git/hooks/pre-commit — refuse commits that add agent worktree paths
+# (coding-standards template; proc-04 § Worktree Hygiene, #190)
+# standards-worktree-guard
+#
+# A worktree that lands in a commit arrives as a gitlink (mode 160000, the
+# shape of a submodule) or as thousands of files under the worktree root. Both
+# have happened; both are miserable to undo. This hook refuses any staged path
+# that is the worktree root itself or lies below it.
+#
+# Install (setup.sh writes it to .git/hooks/pre-commit when no pre-commit hook
+# exists; otherwise it prints how to adopt it):
+#   cp .standards/templates/pre-commit-worktree-guard.example .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+#   husky:    append "sh .standards/templates/pre-commit-worktree-guard.example" to .husky/pre-commit
+#   lefthook: see the pre-commit block in .standards/templates/lefthook.yml.example
+# To combine with an existing native hook, call this file from it.
+#
+# The root is `worktree_dir:` in .standards.yml (default .claude/worktrees).
+# The roots other agents create on their own are refused as well.
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cfg="$root/.standards.yml"
+wt_dir=""
+if [ -f "$cfg" ]; then
+    # one-line scalar: quotes and a trailing comment dropped, ./ and / trimmed
+    wt_dir=$(sed -n 's/^worktree_dir:[[:space:]]*//p' "$cfg" | head -1 \
+        | sed 's/^"\([^"]*\)".*/\1/; s/^'"'"'\([^'"'"']*\)'"'"'.*/\1/; s/[[:space:]]#.*$//; s/[[:space:]]*$//; s#^\./##; s#/*$##')
+fi
+case "$wt_dir" in
+    ""|/*|~*|*\\*|..|../*|*/..|*/../*) wt_dir=".claude/worktrees" ;;
+esac
+
+# Added, copied, modified, renamed or type-changed paths in the index. A
+# gitlink shows up as the directory path itself, so equality counts as well
+# as the "<root>/" prefix. The roots travel as awk arguments, one each, so a
+# configured root with spaces ("agent worktrees") stays one root.
+bad=$(git diff --cached --name-only --diff-filter=ACMRT -z 2>/dev/null | tr '\0' '\n' \
+    | awk '
+        BEGIN { for (i = 1; i < ARGC; i++) { r[++n] = ARGV[i]; delete ARGV[i] } }
+        NF {
+            for (i = 1; i <= n; i++) {
+                if ($0 == r[i] || index($0, r[i] "/") == 1) { print; break }
+            }
+        }' "$wt_dir" .claude/worktrees .worktrees .Codex/worktrees .codex/worktrees .cursor/worktrees .workspaces)
+
+[ -z "$bad" ] && exit 0
+
+{
+    echo "error: commit refused — staged paths lie under an agent worktree root (proc-04 Worktree Hygiene):"
+    printf '%s\n' "$bad" | sed 's/^/  /'
+    echo ""
+    echo "  Worktrees are gitignored scratch space, never repository content."
+    echo "  Unstage them:        git rm -r --cached <path>"
+    echo "  Ignore the root:     echo '$wt_dir/' >> .gitignore"
+    echo "  Collect finished worktrees: make worktree-gc  (or .standards/scripts/worktree-gc.sh)"
+} >&2
+exit 1

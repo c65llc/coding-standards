@@ -101,6 +101,26 @@ make add-copilot-instructions
 
 Requires GitHub CLI (`gh`) to be installed and authenticated.
 
+### `doctor`
+
+Run the standards health check (`scripts/doctor.sh`): configuration, members, agent configs, checksums, languages, submodule, git hooks, `.gitignore` entries and worktrees (count, idle age, size; warnings on nesting and strays). Exits 1 on any `FAIL`.
+
+```bash
+make doctor
+```
+
+### `worktree-gc`
+
+Remove finished agent worktrees — merged, upstream gone, or idle for more than 14 days — delete their merged branches (gone and idle branches are kept, since their commits are not in the base), prune stale registrations and report what remains with its idle age and size (proc-04 § Worktree Hygiene). The main checkout, the worktree you run it from and a worktree that still encloses other worktrees are never touched.
+
+```bash
+make worktree-gc
+make worktree-gc ARGS="--dry-run"           # preview
+make worktree-gc ARGS="--max-age 30 --keep-dirty"
+```
+
+Equivalent to running `./scripts/worktree-gc.sh`; in a consumer project, `./.standards/scripts/worktree-gc.sh`.
+
 ### `lint`
 
 Lint all Markdown files using `markdownlint` (if installed).
@@ -156,6 +176,8 @@ make check-agent-configs
 | `update-standards` | Pull latest submodule commit |
 | `setup-agents` | Install agent configs only |
 | `add-copilot-instructions` | PR to add Copilot instructions |
+| `doctor` | Standards health check (config, agents, hooks, worktrees) |
+| `worktree-gc` | Remove merged, gone and idle agent worktrees; report the rest |
 | `lint` | Lint Markdown files |
 | `format` | Format Markdown files |
 | `test-scripts` | Validate script syntax |

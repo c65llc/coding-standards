@@ -31,6 +31,12 @@ if [ -f "$SCRIPT_DIR/lib/members.sh" ]; then
     # shellcheck disable=SC1091
     source "$SCRIPT_DIR/lib/members.sh"
 fi
+# Worktree root, listing, age and size helpers (worktrees.sh, #190).
+if [ -f "$SCRIPT_DIR/lib/worktrees.sh" ]; then
+    # shellcheck source=scripts/lib/worktrees.sh
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/lib/worktrees.sh"
+fi
 
 # ---------------------------------------------------------------------------
 # Colors and formatting
@@ -760,6 +766,104 @@ check_gitignore() {
 }
 
 # ---------------------------------------------------------------------------
+# Check 10: Worktree hygiene (proc-04 § Worktree Hygiene, #190)
+#
+# Reports the linked worktrees of the repository — count, oldest idle age,
+# total size — and warns on what the standard forbids: a worktree root that
+# is not gitignored (a worktree can then be committed as a submodule), a
+# worktree created inside another worktree (nesting), worktrees outside the
+# configured root, and worktrees idle past the TTL or whose directory is gone.
+# ---------------------------------------------------------------------------
+
+check_worktrees() {
+    if ! declare -f worktree_list >/dev/null 2>&1; then
+        check_warn "Worktrees" "worktrees library not available (skipping)" ""
+        return
+    fi
+    if [ "$(git -C "$PROJECT_ROOT" rev-parse --is-inside-work-tree 2>/dev/null)" != "true" ]; then
+        check_pass "Worktrees" "Not a git repository; check skipped"
+        return
+    fi
+
+    local root_rel problem
+    root_rel=$(worktree_root_dir "$PROJECT_ROOT")
+    problem=$(worktree_dir_problem "$PROJECT_ROOT")
+    if [ -n "$problem" ]; then
+        check_warn "Worktrees" "worktree_dir: '$problem' in .standards.yml is not a relative path inside the project; using $WORKTREE_DIR_DEFAULT" \
+            "Fix: set worktree_dir: in .standards.yml to a project-relative path such as .claude/worktrees"
+    fi
+
+    # The root must be ignored as a directory: probe a path below it, since a
+    # pattern with a trailing slash only matches directories git can see.
+    if git -C "$PROJECT_ROOT" check-ignore -q -- "$root_rel/probe" 2>/dev/null; then
+        check_pass "Worktrees" "worktree root $root_rel/ is gitignored"
+    else
+        check_warn "Worktrees" "worktree root $root_rel/ is not gitignored (a worktree could be committed as a submodule)" \
+            "Add: '$root_rel/' to .gitignore  (setup.sh writes it; install templates/pre-commit-worktree-guard.example as a pre-commit hook)"
+    fi
+
+    local main linked paths
+    main=$(worktree_main_path "$PROJECT_ROOT")
+    linked=$(worktree_list "$PROJECT_ROOT" | tail -n +2)
+    paths=$(printf '%s\n' "$linked" | cut -f1)
+    if [ -z "$(printf '%s' "$linked" | tr -d '[:space:]')" ]; then
+        check_pass "Worktrees" "No linked worktrees"
+        return
+    fi
+
+    local count=0 total_kb=0 oldest=0 stale=0 prunable=0 nested="" outside=""
+    local path branch state rel age kb
+    while IFS=$'\t' read -r path branch state; do
+        [ -n "$path" ] || continue
+        count=$((count + 1))
+        case "$path" in
+            "$main"/*) rel="${path#"$main"/}" ;;
+            *)         rel="$path" ;;
+        esac
+        if [ "$state" = "prunable" ]; then
+            prunable=$((prunable + 1))
+            continue
+        fi
+        age=$(worktree_age_days "$path")
+        [ "$age" -gt "$oldest" ] && oldest=$age
+        [ "$age" -gt "$WORKTREE_TTL_DAYS_DEFAULT" ] && stale=$((stale + 1))
+        kb=$(dir_size_kb "$path")
+        total_kb=$((total_kb + kb))
+        if worktree_nested_in "$path" "$paths" >/dev/null; then
+            nested="${nested:+$nested, }$rel"
+        fi
+        # rel == path means the worktree lives outside the main checkout
+        # altogether (/tmp/project-x): outside the root by definition.
+        if [ "$rel" = "$path" ] || ! worktree_under_root "$rel" "$root_rel"; then
+            outside="${outside:+$outside, }$rel"
+        fi
+    done <<EOF
+$linked
+EOF
+
+    local summary="$count linked worktree(s), oldest ${oldest}d idle, $(human_kb "$total_kb") on disk"
+    local problems=0
+    if [ -n "$nested" ]; then
+        check_warn "Worktrees" "nested worktree(s), created from inside another worktree: $nested" \
+            "Fix: remove them (make worktree-gc, or git worktree remove) and create worktrees from the main checkout only"
+        problems=$((problems + 1))
+    fi
+    if [ -n "$outside" ]; then
+        check_warn "Worktrees" "worktree(s) outside the worktree root $root_rel/: $outside" \
+            "Fix: create worktrees under $root_rel/ (worktree_dir: in .standards.yml); collect the strays with make worktree-gc"
+        problems=$((problems + 1))
+    fi
+    if [ "$stale" -gt 0 ] || [ "$prunable" -gt 0 ]; then
+        check_warn "Worktrees" "$summary; $stale idle > ${WORKTREE_TTL_DAYS_DEFAULT}d, $prunable prunable" \
+            "Run: make worktree-gc  (removes merged, gone and stale worktrees; --dry-run to preview)"
+    elif [ "$problems" -eq 0 ]; then
+        check_pass "Worktrees" "$summary"
+    else
+        check_warn "Worktrees" "$summary" "Run: make worktree-gc"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Main: run all checks
 # ---------------------------------------------------------------------------
 
@@ -776,6 +880,7 @@ check_git_hooks
 check_aiderrc_template_sync
 check_postgres_mcp
 check_gitignore
+check_worktrees
 
 # ---------------------------------------------------------------------------
 # Summary

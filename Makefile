@@ -1,4 +1,4 @@
-.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor merge-standards lint-standards generate-standards-lists check-agent-configs website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-website-csp
+.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor worktree-gc merge-standards lint-standards generate-standards-lists check-agent-configs website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-worktree-gc test-website-csp
 
 help: ## Show this help message
 	@echo "Standards Repository Management"
@@ -84,10 +84,13 @@ test-lint-standards: ## Run functional tests on lint-standards.sh and lint-check
 test-generate-standards-lists: ## Run functional tests on generate-standards-lists.sh (agent config generator)
 	@./scripts/test-generate-standards-lists.sh
 
+test-worktree-gc: ## Run functional tests on worktree-gc.sh, the doctor Worktrees check and the pre-commit worktree guard
+	@./scripts/test-worktree-gc.sh
+
 test-website-csp: ## Run functional tests on the website CSP post-build step (needs node)
 	@./website/scripts/test-csp-postbuild.sh
 
-test: test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-website-csp ## Run all tests
+test: test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-worktree-gc test-website-csp ## Run all tests
 
 setup-agents: ## Setup AI agent configurations (Copilot, Aider, Codex)
 	@if [ -d ".standards" ]; then \
@@ -111,6 +114,9 @@ add-copilot-instructions: ## Create PR to add GitHub Copilot custom instructions
 
 doctor: ## Run standards health check
 	@./scripts/doctor.sh
+
+worktree-gc: ## Remove merged, gone and stale agent worktrees; report the rest (ARGS="--dry-run" to preview)
+	@./scripts/worktree-gc.sh $(ARGS)
 
 merge-standards: ## Print the pending merge plan for manual / CLI review
 	@if [ -f .standards-pending/MERGE_PLAN.md ]; then \

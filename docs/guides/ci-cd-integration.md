@@ -125,6 +125,16 @@ Because lefthook and husky take over `core.hooksPath`, the native
 `.git/hooks/post-merge` reminder above stops running once they are installed —
 the lefthook template includes a `post-merge` block that restores it.
 
+The same applies to the **pre-commit worktree guard**
+(`templates/pre-commit-worktree-guard.example`), which refuses a commit that
+stages a path under the agent worktree root (`worktree_dir:` in
+`.standards.yml`, default `.claude/worktrees`) — the way a worktree ends up
+committed as a submodule. `setup.sh` installs it as `.git/hooks/pre-commit`
+when no pre-commit hook exists; the lefthook template carries a `pre-commit`
+block for it, and husky users append
+`sh .standards/templates/pre-commit-worktree-guard.example` to
+`.husky/pre-commit`.
+
 ### PR Title Check
 
 With squash-merge, GitHub writes the **PR title** as the mainline commit
