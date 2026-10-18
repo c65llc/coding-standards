@@ -335,9 +335,9 @@ check_languages_for() {
             "Remove '$unsupported' from the languages list in ${dir#"$PROJECT_ROOT/"}/.standards.yml, or contribute a lang-NN standard for it"
     fi
 
-    # Only supported detections are ever suggested: an unsupported key such as
-    # cpp (a CMake-only project) has no standards or checks, so asking for it
-    # to be declared would only trip the unsupported warning above.
+    # Only supported detections are ever suggested: a key the detector emits
+    # but no lang-NN standard covers has no standards or checks, so asking for
+    # it to be declared would only trip the unsupported warning above.
     local supported_detected=""
     for lang in $detected; do
         if declare -f language_supported >/dev/null 2>&1 && ! language_supported "$lang"; then

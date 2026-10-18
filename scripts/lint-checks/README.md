@@ -6,7 +6,7 @@ aggregates them into text, JSON, or SARIF output.
 
 ## Enforced vs. standards-only
 
-The repository ships **13 language standards** but automated compliance checks
+The repository ships **14 language standards** but automated compliance checks
 exist for only some of them. A language having a standards document does **not**
 mean the linter enforces it — the table below is the source of truth.
 
@@ -19,6 +19,7 @@ mean the linter enforces it — the table below is the source of truth.
 | Rust (lang-08) | ✅ | clippy-ci, deny-config, toolchain-pin, ffi-no-unwrap |
 | Go (lang-12) | ✅ | error-handling, golangci-config |
 | Elixir (lang-13) | ✅ | credo-config, dialyzer-config |
+| C++ (lang-14) | ✅ | clang-format-config, warnings-as-errors, sanitizer-lane |
 | Java, Kotlin, Dart, JavaScript, Zig, Ruby, Rails | ❌ standards-only | — |
 
 The seven "standards-only" languages have full standards documents under
@@ -37,6 +38,9 @@ no automated check modules for them yet. Consumers should not assume
 | `swift/swift-format-config` | PASS when `.swift-format` exists (or `.swift-format.json` is passed via `--configuration` in CI); WARN when only `.swift-format.json`, `.swiftlint.yml`, or `.swiftformat` exists; FAIL when no formatter config |
 | `swift/package-resolved` | PASS when `Package.resolved` is committed (or the package has no dependencies); FAIL when an executable target or a CI definition exists and the lockfile is missing, or when it is untracked or gitignored; WARN for a dependency-only library with no CI build (lang-04 §1 lets it omit the lockfile) or when there is no `Package.swift` |
 | `swift/warnings-as-errors` | PASS when CI, `Package.swift`, `project.yml`, an `.xcconfig`, or a build script enables `-warnings-as-errors` / `SWIFT_TREAT_WARNINGS_AS_ERRORS` / `treatAllWarnings(as: .error)`; FAIL otherwise |
+| `cpp/clang-format-config` | PASS when a root `.clang-format` (or `_clang-format`) exists with content (notes a `third_party/` tree lacking its own `DisableFormat: true` file); WARN when the file is empty or lives only in a subdirectory; FAIL when none exists |
+| `cpp/warnings-as-errors` | PASS when a CI definition — or `CMakePresets.json`, `CMakeLists.txt`, `cmake/*.cmake`, or a `Makefile`/`justfile` a CI definition delegates to — enables a bare `-Werror`, `/WX` or `COMPILE_WARNING_AS_ERROR` (`-Werror=<one-warning>` and comment lines do not count); WARN when only the build configuration enables it and no CI definition exists; FAIL when nothing does. Self-tests its pattern on every run |
+| `cpp/sanitizer-lane` | PASS when a CI step passes `-fsanitize=` / `/fsanitize=` (or `ENABLE_SANITIZERS=ON`), or selects a sanitizer-named CMake preset (`asan`, `ubsan`, `tsan`, `msan`, `sanitize`) that `CMakePresets.json` defines with a sanitizer flag; WARN when a sanitizer preset or `CMakeLists.txt` option exists but no CI lane runs it, or CI selects a sanitizer-named preset that sets no flag; FAIL when there is no CI definition or no sanitizer lane. Self-tests its pattern on every run |
 
 ### Common checks
 
@@ -219,7 +223,8 @@ rather than an empty, passing result.
 ## Roadmap
 
 Per-language check modules are added incrementally. Rust and Swift landed in
-1.6 (issue #193). Highest-value next candidates (by ecosystem size and tooling
+1.6 (issue #193); C++ (clang-format config, warnings-as-errors, sanitizer lane)
+with lang-14 (issue #192). Highest-value next candidates (by ecosystem size and tooling
 maturity): **JavaScript** (eslint/prettier config, banned functions, shared
 with the TypeScript modules) and **Kotlin** (ktlint/detekt config). Contributions
 welcome — see "Adding a check module" below.

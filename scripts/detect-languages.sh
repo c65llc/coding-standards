@@ -22,9 +22,9 @@
 # package.json, deno.json (javascript); tsconfig*.json or .ts sources
 # (typescript); build.gradle[.kts], pom.xml (jvm, + java/kotlin); Package.swift
 # (swift); pubspec.yaml (dart); build.zig (zig); go.mod (go); mix.exs (elixir);
-# CMakeLists.txt (cpp — no standards document exists for it yet, so agent
-# assembly and lint-standards ignore the key and doctor.sh reports it as
-# unsupported when declared).
+# CMakeLists.txt, .clang-format or C++ sources (*.cpp, *.cc, *.cxx, *.hpp,
+# *.hh, *.hxx) at the root or under src/, include/, lib/, Sources/ (cpp,
+# lang-14).
 
 set -e
 
@@ -176,8 +176,15 @@ detect_in_dir() {
         echo "elixir"
     fi
 
-    # cpp (C/C++ via CMake). Reported for completeness; see the header.
-    if [ -f "$dir/CMakeLists.txt" ]; then
+    # cpp (lang-14): a CMake project, a clang-format config, or C++ sources at
+    # the root or under the conventional source roots. A Swift package or
+    # Android app that carries a C++ core under Sources/ or src/ is detected
+    # here as well, so the C ABI rules reach the project that owns the engine.
+    if [ -f "$dir/CMakeLists.txt" ] || [ -f "$dir/.clang-format" ] || [ -f "$dir/_clang-format" ]; then
+        echo "cpp"
+    elif find "$dir" -maxdepth 1 \( -name "*.cpp" -o -name "*.cc" -o -name "*.cxx" -o -name "*.hpp" -o -name "*.hh" -o -name "*.hxx" \) 2>/dev/null | head -1 | grep -q .; then
+        echo "cpp"
+    elif find "$dir/src" "$dir/include" "$dir/lib" "$dir/Sources" -maxdepth 3 \( -name "*.cpp" -o -name "*.cc" -o -name "*.cxx" -o -name "*.hpp" -o -name "*.hh" -o -name "*.hxx" \) 2>/dev/null | head -1 | grep -q .; then
         echo "cpp"
     fi
 }

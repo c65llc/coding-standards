@@ -91,6 +91,16 @@ From `standards/shared/blocks/naming-conventions.md` and language-specific stand
 - Predicates: `function_name?`
 - Files: `snake_case.ex`
 
+### C++ (`lang-14`)
+
+- Functions/variables/namespaces: `snake_case`
+- Types/concepts/template parameters: `PascalCase`
+- Private members: `snake_case_` (trailing underscore)
+- Constants/enumerators: `kPascalCase`; `enum class` always
+- Macros (rare): `PROJECT_UPPER_SNAKE_CASE`
+- C ABI symbols: `<prefix>_<noun>_<verb>` (`dust3d_mesh_create`)
+- Files: `snake_case.hpp` / `snake_case.cpp`, tests `snake_case_test.cpp`
+
 ## Workflow
 
 1. Detect the project's languages from `.standards.yml` or `detect-languages.sh`.

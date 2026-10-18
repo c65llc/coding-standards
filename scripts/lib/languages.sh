@@ -9,12 +9,12 @@
 # Usage:
 #   source "$SCRIPT_DIR/lib/languages.sh"
 #   blocks=$(map_languages_to_blocks "python typescript go")
-#   language_supported cpp || echo "no standard for cpp"
+#   language_supported cobol || echo "no standard for cobol"
 
 # Every language key the toolchain knows: the keys map_languages_to_blocks
 # maps to a lang-*.md block. doctor.sh flags a declared key outside this list
-# as unsupported (dust3d declares `cpp`, which has no standard yet).
-SUPPORTED_LANGUAGES="python javascript typescript jvm java kotlin ruby rails rust swift dart zig go elixir"
+# as unsupported.
+SUPPORTED_LANGUAGES="python javascript typescript jvm java kotlin ruby rails rust swift dart zig go elixir cpp"
 
 # language_supported <key>: true when <key> has a standards block.
 language_supported() {
@@ -43,6 +43,7 @@ map_languages_to_blocks() {
             zig)        BLOCKS+=("lang-zig.md") ;;
             go)         BLOCKS+=("lang-go.md") ;;
             elixir)     BLOCKS+=("lang-elixir.md") ;;
+            cpp)        BLOCKS+=("lang-cpp.md") ;;
         esac
     done
     # Deduplicate and output space-separated on one line.

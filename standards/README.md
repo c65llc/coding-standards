@@ -7,7 +7,7 @@ This directory contains all coding standards documents organized by category.
 | Directory | Prefix | Contents |
 |-----------|--------|----------|
 | `architecture/` | `arch-XX` | Core architecture, automation, data versioning/migration, resilient patterns, monorepo/workspace, cross-platform shared-core, CI/CD pipeline, agent tools/MCP servers |
-| `languages/` | `lang-XX` | Per-language standards (Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby/Rails, Go, Elixir) |
+| `languages/` | `lang-XX` | Per-language standards (Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby/Rails, Go, Elixir, C++) |
 | `process/` | `proc-XX` | Documentation, git workflow, code review, agent workflow, test governance |
 | `security/` | `sec-XX` | Security guidelines with P0-P2 severity model |
 | `shared/` | — | Cross-cutting standards (`core-standards.md`) referenced by all agent configs |
@@ -58,6 +58,7 @@ Every standards document in this tree. This section is generated; edit `catalog.
 - `standards/languages/lang-11_ruby_on_rails_standards.md` — Ruby on Rails (Rails 7.2+, rubocop-rails)
 - `standards/languages/lang-12_go_standards.md` — Go (go modules, gofmt, go vet, golangci-lint, table-driven tests)
 - `standards/languages/lang-13_elixir_standards.md` — Elixir (mix, mix format, credo, ExUnit)
+- `standards/languages/lang-14_cpp_standards.md` — C++ (C++20 baseline, CMake presets, clang-format/clang-tidy, warnings-as-errors in CI, sanitizer lanes, C ABI ownership rules)
 
 **Process Standards:**
 
@@ -82,7 +83,7 @@ Every standards document in this tree. This section is generated; edit `catalog.
 Atomic content fragments used to assemble agent configs at setup time. Each block is a condensed summary (~5-20 lines) of standards content, written in imperative style for token-efficient agent consumption.
 
 - **Common blocks** (always included): architecture-core, testing-policy, security-summary, naming-conventions, git-workflow, documentation-policy
-- **Language blocks** (per detection): lang-python, lang-typescript, lang-javascript, lang-java, lang-kotlin, lang-swift, lang-dart, lang-rust, lang-zig, lang-ruby, lang-rails, lang-go, lang-elixir
+- **Language blocks** (per detection): lang-python, lang-typescript, lang-javascript, lang-java, lang-kotlin, lang-swift, lang-dart, lang-rust, lang-zig, lang-ruby, lang-rails, lang-go, lang-elixir, lang-cpp
 - **Role blocks** (one per project): role-service, role-library, role-app, role-data-pipeline
 
 ## Agent Base Templates (`agents/`)
@@ -99,3 +100,7 @@ Agent-specific behavioral rules. Combined with content blocks by `scripts/assemb
 ## Document Templates (`../templates/docs/`)
 
 Copy-and-fill templates for the documents `process/proc-01_documentation_standards.md` asks for: `adr.md`, `spec.md`, `plan.md`, `design-pass.md`, `verification.md`. See [`templates/docs/README.md`](../templates/docs/README.md).
+
+## C++ Tooling Templates (`../templates/cpp/`)
+
+The `.clang-format`, `.clang-tidy`, `CMakePresets.json` and `ProjectWarnings.cmake` files `languages/lang-14_cpp_standards.md` requires, ready to copy into a C++ project. See [`templates/cpp/README.md`](../templates/cpp/README.md).

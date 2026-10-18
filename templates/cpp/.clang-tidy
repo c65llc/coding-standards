@@ -1,0 +1,88 @@
+# clang-tidy configuration — lang-14 §4.
+# Copy to the project root as `.clang-tidy`. Checks are enabled by group with
+# the noisy ones switched off one at a time, each with a reason, so a new
+# clang-tidy release adds coverage instead of silently losing it.
+#
+# Locally: findings are warnings. In CI: the `ci` preset sets
+# `-DCMAKE_CXX_CLANG_TIDY=clang-tidy` (or a dedicated run-clang-tidy job over
+# compile_commands.json) and CI passes `--warnings-as-errors='*'`.
+#
+# Suppressions are `// NOLINT(check-name): <reason>`; a bare `// NOLINT` is
+# rejected in review.
+---
+Checks: >
+  -*,
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  concurrency-*,
+  cppcoreguidelines-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  -bugprone-easily-swappable-parameters,
+  -cert-err58-cpp,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -misc-include-cleaner,
+  -misc-non-private-member-variables-in-classes,
+  -modernize-use-trailing-return-type,
+  -readability-identifier-length,
+  -readability-magic-numbers
+# Disabled with reasons:
+#   bugprone-easily-swappable-parameters — fires on (x, y, z) and (width, height); strong types are the real fix.
+#   cert-err58-cpp — static initialisers of standard types are fine inside one build tree.
+#   *-magic-numbers — kConstants are required by naming (§5); the check double-reports.
+#   pro-bounds-array-to-pointer-decay / pro-bounds-pointer-arithmetic / pro-type-reinterpret-cast —
+#     needed at the C ABI (§10); confine them to bindings/c/ by review, not by lint.
+#   misc-include-cleaner — include-what-you-use runs separately with its own mapping file.
+#   misc-non-private-member-variables-in-classes — aggregates/structs are allowed public data.
+#   modernize-use-trailing-return-type — style choice: leading return types.
+#   readability-identifier-length — `i`, `it`, `id`, `x` are fine.
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '^(?!.*(third_party|vendor|external|build)/).*'
+FormatStyle: file
+UseColor: true
+
+CheckOptions:
+  # Naming (lang-14 §5)
+  readability-identifier-naming.NamespaceCase: lower_case
+  readability-identifier-naming.ClassCase: CamelCase
+  readability-identifier-naming.StructCase: CamelCase
+  readability-identifier-naming.EnumCase: CamelCase
+  readability-identifier-naming.TypeAliasCase: CamelCase
+  readability-identifier-naming.TypedefCase: CamelCase
+  readability-identifier-naming.ConceptCase: CamelCase
+  readability-identifier-naming.TemplateParameterCase: CamelCase
+  readability-identifier-naming.FunctionCase: lower_case
+  readability-identifier-naming.MethodCase: lower_case
+  readability-identifier-naming.VariableCase: lower_case
+  readability-identifier-naming.ParameterCase: lower_case
+  readability-identifier-naming.PrivateMemberCase: lower_case
+  readability-identifier-naming.PrivateMemberSuffix: _
+  readability-identifier-naming.ProtectedMemberCase: lower_case
+  readability-identifier-naming.ProtectedMemberSuffix: _
+  readability-identifier-naming.PublicMemberCase: lower_case
+  readability-identifier-naming.ConstexprVariableCase: CamelCase
+  readability-identifier-naming.ConstexprVariablePrefix: k
+  readability-identifier-naming.GlobalConstantCase: CamelCase
+  readability-identifier-naming.GlobalConstantPrefix: k
+  readability-identifier-naming.StaticConstantCase: CamelCase
+  readability-identifier-naming.StaticConstantPrefix: k
+  readability-identifier-naming.EnumConstantCase: CamelCase
+  readability-identifier-naming.EnumConstantPrefix: k
+  readability-identifier-naming.MacroDefinitionCase: UPPER_CASE
+  # Ownership (lang-14 §8)
+  cppcoreguidelines-owning-memory.LegacyResourceProducers: 'malloc;aligned_alloc;realloc;calloc;fopen;freopen;tmpfile'
+  cppcoreguidelines-owning-memory.LegacyResourceConsumers: 'free;realloc;freopen;fclose'
+  # Readability
+  readability-function-cognitive-complexity.Threshold: 25
+  readability-function-size.LineThreshold: 120
+  readability-implicit-bool-conversion.AllowPointerConditions: true
+  modernize-use-nodiscard.ReplacementString: '[[nodiscard]]'
+  performance-unnecessary-value-param.AllowedTypes: 'std::shared_ptr;std::function'
