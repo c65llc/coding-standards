@@ -37,9 +37,9 @@ Options:
   --role <role>        Project role block to include (default: service)
   --workflow           Also install the opt-in GitHub workflow templates
                        (standards-review.yml, trufflehog.yml)
-  --migrate            Upgrade a pre-1.2 install (no .standards-checksums,
-                       agent configs citing renamed standards paths, a
-                       .codexrc): rewrite the dead references in place from
+  --migrate            Upgrade a pre-1.2 install (agent configs citing
+                       renamed standards paths, a .codexrc, a legacy
+                       .standards-config): rewrite the dead references in place from
                        docs/reference/renamed-files.md, convert .codexrc to
                        AGENTS.md, raise legacy 90/80 coverage tiers to the
                        95% floor, seed .standards.yml from detection plus a
@@ -517,7 +517,9 @@ setup_ai_agents() {
                     echo "  [dry-run] Would stage: $rc_template → $PROJECT_ROOT/$PENDING_DIR/.aiderrc (.aiderrc differs and was not written by setup)"
                 fi
             elif [ "$rc_refresh" = true ]; then
-                if cp "$rc_template" "$rc_target" 2>/dev/null; then
+                # install_aiderrc (lib/migrate.sh) carries a project's own
+                # `model =` line forward: the template no longer pins one.
+                if install_aiderrc "$rc_template" "$rc_target" 2>/dev/null; then
                     echo "   ✅ Aider .aiderrc installed"
                     if type compute_hash &>/dev/null; then
                         local rc_hash
@@ -931,7 +933,7 @@ EOF
         echo ""
         echo "🧭 Migrating a pre-1.2 install..."
         if [ -z "$PRE12_REASONS" ]; then
-            echo "ℹ️  Nothing to migrate: no pre-1.2 artefacts found (.standards-checksums present, or no dead references, .codexrc or legacy .standards-config). Running a normal setup."
+            echo "ℹ️  Nothing to migrate: no pre-1.2 artefacts found (no renamed standards references, .codexrc or legacy .standards-config). Running a normal setup."
         else
             run_pre12_migration
         fi

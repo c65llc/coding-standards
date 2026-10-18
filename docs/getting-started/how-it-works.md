@@ -138,7 +138,7 @@ You control when updates land. Pin to a tag for stability, or track `main` for t
 
 ### Upgrading a pre-1.2 install
 
-A project set up before the 1.2 safe-setup has no `.standards-checksums`, and its agent configs were copied from the old hand-rolled templates, so they cite standards files renamed in #21 or removed in #40 (`00_project_standards_and_architecture.md`, `03_python_standards.md`, `arch-03_cursor_automation_standards.md`). A sync skips every such file as "manually created" and fixes nothing. `make doctor` recognises the shape and prints the one command:
+A project set up before the 1.2 safe-setup usually has no `.standards-checksums`, and its agent configs were copied from the old hand-rolled templates, so they cite standards files renamed in #21 or removed in #40 (`00_project_standards_and_architecture.md`, `03_python_standards.md`, `arch-03_cursor_automation_standards.md`). A sync skips every such file as "manually created" and fixes nothing. `make doctor` recognises the shape and prints the one command:
 
 ```bash
 .standards/scripts/setup.sh --migrate            # add --dry-run to preview

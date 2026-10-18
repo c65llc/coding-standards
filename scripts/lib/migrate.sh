@@ -11,7 +11,9 @@
 # (it now reads AGENTS.md), and there is no .standards.yml and no
 # .standards-checksums. sync-standards sees a file with no assembly header
 # and no stored hash, calls it "manually created" and skips it, so the dead
-# references never go away.
+# references never go away. A plain setup.sh run on such a project writes
+# .standards-checksums for what it assembles but leaves those artefacts alone,
+# so the detection looks at the artefacts themselves, not at the checksum file.
 #
 # setup.sh --migrate consumes docs/reference/renamed-files.md (the table
 # between the BEGIN/END RENAME MAP markers) to rewrite those references in
@@ -39,6 +41,44 @@ MIGRATE_AGENT_CONFIGS="CLAUDE.md .cursorrules .github/copilot-instructions.md .g
 # one of these is template residue and is dropped; any other value is the
 # project's own choice and stays.
 MIGRATE_TEMPLATE_MODELS='claude-3-5-sonnet-20241022|claude-sonnet-4-20250514|claude-sonnet-4-6'
+
+# Descriptions the old templates attached to a standard that has since been
+# removed (ERE, no backslashes: the value travels through awk -v). A list item
+# that cites the removed file followed only by one of these is template
+# residue and is dropped; any other trailing text is the project's own and
+# the line is left in place as unresolved.
+MIGRATE_TEMPLATE_DESCRIPTIONS='Cursor-specific interaction modes( [(]@new-feature, @refactor, @debug, @review[)])?'
+
+# awk functions shared by the detector and the rewriter, so that what one
+# classifies as droppable is exactly what the other drops.
+#   esc_re(s)            escape a file name for use in an ERE
+#   cites(line, old)     1 when line contains old as a whole name (not glued to
+#                        a longer name: lang-03_kotlin… never matches 03_kotlin…)
+#   droppable(line, old) 1 when line is a list item or comment whose only
+#                        content is one citation of old (optional path prefix,
+#                        back-ticks or bold), followed by nothing, or by a
+#                        separator and a template description (`descs`)
+# The caller passes -v descs="$MIGRATE_TEMPLATE_DESCRIPTIONS".
+# shellcheck disable=SC2016
+_MIGRATE_AWK_LIB='
+    function esc_re(s) { gsub(/\./, "\\.", s); return s }
+    function cites(line, old,    rest, pos, pre) {
+        rest = line
+        while ((pos = index(rest, old)) > 0) {
+            pre = (pos > 1) ? substr(rest, pos - 1, 1) : ""
+            if (pre == "" || pre !~ /[A-Za-z0-9_-]/) return 1
+            rest = substr(rest, pos + length(old))
+        }
+        return 0
+    }
+    function droppable(line, old,    probe, mdrefs, head, tail) {
+        probe = line; mdrefs = gsub(/\.md/, "&", probe)
+        if (mdrefs != 1) return 0
+        head = "^[[:space:]]*([-*+]|#+)[[:space:]]*(`|\\*\\*)?[[:space:]]*([./A-Za-z0-9_-]*/)?" esc_re(old) "(`|\\*\\*)?"
+        tail = "[[:space:]]*((-|:|–|—)[[:space:]]*(" descs "))?[[:space:]]*$"
+        return line ~ (head tail)
+    }
+'
 
 # Append one line to a newline-delimited global (bash 3.2: no namerefs).
 # $1 = variable name, $2 = line
@@ -109,48 +149,64 @@ load_rename_basenames() {
     }'
 }
 
-# Escape a file name for use in an ERE (only "." needs it here).
-_migrate_re_escape() {
-    printf '%s' "$1" | sed 's/\./\\./g'
-}
-
 # ---------------------------------------------------------------------------
-# dead_refs_in_file <file> <map_file>
+# dead_refs_in_file <file> <map_file> [all|actionable]
 #
 # Prints each old file name the file cites (one per line, map order). A name
 # counts only when the character before it is not part of a longer name, so
 # "lang-03_kotlin_standards.md" never matches a row for "03_kotlin_…".
+#
+# Mode "all" (default) counts every citation. Mode "actionable" counts only
+# what --migrate would change: a renamed file anywhere, or a removed file on a
+# line the rewriter drops (droppable). A removed file cited in running text,
+# or in a list item that carries the project's own words, is left in place by
+# the migration and recorded in the merge plan, so it is not "actionable".
 # ---------------------------------------------------------------------------
 dead_refs_in_file() {
-    local file="$1" map="$2" old new
+    local file="$1" map="$2" mode="${3:-all}" tmpmap
     [ -f "$file" ] || return 0
-    while IFS="$(printf '\t')" read -r old new; do
-        [ -n "$old" ] || continue
-        if grep -qE "(^|[^A-Za-z0-9_-])$(_migrate_re_escape "$old")" "$file" 2>/dev/null; then
-            printf '%s\n' "$old"
-        fi
-    done <<EOF
-$(load_rename_basenames "$map")
-EOF
+    tmpmap=$(mktemp)
+    load_rename_basenames "$map" > "$tmpmap"
+    if [ -s "$tmpmap" ]; then
+        awk -v mode="$mode" -v descs="$MIGRATE_TEMPLATE_DESCRIPTIONS" "$_MIGRATE_AWK_LIB"'
+            FNR == NR { split($0, p, "\t"); n++; old[n] = p[1]; new[n] = p[2]; next }
+            {
+                for (i = 1; i <= n; i++) {
+                    if (seen[i] || index($0, old[i]) == 0 || !cites($0, old[i])) continue
+                    if (mode == "actionable" && new[i] == "-" && !droppable($0, old[i])) continue
+                    seen[i] = 1
+                }
+            }
+            END { for (i = 1; i <= n; i++) if (seen[i]) print old[i] }
+        ' "$tmpmap" "$file"
+    fi
+    rm -f "$tmpmap"
 }
 
 # ---------------------------------------------------------------------------
 # pre12_shape <project_root> <map_file>
 #
-# Recognises a pre-1.2 install: no .standards-checksums, and at least one of
+# Recognises a pre-1.2 install by its artefacts, at least one of
 #   - an agent config cites renamed or removed standards paths
 #   - a .codexrc is present (Codex reads AGENTS.md)
 #   - a legacy .standards-config exists and no .standards.yml
 # Prints one reason per line and returns 0 when the shape matches; prints
 # nothing and returns 1 otherwise (a 1.2+ install, or a greenfield project).
+#
+# .standards-checksums is not a gate: a plain setup.sh run on a pre-1.2
+# project writes it for the configs it assembles while leaving .codexrc and
+# the dead references untouched, and the --migrate it then recommends must
+# still find them. Once checksums exist, only actionable citations count
+# (see dead_refs_in_file): the migration leaves a removed standard cited in
+# running text in place on purpose, and that must not re-trigger the shape.
 # ---------------------------------------------------------------------------
 pre12_shape() {
-    local root="$1" map="${2:-}" rel n reasons=""
-    [ -f "$root/.standards-checksums" ] && return 1
+    local root="$1" map="${2:-}" rel n reasons="" mode=all
+    [ -f "$root/.standards-checksums" ] && mode=actionable
     if [ -n "$map" ] && [ -f "$map" ]; then
         for rel in $MIGRATE_AGENT_CONFIGS; do
             [ -f "$root/$rel" ] || continue
-            n=$(dead_refs_in_file "$root/$rel" "$map" | wc -l | tr -d ' ')
+            n=$(dead_refs_in_file "$root/$rel" "$map" "$mode" | wc -l | tr -d ' ')
             [ "$n" -gt 0 ] || continue
             reasons="${reasons:+$reasons
 }$rel cites $n renamed or removed standards path(s)"
@@ -168,13 +224,34 @@ pre12_shape() {
     printf '%s\n' "$reasons"
 }
 
+# _migrate_resolve <path>
+# Prints the path with symlinks followed (readlink -f is not on every macOS).
+_migrate_resolve() {
+    local p="$1" t n=0
+    while [ -L "$p" ] && [ "$n" -lt 40 ]; do
+        t=$(readlink "$p") || break
+        case "$t" in
+            /*) p="$t" ;;
+            *)  p="$(dirname "$p")/$t" ;;
+        esac
+        n=$((n + 1))
+    done
+    printf '%s\n' "$p"
+}
+
 # ---------------------------------------------------------------------------
 # _migrate_commit <file> <rel> <new_content_file> <dry_run> <what> [backup]
 #
 # Replaces <file> with <new_content_file> when they differ. With backup=true
 # (the default) the original is kept as <file>.pre-standards-setup, which
-# setup.sh already gitignores. In dry-run mode only reports. Removes the temp
-# file either way. Returns 0 when the file changed (or would), 1 if identical.
+# setup.sh already gitignores; a backup that already exists is left alone, so
+# when several passes rewrite the same file (dead references, then coverage
+# tiers) the copy is the file as it was before the first pass. The content is
+# written to a temp file beside the resolved destination and moved into
+# place: a symlinked config is replaced through the link (the link stays), the
+# mode is kept, and an interrupted run leaves the old file intact rather than
+# a truncated one. In dry-run mode only reports. Removes the temp file either
+# way. Returns 0 when the file changed (or would), 1 if identical.
 # ---------------------------------------------------------------------------
 _migrate_commit() {
     local file="$1" rel="$2" new="$3" dry_run="$4" what="$5" backup="${6:-true}"
@@ -189,13 +266,27 @@ _migrate_commit() {
         rm -f "$new"
         return 0
     fi
-    [ "$backup" = true ] && cp "$file" "$file.pre-standards-setup"
-    # cat > keeps the destination's inode and mode (a symlinked config is
-    # written through, not replaced by a regular file).
-    cat "$new" > "$file"
-    rm -f "$new"
-    echo "   ✅ $rel rewritten ($what$kept)"
-    return 0
+    if [ "$backup" = true ] && [ ! -e "$file.pre-standards-setup" ]; then
+        cp -p "$file" "$file.pre-standards-setup"
+    fi
+    local dest tmp
+    dest=$(_migrate_resolve "$file")
+    tmp=$(mktemp "$(dirname "$dest")/.$(basename "$dest").migrate.XXXXXX") || {
+        rm -f "$new"
+        echo "   ❌ $rel: cannot create a temp file beside it — left unchanged" >&2
+        return 1
+    }
+    # cp -p carries the destination's mode onto the temp file before the
+    # content replaces it.
+    cp -p "$dest" "$tmp" 2>/dev/null || true
+    if cat "$new" > "$tmp" && mv -f "$tmp" "$dest"; then
+        rm -f "$new"
+        echo "   ✅ $rel rewritten ($what$kept)"
+        return 0
+    fi
+    rm -f "$tmp" "$new"
+    echo "   ❌ $rel: write failed — left unchanged" >&2
+    return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -203,9 +294,11 @@ _migrate_commit() {
 #
 # Rewrites every renamed standards file name in <file> to its current name.
 # A line that only cites a removed standard (a list item or comment whose
-# subject is that file, with no other .md reference) is dropped and recorded
-# in MIGRATE_DROPPED; a removed standard cited in running text is left in
-# place and recorded in MIGRATE_UNRESOLVED for the MERGE_PLAN.
+# subject is that file, with no other .md reference and no text of the
+# project's own after it) is dropped and recorded in MIGRATE_DROPPED; a
+# removed standard cited in running text, or in a list item that goes on to
+# say something project-specific, is left in place and recorded in
+# MIGRATE_UNRESOLVED for the MERGE_PLAN.
 # ---------------------------------------------------------------------------
 rewrite_dead_refs() {
     local file="$1" map="$2" dry_run="${3:-false}" root="${4:-}" backup="${5:-true}"
@@ -221,8 +314,7 @@ rewrite_dead_refs() {
         return 0
     fi
 
-    awk -v report="$report" '
-        function esc_re(s) { gsub(/\./, "\\.", s); return s }
+    awk -v report="$report" -v descs="$MIGRATE_TEMPLATE_DESCRIPTIONS" "$_MIGRATE_AWK_LIB"'
         # Replace whole-name occurrences of old with new; a match glued to a
         # longer name (lang-03_kotlin… for 03_kotlin…) is left alone.
         function replace_name(line, old, new,    out, rest, pos, pre) {
@@ -244,11 +336,13 @@ rewrite_dead_refs() {
             line = $0
             for (i = 1; i <= n; i++) {
                 if (index(line, old[i]) == 0) continue
+                if (!cites(line, old[i])) continue
                 if (new[i] == "-") {
                     # Removed standard. Drop the line only when it is a list
-                    # item or comment about that file and cites nothing else.
-                    probe = line; mdrefs = gsub(/\.md/, "&", probe)
-                    if (mdrefs == 1 && line ~ ("^[[:space:]]*([-*+]|#+)[[:space:]]*(`|\\*\\*)?[[:space:]]*([./A-Za-z0-9_-]*/)?" esc_re(old[i]) "`?")) {
+                    # item or comment that cites that file and nothing else
+                    # (a template description after it is fine; the project-
+                    # specific words are not — see droppable()).
+                    if (droppable(line, old[i])) {
                         printf "DROPPED\t%d\t%s\n", FNR, old[i] > report
                         next
                     }
@@ -332,6 +426,42 @@ fix_legacy_tiers() {
     fi
     _migrate_commit "$file" "$rel" "$tmpout" "$dry_run" "coverage tiers / model" "$backup" || true
     return 0
+}
+
+# ---------------------------------------------------------------------------
+# install_aiderrc <template> <target>
+#
+# Copies aiderrc.template over the project's .aiderrc the way setup.sh and
+# sync-standards.sh do for a managed file, but carries the project's own
+# `model = …` line forward when the template has none. The template stopped
+# pinning a model (#184): a consumer whose .aiderrc was the earlier template
+# verbatim (checksum still matching) would otherwise lose its model on the
+# next sync and fall back to Aider's global default. Which model a project
+# runs is the project's setting; a standards sync never changes it. The
+# migration's fix_legacy_tiers is the one place a template-pinned model is
+# dropped, and only on an explicit --migrate.
+# ---------------------------------------------------------------------------
+install_aiderrc() {
+    local template="$1" target="$2" model_line="" tmp rc
+    [ -f "$template" ] || return 1
+    if [ -f "$target" ]; then
+        model_line=$(grep -E '^model[[:space:]]*[=:]' "$target" 2>/dev/null | head -1)
+    fi
+    if [ -z "$model_line" ] || grep -qE '^model[[:space:]]*[=:]' "$template" 2>/dev/null; then
+        cp "$template" "$target"
+        return
+    fi
+    tmp=$(mktemp) || return 1
+    # The model line goes where the old template had it: after the leading
+    # comment block, before the first setting.
+    awk -v m="$model_line" '
+        !placed && !/^#/ && !/^[[:space:]]*$/ { print m; placed = 1 }
+        { print }
+        END { if (!placed) print m }
+    ' "$template" > "$tmp" && cat "$tmp" > "$target"
+    rc=$?
+    rm -f "$tmp"
+    return $rc
 }
 
 # ---------------------------------------------------------------------------

@@ -104,6 +104,15 @@ if [ -f "$SCRIPT_DIR/lib/migrate.sh" ]; then
     # shellcheck source=lib/migrate.sh disable=SC1091
     source "$SCRIPT_DIR/lib/migrate.sh"
 fi
+# .aiderrc refresh that keeps the project's `model =` line (install_aiderrc in
+# lib/migrate.sh); a plain copy when the lib is not shipped.
+_sync_install_aiderrc() {
+    if declare -f install_aiderrc >/dev/null 2>&1; then
+        install_aiderrc "$1" "$2"
+    else
+        cp "$1" "$2"
+    fi
+}
 
 # Function to sync AI agent configurations
 sync_ai_agents() {
@@ -241,7 +250,10 @@ sync_ai_agents() {
                 fi
 
                 if [ ! -f "$PROJECT_ROOT/.aiderrc" ] || [ -z "$stored_rc_hash" ] || [ "$current_rc_hash" = "$stored_rc_hash" ]; then
-                    if cp "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+                    # The project's own `model =` line is carried forward
+                    # (install_aiderrc, lib/migrate.sh): the template no
+                    # longer pins a model and a sync never changes it (#184).
+                    if _sync_install_aiderrc "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
                         echo "   ✅ Aider .aiderrc synced"
                         local new_rc_hash
                         new_rc_hash=$(shasum -a 256 "$PROJECT_ROOT/.aiderrc" | awk '{print $1}')
@@ -253,7 +265,7 @@ sync_ai_agents() {
             else
                 # Fallback: no checksum library
                 if ! cmp -s "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
-                    if cp "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
+                    if _sync_install_aiderrc "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
                         echo "   ✅ Aider .aiderrc synced"
                     fi
                 fi

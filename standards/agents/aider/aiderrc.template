@@ -1,8 +1,9 @@
 # Aider configuration. Canonical source: standards/agents/aider/aiderrc.template.
 # Generated/synced by sync-standards.sh; `make doctor` reports drift.
 # See .aider-instructions.md for coding standards and behavioral rules.
-# No model is pinned here: Aider reads it from its own config or --model, so
-# a standards sync never changes which model a project runs (#184).
+# The template pins no model: Aider reads it from its own config or --model.
+# A `model =` line a project adds below is kept by every sync, so a standards
+# sync never changes which model a project runs (#184).
 
 read = .aider-instructions.md
 auto-lint = true

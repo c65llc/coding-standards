@@ -1111,6 +1111,7 @@ EOF
    - `standards/architecture/arch-01_project_standards_and_architecture.md` - Core architecture, SOLID principles, naming conventions
    - `standards/architecture/arch-02_automation_standards.md` - Makefile targets and automation requirements
    - `standards/architecture/arch-03_cursor_automation_standards.md` - Cursor-specific interaction modes (@new-feature, @refactor, @debug, @review)
+   - `standards/architecture/arch-03_cursor_automation_standards.md` — continue requiring @review before release
    - `standards/languages/lang-01_python_standards.md` - Python (uv, ruff, mypy, pytest)
 
 2. **Follow interaction modes** from `standards/architecture/arch-03_cursor_automation_standards.md`:
@@ -1174,10 +1175,12 @@ grep -q 'Core architecture, SOLID principles, naming conventions' "$proj/.github
 echo "$mig_out" | grep -q 'arch-01_project_standards_and_architecture.md'                               || errs="$errs not-reported"
 if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$mig_out" | grep -i 'migrat\|rewr' | head -4 | tr '\n' '|')"; fi
 
-echo -n "Test 77: --migrate drops a bullet that only cites a removed standard and reports a prose reference as unresolved (.cursorrules arch-03)... "
+echo -n "Test 77: --migrate drops a bullet that only cites a removed standard; a bullet with project text after the citation and a prose reference are kept and reported as unresolved (.cursorrules arch-03)... "
 errs=""
-# The bullet about arch-03 is gone; the surrounding bullets and the prose line stay.
+# The template bullet about arch-03 is gone; the project's own bullet, the surrounding bullets and the prose line stay.
 grep -q 'arch-03_cursor_automation_standards.md` - Cursor-specific interaction modes' "$proj/.cursorrules" && errs="$errs bullet-kept"
+grep -q 'arch-03_cursor_automation_standards.md` — continue requiring @review before release' "$proj/.cursorrules" || errs="$errs project-bullet-dropped"
+[ "$(grep -c '^  - `.cursorrules:[0-9]*: arch-03_cursor_automation_standards.md`' "$proj/.standards-pending/MERGE_PLAN.md" 2>/dev/null)" -ge 2 ] || errs="$errs plan-lacks-both-unresolved"
 grep -q 'arch-02_automation_standards.md` - Makefile targets' "$proj/.cursorrules"                          || errs="$errs neighbour-lost"
 grep -q 'Follow interaction modes\*\* from `standards/architecture/arch-03_cursor_automation_standards.md`' "$proj/.cursorrules" || errs="$errs prose-changed"
 [ -f "$proj/.standards-pending/MERGE_PLAN.md" ]                                                           || errs="$errs no-merge-plan"
@@ -1207,6 +1210,9 @@ grep -q 'Domain: 100% test coverage' "$proj/.aiderrc"          || errs="$errs do
 grep -q '^model = ' "$proj/.aiderrc"                           && errs="$errs model-kept"
 grep -q '^model' "$REPO_ROOT/standards/agents/aider/aiderrc.template" && errs="$errs template-has-model"
 [ -f "$proj/.standards-pending/.aiderrc" ]                     || errs="$errs template-not-staged"
+# Two passes rewrote .aiderrc (references, then tiers/model); the backup is the file before the first one.
+grep -q '03_python_standards.md' "$proj/.aiderrc.pre-standards-setup" 2>/dev/null                  || errs="$errs backup-is-intermediate"
+grep -q '^model = claude-3-5-sonnet-20241022' "$proj/.aiderrc.pre-standards-setup" 2>/dev/null     || errs="$errs backup-lacks-model"
 if [ -z "$errs" ]; then pass; else fail "$errs"; fi
 
 echo -n "Test 80: --migrate bootstraps .standards.yml from detection plus existing configs and writes .standards-checksums... "
@@ -1303,6 +1309,60 @@ errs=""
 echo "$second" | grep -qi 'nothing to migrate\|no pre-1.2'                 || errs="$errs not-reported-noop"
 echo "$second" | grep -q 'Setup complete'                                  || errs="$errs setup-not-run"
 if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$second" | grep -i 'migrat' | head -3 | tr '\n' '|')"; fi
+
+echo -n "Test 88: a plain setup.sh first (checksums written, artefacts untouched) does not hide the pre-1.2 shape: doctor still asks to migrate and --migrate still rewrites and converts... "
+proj=$(make_pre12_project "migrate-after-plain-setup")
+(cd "$proj" && "$SETUP" --agents claude-code --languages python >/dev/null 2>&1) || true
+errs=""
+[ -f "$proj/.standards-checksums" ]                                        || errs="$errs plain-setup-wrote-no-checksums"
+doc_out=$(cd "$proj" && bash "$DOCTOR" 2>&1) || true
+echo "$doc_out" | grep -q -- 'setup.sh --migrate'                          || errs="$errs doctor-silent"
+echo "$doc_out" | grep -q 'left by a plain setup'                          || errs="$errs doctor-wrong-prefix"
+mig_out=$(cd "$proj" && "$SETUP" --migrate 2>&1) || true
+echo "$mig_out" | grep -qi 'nothing to migrate'                            && errs="$errs nothing-to-migrate"
+grep -q '03_python_standards.md' "$proj/.aiderrc"                          && errs="$errs aiderrc-still-dead"
+[ -f "$proj/.codexrc" ]                                                    && errs="$errs codexrc-kept"
+[ -f "$proj/AGENTS.md" ]                                                   || errs="$errs agents-missing"
+doc_out=$(cd "$proj" && bash "$DOCTOR" 2>&1) || true
+echo "$doc_out" | grep -q -- '--migrate'                                   && errs="$errs doctor-still-asks-after-migrate"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$mig_out" | grep -i 'migrat' | head -3 | tr '\n' '|')"; fi
+
+echo -n "Test 89: sync-standards refreshing a managed .aiderrc (checksum matches) carries the project's model = line into the new template copy... "
+proj=$(make_project "aiderrc-model-kept")
+fake_standards "$proj"
+write_standards_yml "$proj" aider
+(cd "$proj" && "$SETUP" >/dev/null 2>&1) || true
+# A consumer on the previous template: same settings, a pinned model, and a checksum that matches.
+tmpl="$REPO_ROOT/standards/agents/aider/aiderrc.template"
+{ sed -n '1,3p' "$tmpl"; echo; echo "model = claude-sonnet-4-6"; sed -n '/^read = /,$p' "$tmpl"; } > "$proj/.aiderrc"
+h=$(shasum -a 256 "$proj/.aiderrc" | awk '{print $1}')
+{ grep -v '^\.aiderrc ' "$proj/.standards-checksums" 2>/dev/null; echo ".aiderrc $h"; } > "$proj/.standards-checksums.new" && mv "$proj/.standards-checksums.new" "$proj/.standards-checksums"
+sync_out=$(cd "$proj" && "$SYNC" 2>&1) || true
+errs=""
+echo "$sync_out" | grep -q 'Aider .aiderrc synced'                         || errs="$errs not-synced"
+echo "$sync_out" | grep -q '.aiderrc customized'                           && errs="$errs treated-as-customized"
+grep -q 'The template pins no model' "$proj/.aiderrc"                      || errs="$errs template-not-refreshed"
+grep -q '^model = claude-sonnet-4-6$' "$proj/.aiderrc"                     || errs="$errs model-lost"
+[ "$(grep -c '^model' "$proj/.aiderrc")" = "1" ]                           || errs="$errs model-duplicated"
+h2=$(shasum -a 256 "$proj/.aiderrc" | awk '{print $1}')
+grep -q "^\.aiderrc $h2\$" "$proj/.standards-checksums"                    || errs="$errs checksum-stale"
+(cd "$proj" && "$SYNC" >/dev/null 2>&1) || true
+[ "$h2" = "$(shasum -a 256 "$proj/.aiderrc" | awk '{print $1}')" ]         || errs="$errs not-idempotent"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$sync_out" | grep -i 'aider' | head -3 | tr '\n' '|')"; fi
+
+echo -n "Test 90: --migrate rewrites a symlinked config through the link (link and mode kept, no temp file left) and backs up the original once... "
+proj=$(make_pre12_project "migrate-symlink")
+mkdir -p "$proj/config" && mv "$proj/.aiderrc" "$proj/config/aiderrc" && chmod 640 "$proj/config/aiderrc" && ln -s config/aiderrc "$proj/.aiderrc"
+(cd "$proj" && "$SETUP" --migrate >/dev/null 2>&1) || true
+errs=""
+[ -L "$proj/.aiderrc" ]                                                    || errs="$errs link-replaced"
+grep -q 'lang-01_python_standards.md' "$proj/config/aiderrc"               || errs="$errs target-not-rewritten"
+grep -q '^model = ' "$proj/config/aiderrc"                                 && errs="$errs model-kept"
+mode=$(stat -f %Lp "$proj/config/aiderrc" 2>/dev/null || stat -c %a "$proj/config/aiderrc" 2>/dev/null)
+[ "$mode" = "640" ]                                                        || errs="$errs mode=$mode"
+[ "$(find "$proj/config" -mindepth 1 ! -name aiderrc | wc -l | tr -d ' ')" = "0" ] || errs="$errs temp-left:$(find "$proj/config" -mindepth 1 ! -name aiderrc -exec basename {} \; | tr '\n' ',')"
+grep -q '03_python_standards.md' "$proj/.aiderrc.pre-standards-setup" 2>/dev/null || errs="$errs backup-not-original"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
 
 echo ""
 if [ "$FAIL" -gt 0 ]; then

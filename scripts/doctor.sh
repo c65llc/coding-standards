@@ -141,13 +141,16 @@ fi
 # ---------------------------------------------------------------------------
 # Check 0: pre-1.2 install (#184)
 #
-# A consumer set up before the 1.2 safe-setup has no .standards-checksums and
-# agent configs that cite standards paths renamed in #21 or removed in #40
-# (and often a .codexrc, which Codex no longer reads). Every other check
-# would then warn in its own way — missing config, no checksums, drifted
-# .aiderrc, … — while the one thing to do is run the migration. So this check
-# runs first and, when the shape matches, reports it as the single finding
-# and ends the report. Skipped in the standards repo itself.
+# A consumer set up before the 1.2 safe-setup has agent configs that cite
+# standards paths renamed in #21 or removed in #40 (and often a .codexrc,
+# which Codex no longer reads), usually with no .standards-checksums. Every
+# other check would then warn in its own way — missing config, no checksums,
+# drifted .aiderrc, … — while the one thing to do is run the migration. So
+# this check runs first and, when the shape matches, reports it as the single
+# finding and ends the report. A plain setup.sh may already have written
+# checksums without touching those artefacts; the shape is still reported
+# then (pre12_shape counts only what --migrate would change). Skipped in the
+# standards repo itself.
 # ---------------------------------------------------------------------------
 
 check_pre12_migration() {
@@ -162,9 +165,10 @@ check_pre12_migration() {
     reasons=$(pre12_shape "$PROJECT_ROOT" "$map") || return 1
     [ -n "$reasons" ] || return 1
 
-    local joined
+    local joined prefix="pre-1.2 install: no .standards-checksums"
+    [ -f "$PROJECT_ROOT/.standards-checksums" ] && prefix="pre-1.2 artefacts left by a plain setup"
     joined=$(printf '%s\n' "$reasons" | paste -sd ';' - | sed 's/;/; /g')
-    check_fail "Migration" "pre-1.2 install: no .standards-checksums; $joined" \
+    check_fail "Migration" "$prefix; $joined" \
         "Run: .standards/scripts/setup.sh --migrate  (rewrites the dead references from docs/reference/renamed-files.md, converts .codexrc to AGENTS.md, bootstraps .standards.yml and the checksum baseline, stages anything ambiguous to .standards-pending/ with a MERGE_PLAN; add --dry-run to preview)"
     return 0
 }

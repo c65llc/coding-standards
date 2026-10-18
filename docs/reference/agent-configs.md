@@ -39,7 +39,7 @@ GitHub Copilot reads this file as custom instructions for code generation and ch
 
 **Location:** Project root (`.aiderrc`, `.aider-instructions.md`)
 
-Aider reads `.aiderrc` on startup; it is a short verbatim copy of `standards/agents/aider/aiderrc.template` (`read = .aider-instructions.md`, `auto-lint`, `show-diffs`, the file-ignore list). No model is pinned: Aider takes it from its own config or `--model`, so a standards sync never changes which model a project runs. The coding standards and behavioural rules live in the assembled `.aider-instructions.md`, with the same 95% coverage floor (domain 100%) as every other agent config.
+Aider reads `.aiderrc` on startup; it is a short verbatim copy of `standards/agents/aider/aiderrc.template` (`read = .aider-instructions.md`, `auto-lint`, `show-diffs`, the file-ignore list). The template pins no model: Aider takes it from its own config or `--model`, and a `model =` line the project adds to `.aiderrc` is carried into every refreshed copy, so a standards sync never changes which model a project runs. The coding standards and behavioural rules live in the assembled `.aider-instructions.md`, with the same 95% coverage floor (domain 100%) as every other agent config.
 
 **Format:** Aider config keys (`.aiderrc`); Markdown (`.aider-instructions.md`).
 
