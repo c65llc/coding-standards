@@ -124,6 +124,105 @@ regenerating).
 * Pin the codegen toolchain (compiler version, codegen plugin version) so the
   output is deterministic across machines and matches the CI runner.
 
+### A failing drift gate MUST offer an auto-fix path
+
+"Artifact is stale — regenerate and commit" is a diagnosis, not a remediation.
+A gate that stops there pushes the regeneration onto a human who has to find the
+right machine, the right toolchain and the right command, and it is exactly that
+hand-off where the determinism bugs below hide. Every drift gate (committed
+bundles, generated bindings, visual/snapshot baselines, golden vectors) MUST
+provide at least one of:
+
+* **(a) Label-triggered bot commit.** When the PR carries an opt-in label (e.g.
+  `regen`), the *pinned platform runner* regenerates the artifact and pushes it
+  to the PR branch as a bot commit. Opt-in keeps the default fast-fail and makes
+  the regeneration an explicit, reviewable action; running it on the pinned
+  runner — never a laptop — is what makes the result reproducible.
+* **(b) Uploaded artifact + patch + one-line apply.** The failing job uploads
+  the regenerated artifact *and* a `git diff --binary` patch as a workflow
+  artifact and prints the single command that applies it, e.g.
+  `gh run download <run-id> -n regen-patch && git apply regen.patch`. The
+  `--binary` flag matters: for the wasm bundles, JARs and native libraries this
+  section targets, a default `git diff` emits only `Binary files ... differ`,
+  which `git apply` cannot turn back into bytes. The developer never has to
+  reproduce the runner's environment.
+
+A `workflow_dispatch` regeneration job (the "CI dispatch job" that the testing
+policy, lang-06 and proc-04 require for visual/snapshot baselines) is one way
+to run the regeneration on the pinned runner, and it satisfies this rule when it
+*ends* in (a) or (b): it pushes the regenerated baselines to the PR branch as a
+bot commit, or it uploads them together with a `git diff --binary` patch and
+prints the apply command. A dispatch that stops at "download the snapshot
+artifacts and commit them" satisfies neither option: it is a second pipeline
+the developer has to know about, not a fix path attached to the failure.
+
+Two companion rules keep the gate from firing for predictable reasons:
+
+* **Regenerate before compare when declared inputs change.** Each committed
+  artifact declares its inputs (design tokens, schema, emitter/generator
+  source, the lock file for the codegen toolchain). When a PR touches a declared
+  input, the gate regenerates *first* and then compares, so downstream tests see
+  fresh output and the only possible failure is "regeneration is not
+  committed", not "the test ran against a stale artifact".
+* **Cache baselines by input hash.** Key the cached baseline (rendered snapshot,
+  generated binding, built bundle) on a hash of its declared inputs plus the
+  pinned toolchain version, so unchanged inputs hit the cache and skip the
+  re-render. The hash is an optimisation, not the trigger: a *changed* input
+  hash is what signals that regeneration is required, while a cache miss with
+  an unchanged hash (eviction, a disabled or unavailable cache) simply rebuilds
+  and compares as a cold run would — it MUST NOT fail the PR on its own.
+
+### Determinism-inputs checklist
+
+A cold rebuild is only a meaningful comparison when every input that reaches the
+bytes is pinned. Before committing a generated artifact, and whenever a drift
+gate fails with no source change, check:
+
+| Input | What goes wrong | Pin it with |
+| --- | --- | --- |
+| **Source paths** | The compiler embeds absolute paths (`/Users/<user>/...`, `/home/<user>/...`) in debug info and panic strings; two developers produce different bytes from identical source | `--remap-path-prefix=<checkout>=/src` (Rust), set by the regeneration script as `RUSTFLAGS="--remap-path-prefix=$PWD=/src"` — Cargo does not expand `$PWD` inside `.cargo/config.toml`, so a literal `$PWD` there remaps nothing; a committed config may instead pin the runner's fixed checkout path. `-ffile-prefix-map` / `-fdebug-prefix-map` (C/C++), `-trimpath` (Go) |
+| **`producers` section** | wasm toolchains record exact compiler/linker versions and feature flags in a custom `producers` section; a patch-level toolchain difference changes the bytes | Strip it on output: `wasm-opt --strip-producers`, `wasm-strip`, `wasm-bindgen --remove-producers-section` |
+| **User-level toolchain profiles** | `~/.cargo/config.toml` `[profile.release]`, a global `~/.gradle/gradle.properties`, user `npmrc`/`yarnrc` or `~/.config/...` flags silently override the repo's build profile | Forbid them in the regeneration path: the gate runs with `CARGO_HOME`/`GRADLE_USER_HOME` pointed at a clean directory, *and* a lint refuses to proceed if a user-level profile section is present |
+| **Host triple** | The host's target triple (`aarch64-apple-darwin` vs `x86_64-unknown-linux-gnu`) reaches the artifact via build scripts, `cfg` evaluation and linker defaults | Regenerate only on the pinned platform runner; record the expected host triple next to the artifact and fail fast when it differs |
+| **Generator versions** | `wasm-pack`, `wasm-bindgen`, `uniffi-bindgen`, `protoc`, design-token emitters: an unpinned `latest` changes output on the next install | Pin the exact version in the repo (lock file, `rust-toolchain.toml`, `.tool-versions`, `package.json` `devDependencies` with an exact version) and assert it in the gate before regenerating |
+
+`lint-standards.sh` ships the `artifact-hygiene` common check, which scans
+committed `*.wasm`, `*.a`, `*.so`, `*.dylib` and `*.jar` files for embedded
+`/Users/` and `/home/` paths and WARNs with the offending artifact (username
+redacted). JARs are scanned both as raw bytes (entry names, the archive
+comment, the central directory, stored entries) and, when `unzip` is on the
+runner, as inflated entries, so a path inside a deflated class file or resource
+is seen too. A WARN there means the first row of this table has been missed.
+
+### Worked example: one wasm drift gate, five commits
+
+A shared-core workspace committed its `pkg/*_bg.wasm` bundle and gated CI on a
+cold rebuild. The gate went red on `main` with no source change, and it took five
+commits to make it trustworthy (paths anonymised):
+
+1. **Gate red on `main`.** The committed bundle no longer matched the runner's
+   rebuild. The committed bytes were correct for the laptop that built them.
+2. **"Compared laptops, not source."** The diff was entirely
+   `/Users/<user>/src/core/...` strings embedded in panic messages and debug
+   info. Fix: the repo's regeneration script exports
+   `RUSTFLAGS="--remap-path-prefix=$PWD=/src"` so every machine emits
+   `/src/...` (a first attempt put the literal `$PWD` form in
+   `.cargo/config.toml`, where Cargo does not expand it).
+3. **Host-agnostic hygiene.** The `producers` section still recorded the local
+   toolchain; strip it on output and build from the pinned runner only.
+4. **Regenerate.** With inputs pinned, regenerate once on the runner and commit
+   the result — the first artifact that any other machine could reproduce.
+5. **"A personal cargo profile can no longer drift the committed wasm."** A
+   developer's `~/.cargo/config.toml` `[profile.release]` had been overriding
+   `opt-level`. A pre-regeneration check now refuses to run when a user-level
+   profile section is present.
+
+Every one of those failures was predictable from the checklist above, and none
+of them was a bug in the source. With the auto-fix path in place the first
+commit would have been a bot regeneration from the pinned runner, and the
+remaining four would have surfaced as a single, reviewable diff rather than as
+days of a red `main`.
+
 ## 7. Workspace Dependency Hygiene
 
 * No circular dependencies between members. Enforce with a tool

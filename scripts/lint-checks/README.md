@@ -12,7 +12,7 @@ mean the linter enforces it — the table below is the source of truth.
 
 | Category | Machine-enforced by `lint-standards.sh`? | Checks |
 | --- | --- | --- |
-| Common (all repos) | ✅ | changelog-tags, ci-workflow-hygiene, conventional-commits, coverage-config, doc-lint, headless-ci, no-secrets, quarantine-policy, test-directory-structure |
+| Common (all repos) | ✅ | artifact-hygiene, changelog-tags, ci-workflow-hygiene, conventional-commits, coverage-config, doc-lint, headless-ci, no-secrets, quarantine-policy, test-directory-structure |
 | Python (lang-01) | ✅ | banned-functions, ruff-config, type-annotations |
 | Swift (lang-04) | ✅ | swift-format-config, package-resolved, warnings-as-errors |
 | TypeScript (lang-06) | ✅ | banned-functions, eslint-config, strict-tsconfig |
@@ -55,6 +55,7 @@ no automated check modules for them yet. Consumers should not assume
 | `ci-workflow-hygiene` | arch-08 §3 | Every `pull_request` workflow declares `concurrency` + `cancel-in-progress` (workflow-level or on every job), `timeout-minutes` on each job that runs steps, and path scoping (`paths:` on the PR trigger, a paths-filter + gate job, or `# ci-hygiene: paths-exempt <reason>`) | WARN |
 | `headless-ci` | arch-08 §6 | Workflows and composite actions free of `store-credentials`, `unlock-keychain … login`, `osascript`, `open -a` (steps that need an unlocked desktop) | WARN |
 | `changelog-tags` | proc-02 §5 | Every released `## [x.y.z]` heading in `CHANGELOG.md` (also `CHANGELOG`, `CHANGES.md`, `HISTORY.md`, or `release.changelog`) has a matching tag — `v<version>` or `<version>` by default, `release.tag_prefix` when declared; `## [Unreleased]` and `[YANKED]` markers are handled. FAIL names the untagged versions (first four, then `(+N more)`) or a declared changelog that is missing or empty. WARN when only the topmost heading is untagged (a release in flight: heading merged, tag pending), when a root `package.json` / `Cargo.toml` / `pyproject.toml` version is not the topmost released heading, when release-shaped tags exist but the changelog has no release heading (operational tags such as `docs-preview-…` are ignored), and when a shallow clone cannot see a heading's tag (a `--depth` clone only carries tags inside the fetched history — unverifiable, never a false PASS or FAIL). Self-tests the heading parser, tag matcher and manifest readers on every run | WARN/FAIL |
+| `artifact-hygiene` | arch-06 §6, arch-07 §3 | Committed `*.wasm`, `*.a`, `*.so`(.N), `*.dylib` and `*.jar` files embed no absolute `/Users/<x>/` or `/home/<x>/` path (a machine-specific build the cold-rebuild drift gate cannot reproduce). JARs are scanned as raw bytes (entry names, archive comment, central directory) *and* as inflated entries via `unzip -p` when `unzip` is present. Strict like `no-secrets`: a committed artifact is scanned wherever it lives and `lint.exclude` does not apply. Reports up to three artifacts with the username redacted (`/Users/<user>/…`); a newline-named artifact is reported, not skipped. Never FAILs — the remedy is a regeneration from the pinned runner, not a blocked merge | WARN |
 
 ## Module options
 
@@ -199,6 +200,13 @@ still drop *untracked* worktrees and caches, which never reach CI. If a
 tracked file is a legitimate false positive, fix the content (the password /
 API-key patterns already skip `test`, `spec`, `fixture`, `example`, `sample`,
 `mock`, `dummy` and `placeholder` paths) rather than excluding the path.
+
+**`artifact-hygiene` is strict for the same reason.** Committed build outputs
+usually live in exactly the directories the built-in list excludes (`dist/`,
+`build/`, `target/`, `pkg/` under a vendored tree), and the question the check
+answers — is this committed artifact reproducible? — does not change with the
+directory it was committed to. Tracked artifacts are therefore always scanned;
+untracked build output is still subject to the built-in exclusions.
 
 **Path safety.** Enumeration is NUL-delimited end to end (`git -z`,
 `find -print0`, `xargs -0`), so names with spaces, quotes, `#` or `:` are
