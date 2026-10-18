@@ -12,12 +12,14 @@
 #      travel together; major bumps stay separate so a breaking change gets
 #      its own review (except GitHub Actions, where majors are frequent and
 #      cheap).
-#   2. "Partners that only break in company" are grouped by PATTERN so they
-#      always land in the same PR. Packages that must move in lockstep
+#   2. "Partners that only break in company" are grouped by PATTERN so their
+#      updates land in the same PR. Packages that must move in lockstep
 #      (`react` + `react-dom`, `@typescript-eslint/*`, `vite` + `@vitejs/*`,
-#      `tokio` + `tokio-*`) break when one is bumped without the other; a
-#      grouped PR is the only way a bot can keep them aligned. Add your own
-#      lockstep sets to the `patterns` lists below.
+#      `tokio` + `tokio-*`) break when one is bumped without the other. A
+#      group batches what is available — it does not force both to move, so
+#      the invariant is a CI assertion on the lockfile (arch-07 §3 lockstep
+#      pins); the group is what lets a bot keep that assertion green. Add
+#      your own lockstep sets to the `patterns` lists below.
 #   3. Bot commits still follow Conventional Commits (`chore(deps): …`) and
 #      still pass the dependency age gate (sec-01 §5): a grouped PR that pulls
 #      in a version younger than 72 hours waits, like any other PR.
@@ -38,8 +40,12 @@ updates:
       prefix-development: "chore(deps-dev)"
     open-pull-requests-limit: 5
     groups:
-      # Lockstep partners first: a more specific group wins, so these land
-      # together even when one of them is a major bump.
+      # Lockstep partners first: a more specific group wins, so when partners
+      # have updates they land in one PR, majors included. A group BATCHES; it
+      # does not force partners to move together — Dependabot still opens the
+      # group PR when only one partner has an update. The invariant itself
+      # ("these versions match") is a CI assertion on the lockfile (arch-07 §3
+      # lockstep pins), which this grouping makes easy to keep green.
       react:
         patterns:
           - "react"

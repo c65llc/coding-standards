@@ -3022,6 +3022,16 @@ out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct4c" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL changelog-tags.*1.0.0' && ! echo "$out" | grep -q 'shallow'; then pass; else
     fail "expected FAIL naming 1.0.0 (tags complete despite shallow history), got: $out"; fi
 
+echo -n "Test 206d: changelog-tags FAILs in a shallow clone of a remote that has no tags at all (empty namespace is complete)... "
+ct4dsrc=$(make_project "ct-shallow-notags-src")
+write_changelog "$ct4dsrc/CHANGELOG.md" "## [2.0.0] - 2026-06-01" "## [1.0.0] - 2026-05-01"
+( cd "$ct4dsrc" && git add CHANGELOG.md && git -c user.email="t@t.local" -c user.name="T" commit -q -m "docs: releases, never tagged" )
+ct4d="$TMP_BASE/ct-shallow-notags"
+git clone -q --depth 1 "file://$ct4dsrc" "$ct4d" 2>/dev/null
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct4d" 2>/dev/null || true)
+if echo "$out" | grep -q '^FAIL changelog-tags.*2 of 2' && ! echo "$out" | grep -q 'shallow'; then pass; else
+    fail "expected FAIL for two untagged headings (remote has no tags, namespace complete), got: $out"; fi
+
 echo -n "Test 207: changelog-tags WARNs when the root manifest version trails the latest released heading... "
 ct5=$(make_project "ct-manifest")
 write_changelog "$ct5/CHANGELOG.md" "## [0.1.5] - 2026-06-01" "## [0.1.3] - 2026-05-01"

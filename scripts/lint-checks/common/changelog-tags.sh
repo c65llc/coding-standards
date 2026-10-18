@@ -476,11 +476,14 @@ fi
 # local-only tag must not mask a missing remote one), a heading with no tag
 # is genuinely untagged, not hidden beyond the fetch boundary. No remote or
 # no network → stays shallow.
-if [ "$IS_SHALLOW" = true ] && [ "$TAG_COUNT" -gt 0 ]; then
-    remote_tags=$(git -C "$PROJECT_ROOT" ls-remote --tags --refs origin 2>/dev/null | sed 's|.*refs/tags/||' | sort)
-    local_tags=$(printf '%s\n' "$TAGS" | sort)
-    if [ -n "$remote_tags" ] && [ "$remote_tags" = "$local_tags" ]; then
-        IS_SHALLOW=false
+if [ "$IS_SHALLOW" = true ]; then
+    # The query's own exit status decides whether an empty answer means "the
+    # remote has no tags" (a complete, empty namespace: verifiable, and a
+    # changelog with releases is then simply untagged) or "could not ask".
+    if remote_raw=$(git -C "$PROJECT_ROOT" ls-remote --tags --refs origin 2>/dev/null); then
+        remote_tags=$(printf '%s\n' "$remote_raw" | sed -n 's|.*refs/tags/||p' | sort)
+        local_tags=$(printf '%s\n' "$TAGS" | grep . | sort || true)
+        [ "$remote_tags" = "$local_tags" ] && IS_SHALLOW=false
     fi
 fi
 

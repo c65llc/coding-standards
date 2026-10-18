@@ -292,9 +292,12 @@ Never use these functions with untrusted input. If used with trusted input, add 
   majors are frequent and low-risk).
 - **Group partners that only break in company.** Packages that must move in
   lockstep (`react` + `react-dom`, `@typescript-eslint/*`, `vite` + `@vitejs/*`,
-  `tokio` + `tokio-*`) break when one is bumped alone; a pattern group is the
-  only way a bot keeps them aligned. List the project's lockstep sets
-  explicitly in the config — the defaults do not know them.
+  `tokio` + `tokio-*`) break when one is bumped alone. A pattern group puts
+  their available updates in one PR; it does not make Dependabot wait for the
+  partner, so the invariant itself is a CI assertion on the lockfile (arch-07
+  §3 lockstep pins) and the group is what keeps that assertion green. List
+  the project's lockstep sets explicitly in the config — the defaults do not
+  know them.
 - Bot PRs are ordinary PRs: Conventional Commit prefix (`chore(deps)`), the full
   CI gate, and the age gate below. A grouped PR that pulls in a version younger
   than 72 hours waits like any other.
@@ -505,6 +508,8 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           MERGED_AT: ${{ github.event.pull_request.merged_at }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          APPROVERS: ${{ vars.DEP_AGE_APPROVERS }}  # the same list the gate checks
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -520,11 +525,15 @@ jobs:
             || { echo "could not query existing follow-ups; refusing to guess — rerun this job"; exit 1; }
           case "$existing" in ''|*[!0-9]*) echo "unexpected lookup result '$existing'"; exit 1 ;; esac
           [ "$existing" -eq 0 ] || { echo "follow-up for #$PR already exists (marker $marker)"; exit 0; }
-          # The approver of record is the actor who applied the label (immutable
-          # timeline event), not a body line anyone with edit rights could change.
+          # The approver of record is the actor of the last `labeled` event AT OR
+          # BEFORE the merge (immutable timeline), not a body line anyone with
+          # edit rights could change and not a label re-applied on the closed PR
+          # while this job sat in the queue. Re-validated like the gate did.
           approver=$(gh api "repos/$REPO/issues/$PR/timeline" --paginate --slurp \
-            --jq '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override")] | last | .actor.login // empty')
-          [ -n "$approver" ] || { echo "no dep-age-override labeled event on #$PR; refusing to open a follow-up without an approver"; exit 1; }
+            | jq -r --arg merged "$MERGED_AT" '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override" and .created_at <= $merged)] | last | .actor.login // empty')
+          [ -n "$approver" ] || { echo "no pre-merge dep-age-override labeled event on #$PR; refusing to open a follow-up without an approver"; exit 1; }
+          case ",$APPROVERS," in *,"$approver",*) ;; *) echo "approver @$approver is not in DEP_AGE_APPROVERS; refusing"; exit 1 ;; esac
+          [ "$approver" != "$AUTHOR" ] || { echo "approver @$approver is the PR author; refusing"; exit 1; }
           # Every override line goes into the issue: each bypassed version
           # gets its own yank/advisory review, not just the first.
           overrides=$(printf '%s\n' "$BODY" | sed -n 's/^Dep-age override:[[:space:]]*/- /p')
