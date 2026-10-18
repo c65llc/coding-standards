@@ -1,0 +1,89 @@
+# clang-format configuration — lang-14 §4.
+# Copy to the project root as `.clang-format`. Pin the clang-format version in
+# the README (the matrix's Clang) and run `clang-format --dry-run --Werror` in CI.
+# Vendored code is excluded by a `third_party/.clang-format` containing
+# `DisableFormat: true` (lang-14 §16).
+---
+Language: Cpp
+Standard: c++20
+BasedOnStyle: LLVM
+
+# Layout
+ColumnLimit: 100
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+NamespaceIndentation: None
+IndentCaseLabels: true
+IndentPPDirectives: AfterHash
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false
+InsertNewlineAtEOF: true
+
+# Braces and short forms
+BreakBeforeBraces: Attach
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLambdasOnASingleLine: All
+AllowShortLoopsOnASingleLine: false
+InsertBraces: true
+
+# Pointers, references, const
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+QualifierAlignment: Left
+SpaceAroundPointerQualifiers: Default
+
+# Alignment
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+AlignOperands: Align
+AlignTrailingComments:
+  Kind: Always
+  OverEmptyLines: 0
+BinPackArguments: true
+BinPackParameters: true
+BreakConstructorInitializers: BeforeComma
+ConstructorInitializerIndentWidth: 4
+PackConstructorInitializers: NextLine
+
+# Templates and concepts
+AlwaysBreakTemplateDeclarations: Yes
+BreakBeforeConceptDeclarations: Always
+RequiresClausePosition: OwnLine
+IndentRequiresClause: true
+
+# Includes: matching header, project headers ("project/..."), third-party, std.
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeIsMainRegex: '(_test|_impl)?$'
+IncludeCategories:
+  - Regex: '^"[a-z0-9_]+/.*\.hpp"$'   # project public headers
+    Priority: 2
+  - Regex: '^".*"$'                   # private headers next to the source
+    Priority: 3
+  - Regex: '^<(gtest|gmock|catch2|fmt|tl|nlohmann|boost)/'
+    Priority: 4
+  - Regex: '^<[a-z_]+\.h>$'           # C system headers
+    Priority: 6
+  - Regex: '^<.*>$'                   # C++ standard library
+    Priority: 5
+
+# Misc
+Cpp11BracedListStyle: true
+FixNamespaceComments: true
+ShortNamespaceLines: 0
+SeparateDefinitionBlocks: Always
+SpaceBeforeParens: ControlStatements
+SpaceBeforeCpp11BracedList: false
+SpacesBeforeTrailingComments: 2
+SpacesInContainerLiterals: false
+ReflowComments: true
+CommentPragmas: '^ (NOLINT|IWYU|clang-format)'
+EmptyLineBeforeAccessModifier: LogicalBlock

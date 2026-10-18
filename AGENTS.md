@@ -64,6 +64,7 @@ Consult the matching document before changing anything it governs.
 - `standards/languages/lang-11_ruby_on_rails_standards.md` — Ruby on Rails (Rails 7.2+, rubocop-rails)
 - `standards/languages/lang-12_go_standards.md` — Go (go modules, gofmt, go vet, golangci-lint, table-driven tests)
 - `standards/languages/lang-13_elixir_standards.md` — Elixir (mix, mix format, credo, ExUnit)
+- `standards/languages/lang-14_cpp_standards.md` — C++ (C++20 baseline, CMake presets, clang-format/clang-tidy, warnings-as-errors in CI, sanitizer lanes, C ABI ownership rules)
 
 **Process Standards:**
 

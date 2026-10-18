@@ -6,7 +6,11 @@
 version: 1
 
 # Languages detected in this project
-# Auto-detected during setup; edit to add/remove
+# Auto-detected during setup; edit to add/remove. Keys: python, javascript,
+# typescript, jvm, java, kotlin, ruby, rails, rust, swift, dart, zig, go,
+# elixir, cpp (lang-14: detected from CMakeLists.txt, .clang-format or C++
+# sources; enables the cpp/ lint checks — clang-format config, warnings-as-errors
+# in CI, sanitizer lane — and the lang-cpp agent block).
 languages:
   - python
   - typescript

@@ -177,6 +177,7 @@ Never use these functions with untrusted input. If used with trusted input, add 
 | Java/Kotlin | `Runtime.exec()` with string, `ObjectInputStream.readObject()` (untrusted), `ScriptEngine.eval()` |
 | Rust | `std::process::Command` with unsanitized input |
 | Swift | `NSExpression` with user input, `Process` with unsanitized args |
+| C/C++ | `gets()`, `strcpy()`, `strcat()`, `sprintf()`, `vsprintf()`, `scanf("%s")` without a width, `strtok()`, `system()`, `popen()`, `tmpnam()`, `alloca()`, `atoi()`/`atol()`/`atof()` on untrusted input (use `std::from_chars`) — see [lang-14 §17](../languages/lang-14_cpp_standards.md) |
 
 ### Insecure Deserialization `[P0]`
 
@@ -195,6 +196,7 @@ Never use these functions with untrusted input. If used with trusted input, add 
 | Ruby | `rand()` | `SecureRandom.hex()`, `SecureRandom.uuid()` |
 | Java/Kotlin | `java.util.Random` | `java.security.SecureRandom` |
 | Rust | — | `rand::rngs::OsRng` (already secure by default) |
+| C/C++ | `rand()`, `std::mt19937` and other `<random>` engines | OS CSPRNG: `getrandom(2)`, `SecRandomCopyBytes`, `BCryptGenRandom`, or libsodium/OpenSSL 3 |
 
 ## 5. Dependency & Supply Chain Security
 
@@ -361,6 +363,7 @@ def kb_delete(path: str, preview: bool = False):
 | Rust | `cargo-geiger` (unsafe audit), `clippy` | `cargo geiger`, `cargo clippy --all-targets --all-features -- -D warnings` |
 | Swift | — | Use Xcode static analyzer |
 | Dart | `dart analyze` | Built-in security rules |
+| C/C++ | `clang-tidy` (`cert-*`, `bugprone-*`), ASan/UBSan lanes | `run-clang-tidy -p build`, `cmake --workflow --preset ci-asan-ubsan` (lang-14 §13) |
 
 ### Secrets Scanning
 

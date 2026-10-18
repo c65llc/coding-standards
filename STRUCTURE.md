@@ -37,7 +37,8 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │   │   ├── lang-10_ruby_standards.md
 │   │   ├── lang-11_ruby_on_rails_standards.md
 │   │   ├── lang-12_go_standards.md
-│   │   └── lang-13_elixir_standards.md
+│   │   ├── lang-13_elixir_standards.md
+│   │   └── lang-14_cpp_standards.md
 │   │
 │   ├── process/                   # Process & workflow standards
 │   │   ├── proc-01_documentation_standards.md
@@ -66,7 +67,8 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │       │       ├── dart.txt
 │       │       ├── zig.txt
 │       │       ├── go.txt
-│       │       └── elixir.txt
+│       │       ├── elixir.txt
+│       │       └── cpp.txt
 │       ├── python/
 │       │   └── ruff.toml          # Python linter/formatter config
 │       ├── rust/
@@ -93,6 +95,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │   │   ├── plan.md
 │   │   ├── design-pass.md
 │   │   └── verification.md
+│   ├── cpp/                       # C++ tooling (lang-14): .clang-format, .clang-tidy, CMakePresets.json, ProjectWarnings.cmake
 │   └── *.example                  # Workflow / config templates
 │
 ├── scripts/                        # 🔧 Automation scripts
@@ -141,7 +144,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 | Category | Location | Files |
 |----------|----------|-------|
 | Architecture | `standards/architecture/` | arch-01, arch-02, arch-04 through arch-08, arch-10 |
-| Languages | `standards/languages/` | lang-01 through lang-13 |
+| Languages | `standards/languages/` | lang-01 through lang-14 |
 | Process | `standards/process/` | proc-01 through proc-05 |
 | Security | `standards/security/` | sec-01 |
 
@@ -153,6 +156,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 | Makefile | Root | Makefile |
 | Config | Root | .cursorrules |
 | Document templates | `templates/docs/` | adr.md, spec.md, plan.md, design-pass.md, verification.md |
+| C++ tooling templates | `templates/cpp/` | .clang-format, .clang-tidy, CMakePresets.json, ProjectWarnings.cmake |
 
 ### Documentation
 

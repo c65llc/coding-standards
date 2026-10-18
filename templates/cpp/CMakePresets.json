@@ -1,0 +1,164 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_CXX_EXTENSIONS": "OFF",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "CMAKE_CXX_VISIBILITY_PRESET": "hidden",
+        "CMAKE_VISIBILITY_INLINES_HIDDEN": "ON",
+        "PROJECT_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "dev",
+      "displayName": "Developer (Debug, warnings on, warnings-as-errors off)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "PROJECT_WARNINGS_AS_ERRORS": "OFF",
+        "PROJECT_HARDENED_STDLIB": "ON"
+      }
+    },
+    {
+      "name": "ci",
+      "displayName": "CI (RelWithDebInfo, warnings as errors, clang-tidy, coverage, hardening)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_COMPILE_WARNING_AS_ERROR": "ON",
+        "PROJECT_WARNINGS_AS_ERRORS": "ON",
+        "PROJECT_ENABLE_COVERAGE": "ON",
+        "PROJECT_ENABLE_CLANG_TIDY": "ON",
+        "PROJECT_HARDENING_FLAGS": "ON"
+      }
+    },
+    {
+      "name": "ci-asan-ubsan",
+      "displayName": "CI sanitizer lane: AddressSanitizer + UndefinedBehaviorSanitizer (hardening off: FORTIFY and ASan interfere)",
+      "inherits": "ci",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "PROJECT_ENABLE_COVERAGE": "OFF",
+        "PROJECT_ENABLE_CLANG_TIDY": "OFF",
+        "PROJECT_HARDENING_FLAGS": "OFF",
+        "PROJECT_HARDENED_STDLIB": "ON",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined",
+        "CMAKE_SHARED_LINKER_FLAGS": "-fsanitize=address,undefined"
+      },
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=1:strict_string_checks=1:check_initialization_order=1:detect_stack_use_after_return=1",
+        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1"
+      },
+      "condition": { "type": "notEquals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "ci-tsan",
+      "displayName": "CI sanitizer lane: ThreadSanitizer (separate build; never combined with ASan)",
+      "inherits": "ci",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "PROJECT_ENABLE_COVERAGE": "OFF",
+        "PROJECT_ENABLE_CLANG_TIDY": "OFF",
+        "PROJECT_HARDENING_FLAGS": "OFF",
+        "CMAKE_CXX_FLAGS": "-fsanitize=thread -fno-omit-frame-pointer",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=thread",
+        "CMAKE_SHARED_LINKER_FLAGS": "-fsanitize=thread"
+      },
+      "environment": {
+        "TSAN_OPTIONS": "halt_on_error=1 second_deadlock_stack=1"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" }
+    },
+    {
+      "name": "ci-msvc-asan",
+      "displayName": "CI sanitizer lane: MSVC AddressSanitizer (Debug without /RTC1 and incremental linking, which ASan does not support)",
+      "inherits": "ci",
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "cacheVariables": {
+        "PROJECT_ENABLE_COVERAGE": "OFF",
+        "PROJECT_ENABLE_CLANG_TIDY": "OFF",
+        "PROJECT_HARDENING_FLAGS": "OFF",
+        "CMAKE_CXX_FLAGS": "/fsanitize=address",
+        "CMAKE_CXX_FLAGS_DEBUG": "/MDd /Zi /Ob0 /Od",
+        "CMAKE_EXE_LINKER_FLAGS_DEBUG": "/debug /INCREMENTAL:NO",
+        "CMAKE_SHARED_LINKER_FLAGS_DEBUG": "/debug /INCREMENTAL:NO"
+      },
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "release",
+      "displayName": "Release (LTO, hardened, no tests)",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INTERPROCEDURAL_OPTIMIZATION": "ON",
+        "CMAKE_POSITION_INDEPENDENT_CODE": "ON",
+        "PROJECT_BUILD_TESTS": "OFF",
+        "PROJECT_HARDENING_FLAGS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev", "configurePreset": "dev" },
+    { "name": "ci", "configurePreset": "ci" },
+    { "name": "ci-asan-ubsan", "configurePreset": "ci-asan-ubsan" },
+    { "name": "ci-tsan", "configurePreset": "ci-tsan" },
+    { "name": "ci-msvc-asan", "configurePreset": "ci-msvc-asan", "configuration": "Debug" },
+    { "name": "release", "configurePreset": "release" }
+  ],
+  "testPresets": [
+    {
+      "name": "base-test",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false, "timeout": 600 }
+    },
+    { "name": "dev", "inherits": "base-test", "configurePreset": "dev" },
+    { "name": "ci", "inherits": "base-test", "configurePreset": "ci" },
+    { "name": "ci-asan-ubsan", "inherits": "base-test", "configurePreset": "ci-asan-ubsan" },
+    { "name": "ci-tsan", "inherits": "base-test", "configurePreset": "ci-tsan" },
+    { "name": "ci-msvc-asan", "inherits": "base-test", "configurePreset": "ci-msvc-asan", "configuration": "Debug" }
+  ],
+  "workflowPresets": [
+    {
+      "name": "ci",
+      "steps": [
+        { "type": "configure", "name": "ci" },
+        { "type": "build", "name": "ci" },
+        { "type": "test", "name": "ci" }
+      ]
+    },
+    {
+      "name": "ci-asan-ubsan",
+      "steps": [
+        { "type": "configure", "name": "ci-asan-ubsan" },
+        { "type": "build", "name": "ci-asan-ubsan" },
+        { "type": "test", "name": "ci-asan-ubsan" }
+      ]
+    },
+    {
+      "name": "ci-tsan",
+      "steps": [
+        { "type": "configure", "name": "ci-tsan" },
+        { "type": "build", "name": "ci-tsan" },
+        { "type": "test", "name": "ci-tsan" }
+      ]
+    },
+    {
+      "name": "ci-msvc-asan",
+      "steps": [
+        { "type": "configure", "name": "ci-msvc-asan" },
+        { "type": "build", "name": "ci-msvc-asan" },
+        { "type": "test", "name": "ci-msvc-asan" }
+      ]
+    }
+  ]
+}

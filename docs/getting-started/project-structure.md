@@ -47,7 +47,8 @@ This document explains the repository layout so you can find what you need quick
 │   │   ├── lang-10_ruby_standards.md
 │   │   ├── lang-11_ruby_on_rails_standards.md
 │   │   ├── lang-12_go_standards.md
-│   │   └── lang-13_elixir_standards.md
+│   │   ├── lang-13_elixir_standards.md
+│   │   └── lang-14_cpp_standards.md
 │   │
 │   ├── process/                    # Process and workflow standards
 │   │   ├── proc-01_documentation_standards.md
@@ -115,7 +116,7 @@ Standards are organized by category so you only look at what applies:
 | Category | Path | Content |
 | -------- | ---- | ------- |
 | Architecture | `standards/architecture/` | Clean Architecture, automation, Cursor integration |
-| Languages | `standards/languages/` | Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby on Rails, Go, Elixir |
+| Languages | `standards/languages/` | Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby on Rails, Go, Elixir, C++ |
 | Process | `standards/process/` | Documentation, git workflow, code review, agent workflow |
 | Security | `standards/security/` | Security guidelines with P0-P2 severity model |
 | Shared | `standards/shared/` | Core standards that apply across all agents |

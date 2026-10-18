@@ -80,6 +80,7 @@ Markdown files organized by category with prefix-based naming:
 - `standards/languages/lang-11_ruby_on_rails_standards.md` — Ruby on Rails (Rails 7.2+, rubocop-rails)
 - `standards/languages/lang-12_go_standards.md` — Go (go modules, gofmt, go vet, golangci-lint, table-driven tests)
 - `standards/languages/lang-13_elixir_standards.md` — Elixir (mix, mix format, credo, ExUnit)
+- `standards/languages/lang-14_cpp_standards.md` — C++ (C++20 baseline, CMake presets, clang-format/clang-tidy, warnings-as-errors in CI, sanitizer lanes, C ABI ownership rules)
 
 **Process Standards:**
 
@@ -119,7 +120,7 @@ All bash. Key scripts:
 - `diff-standards.sh` — Previews what sync would change; `--exit-code` makes it a CI gate
 - `lint-standards.sh` — Standards compliance linter; outputs text, JSON, or SARIF. `--since <ref>`/`--changed` scope file scans to a PR's changed files; `--timeout <secs>` guards each check (`--fail-on-timeout` turns a timed-out check into a FAIL; security checks always FAIL on timeout). File-scanning checks enumerate via `git ls-files` through `scripts/lib/lint-files.sh`; `banned-functions` honour `lint.exclude` in `.standards.yml`, `no-secrets` never does (see `scripts/lint-checks/README.md`) Check modules live in `scripts/lint-checks/` (common: ci-workflow-hygiene, conventional-commits, coverage-config, doc-lint, headless-ci, no-secrets, quarantine-policy, test-directory-structure). Monorepos: the runner iterates the root plus every member (`members:` in `.standards.yml`, else auto-discovered `*/.standards.yml`, resolved by `scripts/lib/members.sh`) — repo-wide checks once at the root, project/language checks per member — and every JSON/SARIF result carries a `member` field
 - `detect-languages.sh` — Manifest-based language detection for the root and the conventional sub-roots (`apps/*`, `packages/*`, `crates/*`, `core`, `server`, `web`, `shells/*`); `--skip <dir>` / `--root-only`
-- `doctor.sh` — Health check; reports members, and per member compares detected vs declared languages and flags declared-but-unsupported keys (`cpp`)
+- `doctor.sh` — Health check; reports members, and per member compares detected vs declared languages and flags declared keys that have no standards document
 - `add-copilot-instructions-pr.sh` — Creates a PR to add Copilot instructions to a repo
 - `setup-git-aliases.sh` — Configures git aliases
 

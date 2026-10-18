@@ -150,13 +150,13 @@ Use it as a CI gate:
 
 Prints one language key per line (`python`, `rust`, `ruby`, `rails`, `javascript`, `typescript`, `jvm`, `java`, `kotlin`, `swift`, `dart`, `zig`, `go`, `elixir`, `cpp`), each at most once, root first. Besides the project root it inspects the conventional monorepo sub-roots `apps/*`, `packages/*`, `crates/*`, `core`, `server`, `web` and `shells/*` for `Cargo.toml`, `tsconfig*.json`, `package.json`, `Package.swift`, `pyproject.toml`, `go.mod`, `mix.exs`, `CMakeLists.txt` and the other manifests, so a Rust core + SwiftUI shell + TypeScript workers repository detects all three instead of `javascript` alone.
 
+`cpp` (lang-14) is detected from `CMakeLists.txt`, a `.clang-format` (or `_clang-format`) file, or C++ sources (`*.cpp`, `*.cc`, `*.cxx`, `*.hpp`, `*.hh`, `*.hxx`) at the root or up to three levels under `src/`, `include/`, `lib/` or `Sources/` — so a Swift package or Android app that carries a C++ engine is detected as `cpp` too and the C ABI rules reach the project that owns the engine.
+
 | Flag | Effect |
 | --- | --- |
 | `--root-only` | Inspect only the project root. |
 | `--subroots-only` | Inspect only the conventional sub-roots, not the root's own manifests, so a language both the root and a sub-root carry is still attributed to the sub-root (used by setup, sync and diff to assemble sub-root languages into the agent configs). |
 | `--skip <dir>` | Do not inspect this root-relative sub-root (repeatable). The member-aware scripts pass every declared member so its languages come from its own `.standards.yml`. |
-
-`cpp` (from `CMakeLists.txt`) has no standards document yet: agent assembly and `lint-standards.sh` ignore the key, and `doctor.sh` reports it as unsupported when declared.
 
 ---
 
@@ -185,7 +185,7 @@ make doctor
 
 The `Worktrees` check (proc-04 § Worktree Hygiene) passes when the worktree root (`worktree_dir:`, default `.claude/worktrees`) is gitignored and reports the repository's linked worktrees — count, oldest idle age, total size. It warns on an invalid `worktree_dir:`, a root that is not gitignored, worktrees nested inside another worktree, worktrees outside the root (`.worktrees/`, `.Codex/worktrees/`, …), and worktrees idle for more than 14 days or whose directory is gone, pointing at `make worktree-gc`.
 
-The `Languages` check compares what `detect-languages.sh` finds with what `.standards.yml` declares, for the root (member directories skipped) and for each member (`Languages (server)`). It warns about a supported language that is detected but not declared, and about a declared key that has no standards document or lint checks (`cpp`): agent assembly and the linter silently ignore such a key. The `Members` check fails on a declared member whose directory is missing and warns on one without a `.standards.yml`.
+The `Languages` check compares what `detect-languages.sh` finds with what `.standards.yml` declares, for the root (member directories skipped) and for each member (`Languages (server)`). It warns about a supported language that is detected but not declared, and about a declared key that has no standards document or lint checks: agent assembly and the linter silently ignore such a key. The `Members` check fails on a declared member whose directory is missing and warns on one without a `.standards.yml`.
 
 The `Checksums` check names the configs modified since their last assembly and treats a file declared `managed: false` in `.standards.yml` as `curated, not drifted` (the check still passes). The `Git Hooks` check honours `hooks:`: `custom` passes outright (the project's own manager owns the hooks), `lefthook` / `husky` pin which manager's config is read (a missing config is a `WARN`), and an unrecognised value warns and falls back to detection. See [Curated Agent Configs](../guides/customization.md#curated-agent-configs).
 

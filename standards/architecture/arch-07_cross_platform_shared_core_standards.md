@@ -67,6 +67,13 @@ the boundary itself is a tested surface, not an afterthought.
 * Pin the binding generator version (e.g. `wasm-pack`, `uniffi-bindgen`) and treat
   the generated bindings as committed generated artifacts (see
   [arch-06](./arch-06_monorepo_workspace_standards.md) §6).
+* **The core's side of the contract** — opaque handles, create/destroy pairing,
+  borrowed-buffer lifetimes, null-handle tolerance, status codes, and catching
+  every exception at the `extern "C"` boundary — is
+  [lang-14 §10](../languages/lang-14_cpp_standards.md#10-the-c-abi-boundary) for a
+  C++ core and [lang-08 §21](../languages/lang-08_rust_standards.md#21-ffi--wasm-facades)
+  for a Rust core. A wrapper (Swift, Kotlin, C#, Python) relies on exactly those
+  guarantees and no others; check `<prefix>_abi_version()` at load time.
 
 ### Cold-rebuild drift gate for committed generated artifacts
 

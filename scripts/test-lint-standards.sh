@@ -2380,8 +2380,9 @@ if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *\]' && [ "$(echo "$
 echo -n "Test 159: detect-languages.sh finds manifests under apps/*, packages/*, crates/*, core, server, web, shells/*... "
 dl=$(make_project "detect-walk")
 mkdir -p "$dl/apps/api" "$dl/packages/ui" "$dl/crates/core" "$dl/core" "$dl/server" "$dl/web" "$dl/shells/apple" "$dl/node_modules/x"
-touch "$dl/apps/api/pyproject.toml" "$dl/crates/core/Cargo.toml" "$dl/core/CMakeLists.txt" "$dl/server/go.mod" \
+touch "$dl/apps/api/pyproject.toml" "$dl/crates/core/Cargo.toml" "$dl/server/go.mod" \
       "$dl/web/package.json" "$dl/web/tsconfig.app.json" "$dl/shells/apple/Package.swift" "$dl/packages/ui/mix.exs" "$dl/node_modules/x/pubspec.yaml"
+printf 'project(core CXX)\n' > "$dl/core/CMakeLists.txt"   # an empty CMakeLists.txt enables no language
 got=$(bash "$DETECT" "$dl" 2>/dev/null | tr '\n' ' ')
 want_ok=true
 for l in python rust cpp go javascript typescript swift elixir; do
@@ -2406,14 +2407,14 @@ both_skipped=$(bash "$DETECT" --skip apps/a --skip apps/b "$dl2" 2>/dev/null | t
 if echo " $skipped " | grep -q ' javascript ' && [ "$both_skipped" = "rust" ]; then pass; else fail "skipped='$skipped' both='$both_skipped'"; fi
 
 # doctor.sh on monorepos and unsupported language keys.
-echo -n "Test 162: doctor.sh flags a declared language that has no standards or checks (cpp)... "
-dc=$(make_project "doctor-cpp")
-printf 'version: 1\nlanguages:\n  - cpp\n  - python\nagents: []\n' > "$dc/.standards.yml"
+echo -n "Test 162: doctor.sh flags a declared language that has no standards or checks (cobol)... "
+dc=$(make_project "doctor-cobol")
+printf 'version: 1\nlanguages:\n  - cobol\n  - python\nagents: []\n' > "$dc/.standards.yml"
 touch "$dc/pyproject.toml"
 out=$(cd "$dc" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
-if echo "$out" | grep 'Languages' | grep -q 'WARN' && echo "$out" | grep 'Languages' | grep -q "cpp" \
+if echo "$out" | grep 'Languages' | grep -q 'WARN' && echo "$out" | grep 'Languages' | grep -q "cobol" \
    && echo "$out" | grep 'Languages' | grep -qi 'unsupported\|no standards'; then pass; else
-    fail "cpp not flagged: $(echo "$out" | grep 'Languages')"; fi
+    fail "cobol not flagged: $(echo "$out" | grep 'Languages')"; fi
 
 echo -n "Test 163: doctor.sh reports the members and checks each member's languages... "
 out=$(cd "$mono" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
@@ -2572,13 +2573,19 @@ server_runs=$(printf '%s' "$out" | tr -d '\n' | grep -o '"check": "python/banned
 if echo "$out" | tr -d '\n' | grep -q '"members": *\[ *"\." *, *"server" *, *"web" *\]' && [ "$server_runs" = "1" ]; then pass; else
     fail "members=$(echo "$out" | tr -d '\n' | grep -o '"members": *\[[^]]*\]') server_runs=$server_runs"; fi
 
-echo -n "Test 176: doctor.sh does not ask a CMake-only project to declare the unsupported 'cpp' key... "
-cm=$(make_project "doctor-cmake-only")
+echo -n "Test 176: doctor.sh never suggests a detected key that has no standards (unsupported keys are filtered)... "
+cm=$(make_project "doctor-unsupported-filtered")
 printf 'version: 1\nlanguages: []\n' > "$cm/.standards.yml"
 printf 'cmake_minimum_required(VERSION 3.20)\nproject(demo)\n' > "$cm/CMakeLists.txt"
-out=$(cd "$cm" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
-if echo "$out" | grep -q 'Languages' && ! echo "$out" | grep 'Languages' | grep -q 'cpp'; then pass; else
-    fail "doctor suggested cpp: $(echo "$out" | grep 'Languages')"; fi
+# Simulate a detector that emits a key with no standard: the doctor must drop it
+# from the "declare these" suggestion instead of asking for an unsupported key.
+mkdir -p "$cm/.standards/scripts"
+printf '#!/bin/bash\necho fortran\n' > "$cm/.standards/scripts/detect-languages.sh"; chmod +x "$cm/.standards/scripts/detect-languages.sh"
+cp "$REPO_ROOT/scripts/doctor.sh" "$cm/.standards/scripts/doctor.sh"
+mkdir -p "$cm/.standards/scripts/lib"; cp "$REPO_ROOT"/scripts/lib/*.sh "$cm/.standards/scripts/lib/"
+out=$(cd "$cm" && bash "$cm/.standards/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep -q 'Languages' && ! echo "$out" | grep 'Languages' | grep -q 'fortran'; then pass; else
+    fail "doctor suggested fortran: $(echo "$out" | grep 'Languages')"; fi
 
 echo -n "Test 177: doctor.sh does not ask a parent member to declare a nested member's languages... "
 nest2=$(make_project "doctor-nested-members")
@@ -2748,6 +2755,171 @@ mkdir -p "$hh/.husky"
 out=$(cd "$hh" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
 if echo "$out" | grep 'Git Hooks' | grep -qi 'husky' && ! echo "$out" | grep 'Git Hooks' | grep -qi 'lefthook'; then pass; else
     fail "expected husky branch: $(echo "$out" | grep 'Git Hooks' | tr '\n' '|')"; fi
+
+# --- C++ (lang-14, #192): detection, languages.sh mapping, cpp/ check modules --
+
+echo -n "Test 192: detect-languages.sh detects cpp from a CXX CMake project or C++ sources, not from C-only CMake or a lone .clang-format... "
+cm1=$(make_project "detect-cpp-cmake"); printf 'cmake_minimum_required(VERSION 3.25)\nproject(demo CXX)\n' > "$cm1/CMakeLists.txt"
+cm2=$(make_project "detect-cpp-clang-format"); mkdir -p "$cm2/engine"
+printf 'BasedOnStyle: LLVM\n' > "$cm2/.clang-format"; printf 'int f() { return 1; }\n' > "$cm2/engine/core.cpp"
+cm3=$(make_project "detect-cpp-sources"); mkdir -p "$cm3/src/engine" "$cm3/include/demo"
+printf 'int main() { return 0; }\n' > "$cm3/src/engine/main.cxx"; printf '#pragma once\n' > "$cm3/include/demo/api.hpp"
+cm4=$(make_project "detect-cpp-root-cc"); printf 'int f() { return 1; }\n' > "$cm4/util.cc"
+# project() with no language list enables C and CXX by default
+cm8=$(make_project "detect-cpp-cmake-default"); printf 'cmake_minimum_required(VERSION 3.25)\nproject(demo\n  VERSION 1.0\n  DESCRIPTION "x")\nadd_subdirectory(src)\n' > "$cm8/CMakeLists.txt"
+cm5=$(make_project "detect-cpp-none"); mkdir -p "$cm5/src"; printf 'def f(): pass\n' > "$cm5/src/app.py"; touch "$cm5/pyproject.toml"
+# pure-C CMake project, multi-line project() call
+cm6=$(make_project "detect-cpp-c-only"); printf 'cmake_minimum_required(VERSION 3.25)\nproject(demo\n  LANGUAGES C)\n' > "$cm6/CMakeLists.txt"; printf 'int main(void) { return 0; }\n' > "$cm6/main.c"
+# .clang-format formatting JavaScript
+cm7=$(make_project "detect-cpp-clang-format-js"); printf 'BasedOnStyle: Google\n' > "$cm7/.clang-format"; printf 'export const x = 1;\n' > "$cm7/index.js"; printf '{"name":"x"}\n' > "$cm7/package.json"
+# C project vendoring a C++ dependency
+cm9=$(make_project "detect-cpp-vendored"); mkdir -p "$cm9/third_party/lib"; printf 'project(demo C)\n' > "$cm9/CMakeLists.txt"; printf 'int g();\n' > "$cm9/third_party/lib/dep.cpp"
+ok=true
+for d in "$cm1" "$cm2" "$cm3" "$cm4" "$cm8"; do
+    bash "$DETECT" "$d" 2>/dev/null | grep -qx 'cpp' || { ok=false; echo -n "[no cpp for $(basename "$d")] "; }
+done
+for d in "$cm5" "$cm6" "$cm7" "$cm9"; do
+    bash "$DETECT" "$d" 2>/dev/null | grep -qx 'cpp' && { ok=false; echo -n "[cpp false positive for $(basename "$d")] "; }
+done
+if [ "$ok" = true ]; then pass; else fail "detection wrong"; fi
+
+echo -n "Test 193: languages.sh maps cpp to lang-cpp.md and reports it supported... "
+# shellcheck disable=SC1091
+out=$(bash -c "source '$REPO_ROOT/scripts/lib/languages.sh'; language_supported cpp && map_languages_to_blocks 'cpp rust'" 2>&1)
+if [ $? -eq 0 ] && echo "$out" | grep -q 'lang-cpp.md' && echo "$out" | grep -q 'lang-rust.md' \
+   && [ -f "$REPO_ROOT/standards/shared/blocks/lang-cpp.md" ]; then pass; else fail "got: $out"; fi
+
+echo -n "Test 194: cpp/clang-format-config PASSes with a root .clang-format... "
+cf=$(make_project "cpp-clang-format-good")
+printf 'BasedOnStyle: LLVM\nColumnLimit: 100\n' > "$cf/.clang-format"
+out=$(bash "$CHECKS/cpp/clang-format-config.sh" "$cf" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS cpp/clang-format-config'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 195: cpp/clang-format-config WARNs on an empty .clang-format and FAILs when none exists... "
+cf2=$(make_project "cpp-clang-format-empty"); : > "$cf2/.clang-format"
+cf3=$(make_project "cpp-clang-format-none"); printf 'project(x CXX)\n' > "$cf3/CMakeLists.txt"
+out2=$(bash "$CHECKS/cpp/clang-format-config.sh" "$cf2" 2>/dev/null || true)
+out3=$(bash "$CHECKS/cpp/clang-format-config.sh" "$cf3" 2>/dev/null || true)
+if echo "$out2" | grep -q '^WARN cpp/clang-format-config' && echo "$out3" | grep -q '^FAIL cpp/clang-format-config'; then pass; else
+    fail "empty: $out2 | none: $out3"; fi
+
+echo -n "Test 196: cpp/warnings-as-errors PASSes when CI enables -Werror, /WX or CMAKE_COMPILE_WARNING_AS_ERROR... "
+we1=$(make_project "cpp-werror-ci"); mkdir -p "$we1/.github/workflows"
+printf 'jobs:\n  build:\n    steps:\n      - run: cmake -B build -DCMAKE_CXX_FLAGS="-Wall -Werror"\n' > "$we1/.github/workflows/ci.yml"
+we2=$(make_project "cpp-werror-preset"); mkdir -p "$we2/.github/workflows"
+printf 'jobs:\n  build:\n    steps:\n      - run: cmake --preset ci && cmake --build --preset ci\n' > "$we2/.github/workflows/ci.yml"
+printf '{ "version": 6, "configurePresets": [ { "name": "ci", "cacheVariables": { "CMAKE_COMPILE_WARNING_AS_ERROR": "ON" } } ] }\n' > "$we2/CMakePresets.json"
+we3=$(make_project "cpp-werror-msvc"); mkdir -p "$we3/.github/workflows"
+printf 'jobs:\n  build:\n    steps:\n      - run: cmake -B build -DCMAKE_CXX_FLAGS="/W4 /WX"\n' > "$we3/.github/workflows/ci.yml"
+# the shipped template: CI runs the ci workflow preset, which sets CMAKE_COMPILE_WARNING_AS_ERROR
+we6=$(make_project "cpp-werror-template"); mkdir -p "$we6/.github/workflows"
+printf 'jobs:\n  build:\n    steps:\n      - run: cmake --workflow --preset ci\n' > "$we6/.github/workflows/ci.yml"
+cp "$REPO_ROOT/templates/cpp/CMakePresets.json" "$we6/CMakePresets.json"
+# the flag lives in a hidden base preset the selected one inherits (array form)
+we9=$(make_project "cpp-werror-inherits"); mkdir -p "$we9/.github/workflows"
+printf 'jobs:\n  build:\n    steps:\n      - run: cmake --preset=ci-linux && cmake --build --preset ci-linux\n' > "$we9/.github/workflows/ci.yml"
+printf '{ "version": 6, "configurePresets": [ { "name": "strict", "hidden": true, "cacheVariables": { "CMAKE_COMPILE_WARNING_AS_ERROR": "ON" } }, { "name": "ci-linux", "inherits": ["base", "strict"] }, { "name": "base", "hidden": true, "generator": "Ninja" } ] }\n' > "$we9/CMakePresets.json"
+ok=true
+for d in "$we1" "$we2" "$we3" "$we6" "$we9"; do
+    out=$(bash "$CHECKS/cpp/warnings-as-errors.sh" "$d" 2>/dev/null || true)
+    echo "$out" | grep -q '^PASS cpp/warnings-as-errors' || { ok=false; echo -n "[$(basename "$d"): $out] "; }
+done
+if [ "$ok" = true ]; then pass; else fail "expected PASS"; fi
+
+echo -n "Test 197: cpp/warnings-as-errors WARNs when the build config enables it but CI does not run that config, FAILs when nothing does... "
+we4=$(make_project "cpp-werror-no-ci")
+printf 'project(x CXX)\nset(CMAKE_COMPILE_WARNING_AS_ERROR ON)\n' > "$we4/CMakeLists.txt"
+we5=$(make_project "cpp-werror-none"); mkdir -p "$we5/.github/workflows"
+printf 'jobs:\n  build:\n    steps:\n      - run: cmake -B build && cmake --build build\n' > "$we5/.github/workflows/ci.yml"
+printf 'project(x CXX)\n# -Werror would go here\nadd_compile_options(-Werror=unused-variable)\n' > "$we5/CMakeLists.txt"
+# a docs-only workflow never configures the project
+we7=$(make_project "cpp-werror-docs-ci"); mkdir -p "$we7/.github/workflows"
+printf 'jobs:\n  docs:\n    steps:\n      - run: mkdocs build --strict\n' > "$we7/.github/workflows/docs.yml"
+printf 'project(x CXX)\nset(CMAKE_COMPILE_WARNING_AS_ERROR ON)\n' > "$we7/CMakeLists.txt"
+# CI selects the dev preset; only the ci preset enables it
+we8=$(make_project "cpp-werror-wrong-preset"); mkdir -p "$we8/.github/workflows"
+printf 'jobs:\n  build:\n    steps:\n      - run: cmake --preset dev && cmake --build --preset dev\n' > "$we8/.github/workflows/ci.yml"
+printf '{ "version": 6, "configurePresets": [ { "name": "dev" }, { "name": "ci", "cacheVariables": { "CMAKE_COMPILE_WARNING_AS_ERROR": "ON" } } ] }\n' > "$we8/CMakePresets.json"
+out4=$(bash "$CHECKS/cpp/warnings-as-errors.sh" "$we4" 2>/dev/null || true)
+out5=$(bash "$CHECKS/cpp/warnings-as-errors.sh" "$we5" 2>/dev/null || true)
+out7=$(bash "$CHECKS/cpp/warnings-as-errors.sh" "$we7" 2>/dev/null || true)
+out8=$(bash "$CHECKS/cpp/warnings-as-errors.sh" "$we8" 2>/dev/null || true)
+if echo "$out4" | grep -q '^WARN cpp/warnings-as-errors' && echo "$out5" | grep -q '^FAIL cpp/warnings-as-errors' \
+   && echo "$out7" | grep -q '^WARN cpp/warnings-as-errors.*no CI step builds' \
+   && echo "$out8" | grep -q '^WARN cpp/warnings-as-errors.*CI never selects'; then pass; else
+    fail "no-ci: $out4 | none: $out5 | docs-ci: $out7 | wrong-preset: $out8"; fi
+
+echo -n "Test 198: cpp/sanitizer-lane PASSes when CI runs the tests under -fsanitize or a sanitizer preset (directly or inherited)... "
+sl1=$(make_project "cpp-san-flags"); mkdir -p "$sl1/.github/workflows"
+printf 'jobs:\n  asan:\n    steps:\n      - run: cmake -B build -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined" && ctest --test-dir build\n' > "$sl1/.github/workflows/ci.yml"
+# the shipped template: the ci-asan-ubsan workflow preset configures, builds and tests
+sl2=$(make_project "cpp-san-preset"); mkdir -p "$sl2/.github/workflows"
+printf 'jobs:\n  asan:\n    steps:\n      - run: cmake --workflow --preset ci-asan-ubsan\n' > "$sl2/.github/workflows/ci.yml"
+cp "$REPO_ROOT/templates/cpp/CMakePresets.json" "$sl2/CMakePresets.json"
+sl3=$(make_project "cpp-san-msvc"); mkdir -p "$sl3/.github/workflows"
+printf 'jobs:\n  asan:\n    steps:\n      - run: cmake -B build -DCMAKE_CXX_FLAGS="/fsanitize=address" && cmake --build build --config Debug && ctest --test-dir build -C Debug\n' > "$sl3/.github/workflows/ci.yml"
+# a preset without a sanitizer name inherits the flag from a hidden base
+sl9=$(make_project "cpp-san-inherits"); mkdir -p "$sl9/.github/workflows"
+printf 'jobs:\n  checked:\n    steps:\n      - run: cmake --preset ci-checked\n      - run: cmake --build --preset ci-checked\n      - run: ctest --preset ci-checked\n' > "$sl9/.github/workflows/ci.yml"
+printf '{ "version": 6, "configurePresets": [ { "name": "san-base", "hidden": true, "cacheVariables": { "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined" } }, { "name": "ci-checked", "inherits": "san-base" } ] }\n' > "$sl9/CMakePresets.json"
+ok=true
+for d in "$sl1" "$sl2" "$sl3" "$sl9"; do
+    out=$(bash "$CHECKS/cpp/sanitizer-lane.sh" "$d" 2>/dev/null || true)
+    echo "$out" | grep -q '^PASS cpp/sanitizer-lane' || { ok=false; echo -n "[$(basename "$d"): $out] "; }
+done
+if [ "$ok" = true ]; then pass; else fail "expected PASS"; fi
+
+echo -n "Test 199: cpp/sanitizer-lane WARNs on an unused, unflagged or untested sanitizer lane and FAILs when CI has none... "
+sl4=$(make_project "cpp-san-preset-unused"); mkdir -p "$sl4/.github/workflows"
+printf 'jobs:\n  build:\n    steps:\n      - run: cmake -B build && cmake --build build\n' > "$sl4/.github/workflows/ci.yml"
+printf '{ "version": 6, "configurePresets": [ { "name": "asan", "cacheVariables": { "CMAKE_CXX_FLAGS": "-fsanitize=address" } } ] }\n' > "$sl4/CMakePresets.json"
+sl5=$(make_project "cpp-san-none"); mkdir -p "$sl5/.github/workflows"
+printf 'jobs:\n  build:\n    steps:\n      # -fsanitize=address is only mentioned in this comment\n      - run: cmake -B build && cmake --build build\n' > "$sl5/.github/workflows/ci.yml"
+sl6=$(make_project "cpp-san-no-ci"); printf 'project(x CXX)\n' > "$sl6/CMakeLists.txt"
+# sanitizer flags on the configure step, but nothing runs the tests
+sl7=$(make_project "cpp-san-no-tests"); mkdir -p "$sl7/.github/workflows"
+printf 'jobs:\n  asan:\n    steps:\n      - run: cmake -B build -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined"\n      - run: cmake --build build\n' > "$sl7/.github/workflows/ci.yml"
+# CI selects an unsanitized ci-asan preset; an unused dev preset carries the flag
+sl8=$(make_project "cpp-san-wrong-preset"); mkdir -p "$sl8/.github/workflows"
+printf 'jobs:\n  asan:\n    steps:\n      - run: cmake --workflow --preset ci-asan\n' > "$sl8/.github/workflows/ci.yml"
+printf '{ "version": 6, "configurePresets": [ { "name": "ci-asan", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } }, { "name": "dev", "cacheVariables": { "CMAKE_CXX_FLAGS": "-fsanitize=address" } } ], "workflowPresets": [ { "name": "ci-asan", "steps": [ { "type": "configure", "name": "ci-asan" }, { "type": "test", "name": "ci-asan" } ] } ] }\n' > "$sl8/CMakePresets.json"
+out4=$(bash "$CHECKS/cpp/sanitizer-lane.sh" "$sl4" 2>/dev/null || true)
+out5=$(bash "$CHECKS/cpp/sanitizer-lane.sh" "$sl5" 2>/dev/null || true)
+out6=$(bash "$CHECKS/cpp/sanitizer-lane.sh" "$sl6" 2>/dev/null || true)
+out7=$(bash "$CHECKS/cpp/sanitizer-lane.sh" "$sl7" 2>/dev/null || true)
+out8=$(bash "$CHECKS/cpp/sanitizer-lane.sh" "$sl8" 2>/dev/null || true)
+if echo "$out4" | grep -q '^WARN cpp/sanitizer-lane.*no CI step selects' && echo "$out5" | grep -q '^FAIL cpp/sanitizer-lane' \
+   && echo "$out6" | grep -q '^FAIL cpp/sanitizer-lane' \
+   && echo "$out7" | grep -q '^WARN cpp/sanitizer-lane.*no step runs the tests' \
+   && echo "$out8" | grep -q "^WARN cpp/sanitizer-lane.*'ci-asan'.*neither it nor anything it inherits"; then pass; else
+    fail "unused: $out4 | none: $out5 | no-ci: $out6 | no-tests: $out7 | wrong-preset: $out8"; fi
+
+echo -n "Test 199b: lib/cmake-presets.sh resolves a workflow preset to its configure preset and follows inherits... "
+# shellcheck disable=SC1091
+out=$(bash -c "source '$REPO_ROOT/scripts/lib/cmake-presets.sh'; cmake_preset_resolve --workflow ci-asan-ubsan '$REPO_ROOT/templates/cpp/CMakePresets.json'" 2>&1)
+names=$(printf '%s\n' "$out" | grep -oE '"name": "[^"]+"' | tr '\n' ' ')
+# shellcheck disable=SC1091
+missing=$(bash -c "source '$REPO_ROOT/scripts/lib/cmake-presets.sh'; cmake_preset_resolve no-such-preset '$REPO_ROOT/templates/cpp/CMakePresets.json'; echo rc=\$?" 2>&1)
+if [ "$names" = '"name": "ci-asan-ubsan" "name": "ci" "name": "base" ' ] && [ "$missing" = "rc=1" ]; then pass; else
+    fail "chain: $names | missing: $missing"; fi
+
+echo -n "Test 200: runner activates cpp/ checks from .standards.yml languages... "
+wcpp=$(make_project "wired-cpp")
+printf 'version: 1\nlanguages:\n  - cpp\n' > "$wcpp/.standards.yml"
+"$LINT" --format json "$wcpp" > "$TMP_BASE/wired-cpp.json" 2>/dev/null || true
+if grep -q '"check": "cpp/clang-format-config"' "$TMP_BASE/wired-cpp.json" \
+   && grep -q '"check": "cpp/warnings-as-errors"' "$TMP_BASE/wired-cpp.json" \
+   && grep -q '"check": "cpp/sanitizer-lane"' "$TMP_BASE/wired-cpp.json"; then pass; else
+    fail "cpp/ checks missing from JSON output"; fi
+
+echo -n "Test 201: doctor.sh asks a CMake-only project to declare cpp now that lang-14 exists... "
+dcm=$(make_project "doctor-cmake-supported")
+printf 'version: 1\nlanguages: []\nagents: []\n' > "$dcm/.standards.yml"
+printf 'cmake_minimum_required(VERSION 3.25)\nproject(demo CXX)\n' > "$dcm/CMakeLists.txt"
+out=$(cd "$dcm" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1 || true)
+if echo "$out" | grep 'Languages' | grep -q 'WARN' && echo "$out" | grep -q "languages: \[cpp\]" \
+   && ! echo "$out" | grep 'Languages' | grep -qi 'unsupported'; then pass; else
+    fail "doctor did not suggest cpp: $(echo "$out" | grep -A1 'Languages' | tr '\n' '|')"; fi
 
 
 echo ""
