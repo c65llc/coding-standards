@@ -144,3 +144,11 @@ tests:
 # (`make hooks`, a pre-commit framework, ...): setup then leaves the native hook
 # alone and doctor's hook check passes without inspecting it.
 # hooks: custom
+
+# Agent worktree root (proc-04 § Worktree Hygiene). One gitignored directory per
+# repository, project-relative (absolute, ~ and .. paths are rejected and the
+# default used). setup.sh adds it to .gitignore and installs a pre-commit guard
+# that refuses commits staging paths under it; doctor.sh reports the worktrees
+# there (count, idle age, size) and warns on nesting and strays elsewhere;
+# worktree-gc.sh collects merged, gone and idle ones. Default: .claude/worktrees.
+# worktree_dir: .claude/worktrees

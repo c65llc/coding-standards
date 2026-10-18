@@ -48,6 +48,14 @@ fi
 # glob itself, since dotglob is off).
 MEMBER_SKIP_DIRS="node_modules vendor third_party dist build target coverage .standards .standards_tmp .worktrees .workspaces"
 
+# The configured worktree root (`worktree_dir:` in .standards.yml, #190) is
+# never entered either: a worktree of this very repository carries its own
+# .standards.yml and would otherwise be discovered as a member.
+if ! declare -f worktree_root_dir >/dev/null 2>&1; then
+    # shellcheck source=worktrees.sh
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/worktrees.sh"
+fi
+
 # ---------------------------------------------------------------------------
 # member_normalize <path>
 #
@@ -218,8 +226,9 @@ member__skipped() {
 # in MEMBER_SKIP_DIRS.
 # ---------------------------------------------------------------------------
 discover_members() {
-    local root="$1" d rel
+    local root="$1" d rel wt_root
     [ -d "$root" ] || return 0
+    wt_root=$(worktree_root_dir "$root")
     for d in "$root"/*/ "$root"/*/*/; do
         d="${d%/}"
         [ -d "$d" ] || continue
@@ -231,6 +240,7 @@ discover_members() {
             */*) [ -L "$root/${rel%%/*}" ] && continue ;;
         esac
         member__skipped "$rel" && continue
+        worktree_under_root "$rel" "$wt_root" && continue
         printf '%s\n' "$rel"
     done | sort -u
     return 0

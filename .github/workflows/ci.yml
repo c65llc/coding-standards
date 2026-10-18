@@ -102,6 +102,9 @@ jobs:
       - name: lint-standards functional tests
         run: ./scripts/test-lint-standards.sh
 
+      - name: worktree hygiene functional tests
+        run: ./scripts/test-worktree-gc.sh
+
       - name: website CSP post-build functional tests
         run: ./website/scripts/test-csp-postbuild.sh
 

@@ -234,6 +234,11 @@ source "$SCRIPT_DIR/lib/languages.sh"
 # shellcheck source=lib/members.sh disable=SC1091
 source "$SCRIPT_DIR/lib/members.sh"
 
+# Worktree root (`worktree_dir:` in .standards.yml, default .claude/worktrees):
+# gitignored by setup and guarded by the pre-commit template (proc-04, #190).
+# shellcheck source=lib/worktrees.sh disable=SC1091
+source "$SCRIPT_DIR/lib/worktrees.sh"
+
 # Filled-in Project Overview / Key Commands capture (#183)
 if [ -f "$SCRIPT_DIR/lib/project-sections.sh" ]; then
     # shellcheck source=lib/project-sections.sh disable=SC1091
@@ -579,11 +584,12 @@ setup_ai_agents() {
     fi
 
     # Hand-written blocks the regenerated file must carry across verbatim
-    # (#183): the persisted project text, the curated-file map and the hook
-    # manager. Captured before the write below, which truncates the file.
+    # (#183, #190): the persisted project text, the curated-file map, the hook
+    # manager and the worktree root. Captured before the write below, which
+    # truncates the file.
     local PRESERVED_YML="" _k _blk
     if [ -f "$PROJECT_ROOT/.standards.yml" ] && declare -f yaml_raw_block >/dev/null 2>&1; then
-        for _k in project_overview key_commands managed hooks; do
+        for _k in project_overview key_commands managed hooks worktree_dir; do
             _blk=$(yaml_raw_block "$_k" "$PROJECT_ROOT/.standards.yml")
             [ -n "$_blk" ] || continue
             PRESERVED_YML="${PRESERVED_YML:+$PRESERVED_YML
@@ -637,8 +643,8 @@ setup_ai_agents() {
         echo "architecture: clean"
         echo "security: strict"
         if [ -n "$PRESERVED_YML" ]; then
-            echo "# Project text, curated files and hook manager (kept from the previous"
-            echo "# .standards.yml; see templates/standards.yml.example)."
+            echo "# Project text, curated files, hook manager and worktree root (kept from"
+            echo "# the previous .standards.yml; see templates/standards.yml.example)."
             printf '%s\n' "$PRESERVED_YML"
         else
             echo "# Project text assembled into the agent configs ({{PROJECT_OVERVIEW}} /"
@@ -655,6 +661,10 @@ setup_ai_agents() {
             echo "# Git hook manager owning post-merge/commit-msg: standards (default,"
             echo "# native hooks written by setup.sh) | lefthook | husky | custom."
             echo "# hooks: custom"
+            echo "# Agent worktree root (proc-04 Worktree Hygiene): one gitignored directory"
+            echo "# per repo; setup ignores it, the pre-commit guard refuses commits under it,"
+            echo "# doctor and worktree-gc report what lives there. Default .claude/worktrees."
+            echo "# worktree_dir: .claude/worktrees"
         fi
         echo "# Conventional Commits enforcement — uncomment to tune. Defaults: the last"
         echo "# 50 non-merge commits locally; the PR's own commits in the standards-review"
@@ -822,6 +832,17 @@ EOF
     fi
 fi
 
+# Worktree root (proc-04 § Worktree Hygiene, #190): read after .standards.yml
+# was (re)written above, which carries a declared worktree_dir: across. An
+# invalid value is reported and the default used, as doctor.sh does.
+WORKTREE_DIR=$(worktree_root_dir "$PROJECT_ROOT")
+WORKTREE_DIR_PROBLEM=$(worktree_dir_problem "$PROJECT_ROOT")
+if [ -n "$WORKTREE_DIR_PROBLEM" ]; then
+    echo "⚠️  worktree_dir: '$WORKTREE_DIR_PROBLEM' in .standards.yml is not a relative path inside the project; using $WORKTREE_DIR_DEFAULT"
+fi
+# Templates live in the standards checkout (the submodule, or this repo itself).
+TEMPLATES_DIR="${STANDARDS_DIR:-$SCRIPT_DIR/..}/templates"
+
 # Set up git hooks (workstation extra: skipped when --agents names an explicit list)
 GIT_HOOKS_DIR="$PROJECT_ROOT/.git/hooks"
 
@@ -880,6 +901,42 @@ HOOK
 
     chmod +x "$GIT_HOOKS_DIR/post-merge"
     echo "✅ Git hooks installed"
+fi
+
+# Pre-commit worktree guard (proc-04 § Worktree Hygiene, #190): refuses a
+# commit that stages a path under the worktree root (a worktree committed as
+# a submodule, or its files). Installed natively when no pre-commit hook
+# exists and the standards own the hooks; otherwise setup prints how to adopt
+# the template, since an existing hook or another manager is the project's.
+GUARD_TEMPLATE="$TEMPLATES_DIR/pre-commit-worktree-guard.example"
+GUARD_RELATIVE=".standards/templates/pre-commit-worktree-guard.example"
+if [ ! -f "$GUARD_TEMPLATE" ]; then
+    : # template not shipped with this checkout
+elif ! install_git_extras; then
+    : # explicit --agents: git hooks are skipped (reported above)
+elif [ ! -d "$GIT_HOOKS_DIR" ]; then
+    : # not a git repository (reported above)
+elif [ -n "$DECLARED_HOOKS" ] && [ "$DECLARED_HOOKS" != "standards" ]; then
+    echo "ℹ️  Worktree guard (refuses commits that add paths under $WORKTREE_DIR/) — add it to your $DECLARED_HOOKS hooks:"
+    case "$DECLARED_HOOKS" in
+        husky)    echo "   echo 'sh $GUARD_RELATIVE' >> .husky/pre-commit" ;;
+        lefthook) echo "   merge the pre-commit block from $TEMPLATES_DIR/lefthook.yml.example into your lefthook config, then: lefthook install" ;;
+        *)        echo "   run 'sh $GUARD_RELATIVE' from your pre-commit hook" ;;
+    esac
+elif [ -f "$GIT_HOOKS_DIR/pre-commit" ]; then
+    if grep -q "standards-worktree-guard" "$GIT_HOOKS_DIR/pre-commit" 2>/dev/null; then
+        echo "✅ Pre-commit worktree guard already installed"
+    else
+        echo "ℹ️  $GIT_HOOKS_DIR/pre-commit already exists — left as is. To add the worktree guard"
+        echo "   (refuses commits that add paths under $WORKTREE_DIR/), call it from that hook:"
+        echo "   sh $GUARD_RELATIVE"
+    fi
+elif [ "$DRY_RUN" = true ]; then
+    echo "  [dry-run] Would write: $GIT_HOOKS_DIR/pre-commit (worktree guard)"
+else
+    cp "$GUARD_TEMPLATE" "$GIT_HOOKS_DIR/pre-commit"
+    chmod +x "$GIT_HOOKS_DIR/pre-commit"
+    echo "✅ Pre-commit worktree guard installed (refuses commits that add paths under $WORKTREE_DIR/)"
 fi
 
 # Conventional Commits commit-msg hook templates — never auto-installed: the
@@ -1032,6 +1089,18 @@ if [ -f "$PROJECT_ROOT/.gitignore" ]; then
             echo ".standards-pending/"
         } | dry_run_append "$PROJECT_ROOT/.gitignore"
     fi
+    # Agent worktree root (proc-04 § Worktree Hygiene): ignored so a worktree
+    # can never be committed and the linter never walks it.
+    if ! worktree_root_ignored "$PROJECT_ROOT/.gitignore" "$WORKTREE_DIR"; then
+        {
+            echo ""
+            echo "# Agent worktree root (proc-04 Worktree Hygiene; worktree_dir: in .standards.yml)"
+            echo "$WORKTREE_DIR/"
+        } | dry_run_append "$PROJECT_ROOT/.gitignore"
+        if [ "$DRY_RUN" = false ]; then
+            echo "✅ Worktree root $WORKTREE_DIR/ added to .gitignore"
+        fi
+    fi
 elif [ "$SCRIPT_DIR" != "$PROJECT_ROOT" ]; then
     # Create .gitignore if it doesn't exist (only for client projects, not standards repo itself)
     {
@@ -1045,6 +1114,9 @@ elif [ "$SCRIPT_DIR" != "$PROJECT_ROOT" ]; then
         echo "# Backup files"
         echo ".cursorrules.backup"
         echo "*.pre-standards-setup"
+        echo ""
+        echo "# Agent worktree root (proc-04 Worktree Hygiene; worktree_dir: in .standards.yml)"
+        echo "$WORKTREE_DIR/"
         echo ""
         echo "# Note: .standards.yml should be committed — it is the project's declared config."
     } | dry_run_write "$PROJECT_ROOT/.gitignore"
@@ -1076,3 +1148,5 @@ echo "6. If using Gemini CLI, it will automatically use .gemini/GEMINI.md and .g
 echo "7. If using submodule, ensure it's initialized: git submodule update --init"
 echo "8. To sync standards later, run from the project root: ./.standards/scripts/sync-standards.sh"
 echo "   Note: After syncing, fully restart your IDE again to load updated configurations"
+echo "9. Agent worktrees go under $WORKTREE_DIR/ (one gitignored root, never nested); collect finished"
+echo "   ones with: ./.standards/scripts/worktree-gc.sh  (--dry-run to preview)"

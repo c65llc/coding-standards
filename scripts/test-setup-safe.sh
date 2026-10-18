@@ -924,6 +924,93 @@ leaked=$(find "$leak_tmp" -name '*.pre-standards-setup' | wc -l | tr -d ' ')
 [ "$leaked" = "0" ]                                                         || errs="$errs leaked=$leaked"
 if [ -z "$errs" ]; then pass; else fail "$errs"; fi
 
+echo -n "Test 68: setup.sh adds the default worktree root to .gitignore once (second run does not duplicate it)... "
+proj=$(make_project "wt-gitignore-default")
+fake_standards "$proj"
+printf 'node_modules/\n' > "$proj/.gitignore"
+(cd "$proj" && "$SETUP" --agents codex --languages typescript >/dev/null 2>&1) || true
+(cd "$proj" && "$SETUP" --agents codex --languages typescript >/dev/null 2>&1) || true
+n=$(grep -cxF '.claude/worktrees/' "$proj/.gitignore" 2>/dev/null || true)
+if [ "$n" = "1" ] && grep -qxF 'node_modules/' "$proj/.gitignore"; then pass; else fail "entries=$n: $(cat "$proj/.gitignore" | tr '\n' '|')"; fi
+
+echo -n "Test 69: worktree_dir: in .standards.yml is gitignored under that name and preserved in the regenerated .standards.yml... "
+proj=$(make_project "wt-gitignore-custom")
+fake_standards "$proj"
+printf 'version: 1\nlanguages:\n  - typescript\nagents:\n  - codex\nrole: service\nworktree_dir: tools/wt\n' > "$proj/.standards.yml"
+(cd "$proj" && "$SETUP" --agents codex --languages typescript >/dev/null 2>&1) || true
+errs=""
+[ -f "$proj/.gitignore" ]                                   || errs="$errs gitignore-missing"
+grep -qxF 'tools/wt/' "$proj/.gitignore" 2>/dev/null        || errs="$errs root-not-ignored"
+grep -qxF '.claude/worktrees/' "$proj/.gitignore" 2>/dev/null && errs="$errs default-also-added"
+grep -q '^worktree_dir: tools/wt' "$proj/.standards.yml"    || errs="$errs worktree_dir-not-preserved"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 70: an invalid worktree_dir: is reported and the default root is gitignored instead... "
+proj=$(make_project "wt-invalid")
+fake_standards "$proj"
+printf 'version: 1\nlanguages:\n  - typescript\nagents:\n  - codex\nrole: service\nworktree_dir: ../outside\n' > "$proj/.standards.yml"
+setup_out=$(cd "$proj" && "$SETUP" --agents codex --languages typescript 2>&1) || true
+errs=""
+echo "$setup_out" | grep -q "worktree_dir: '../outside'.*not a relative path" || errs="$errs not-warned"
+grep -qxF '.claude/worktrees/' "$proj/.gitignore" 2>/dev/null                 || errs="$errs default-not-ignored"
+grep -qF '../outside/' "$proj/.gitignore" 2>/dev/null                         && errs="$errs invalid-ignored"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 71: setup.sh installs the pre-commit worktree guard when no pre-commit hook exists, and the hook refuses a worktree path... "
+proj=$(make_project "wt-guard-install")
+fake_standards "$proj"
+write_standards_yml "$proj" codex
+setup_out=$(cd "$proj" && "$SETUP" 2>&1) || true
+errs=""
+[ -x "$proj/.git/hooks/pre-commit" ]                                          || errs="$errs hook-missing"
+grep -q 'standards-worktree-guard' "$proj/.git/hooks/pre-commit" 2>/dev/null  || errs="$errs not-the-guard"
+echo "$setup_out" | grep -q 'Pre-commit worktree guard installed'             || errs="$errs not-reported"
+mkdir -p "$proj/.claude/worktrees/x" && echo x > "$proj/.claude/worktrees/x/f"
+(cd "$proj" && git add -f .claude/worktrees/x/f && git -c user.email="t@t" -c user.name="T" commit -q -m "chore: oops" >/dev/null 2>&1) && errs="$errs commit-not-refused"
+# A second run recognises its own hook.
+setup_out=$(cd "$proj" && "$SETUP" 2>&1) || true
+echo "$setup_out" | grep -q 'worktree guard already installed'                || errs="$errs rerun-not-recognised"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 72: an existing pre-commit hook is never replaced (hint printed), and --agents <list> skips the guard... "
+proj=$(make_project "wt-guard-noclobber")
+fake_standards "$proj"
+write_standards_yml "$proj" codex
+printf '#!/bin/sh\necho mine\n' > "$proj/.git/hooks/pre-commit"; chmod +x "$proj/.git/hooks/pre-commit"
+setup_out=$(cd "$proj" && "$SETUP" 2>&1) || true
+errs=""
+grep -q 'echo mine' "$proj/.git/hooks/pre-commit"                              || errs="$errs clobbered"
+echo "$setup_out" | grep -q 'pre-commit already exists'                         || errs="$errs no-hint"
+echo "$setup_out" | grep -q 'pre-commit-worktree-guard.example'                 || errs="$errs hint-lacks-template"
+proj2=$(make_project "wt-guard-explicit")
+fake_standards "$proj2"
+(cd "$proj2" && "$SETUP" --agents codex --languages typescript >/dev/null 2>&1) || true
+[ -f "$proj2/.git/hooks/pre-commit" ]                                          && errs="$errs explicit-agents-installed-hook"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 73: with hooks: husky declared, setup.sh does not write a native pre-commit hook and prints the husky wiring... "
+proj=$(make_project "wt-guard-husky")
+fake_standards "$proj"
+printf 'version: 1\nlanguages:\n  - typescript\nagents:\n  - codex\nrole: service\nhooks: husky\n' > "$proj/.standards.yml"
+setup_out=$(cd "$proj" && "$SETUP" 2>&1) || true
+errs=""
+[ -f "$proj/.git/hooks/pre-commit" ]                                           && errs="$errs native-hook-written"
+echo "$setup_out" | grep -q "pre-commit-worktree-guard.example' >> .husky/pre-commit" || errs="$errs no-husky-hint"
+if [ -z "$errs" ]; then pass; else fail "$errs: $(echo "$setup_out" | grep -i 'guard' | head -3 | tr '\n' '|')"; fi
+
+echo -n "Test 74: --dry-run announces the gitignore entry and the guard without writing either... "
+proj=$(make_project "wt-dry-run")
+fake_standards "$proj"
+write_standards_yml "$proj" codex
+printf 'node_modules/\n' > "$proj/.gitignore"
+setup_out=$(cd "$proj" && "$SETUP" --dry-run 2>&1) || true
+errs=""
+echo "$setup_out" | grep -q 'Would write: .*pre-commit (worktree guard)'       || errs="$errs guard-not-announced"
+echo "$setup_out" | grep -q 'Would append to: .*\.gitignore'                   || errs="$errs gitignore-not-announced"
+[ -f "$proj/.git/hooks/pre-commit" ]                                           && errs="$errs guard-written"
+grep -q 'worktrees' "$proj/.gitignore"                                         && errs="$errs gitignore-written"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

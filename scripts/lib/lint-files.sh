@@ -75,6 +75,12 @@
 
 # shellcheck source=checksums.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/checksums.sh"
+# worktree_root_dir: the configured worktree root (`worktree_dir:`, #190) joins
+# the built-in exclusions so a non-hidden root is never scanned either.
+if ! declare -f worktree_root_dir >/dev/null 2>&1; then
+    # shellcheck source=worktrees.sh
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/worktrees.sh"
+fi
 
 # ---------------------------------------------------------------------------
 # Built-in directory exclusions.
@@ -140,15 +146,38 @@ lint__glob_to_ere() {
 }
 
 # ---------------------------------------------------------------------------
-# lint__default_exclude_ere
-# ERE matching any path that lives under one of the built-in excluded dirs.
+# lint__exclude_dirs [root]
+# The built-in excluded directory names plus, when <root> is given, the
+# worktree root its .standards.yml configures (if not already listed).
+# ---------------------------------------------------------------------------
+lint__exclude_dirs() {
+    local root="${1:-}" name wt_root
+    for name in "${LINT_DEFAULT_EXCLUDE_DIRS[@]}"; do
+        printf '%s\n' "$name"
+    done
+    [ -n "$root" ] || return 0
+    wt_root=$(worktree_root_dir "$root" 2>/dev/null)
+    [ -n "$wt_root" ] || return 0
+    for name in "${LINT_DEFAULT_EXCLUDE_DIRS[@]}"; do
+        [ "$name" = "$wt_root" ] && return 0
+    done
+    printf '%s\n' "$wt_root"
+}
+
+# ---------------------------------------------------------------------------
+# lint__default_exclude_ere [root]
+# ERE matching any path that lives under one of the built-in excluded dirs
+# (or under the configured worktree root of <root>).
 # ---------------------------------------------------------------------------
 lint__default_exclude_ere() {
     local alts="" name esc
-    for name in "${LINT_DEFAULT_EXCLUDE_DIRS[@]}"; do
-        esc="${name//./\\.}"
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        esc=$(printf '%s' "$name" | sed 's/[][^$.|+(){}\\*?]/\\&/g')
         if [ -z "$alts" ]; then alts="$esc"; else alts="$alts|$esc"; fi
-    done
+    done <<EOF
+$(lint__exclude_dirs "${1:-}")
+EOF
     printf '(^|/)(%s)/' "$alts"
 }
 
@@ -215,12 +244,15 @@ lint__raw_untracked() {
         git -C "$root" ls-files -z -o --exclude-standard 2>/dev/null
     else
         local prune=() name
-        for name in "${LINT_DEFAULT_EXCLUDE_DIRS[@]}"; do
+        while IFS= read -r name; do
+            [ -n "$name" ] || continue
             case "$name" in
                 */*) prune+=(-o -path "*/$name") ;;
                 *)   prune+=(-o -name "$name") ;;
             esac
-        done
+        done <<EOF
+$(lint__exclude_dirs "$root")
+EOF
         # ${prune[@]:1} drops the leading "-o". Strip "<root>/" from each
         # NUL-terminated entry without touching any other byte.
         find "$root" -mindepth 1 \( "${prune[@]:1}" \) -prune -o -type f -print0 2>/dev/null \
@@ -346,7 +378,7 @@ lint_list_files() {
     shift || true
 
     local default_ere user_ere="" tracked untracked rel_list
-    default_ere=$(lint__default_exclude_ere)
+    default_ere=$(lint__default_exclude_ere "$root")
     if [ "$strict" = false ]; then
         user_ere=$(lint__user_exclude_ere "$root" "$@")
     fi
@@ -379,7 +411,7 @@ lint_unscannable_files() {
     shift || true
 
     local default_ere user_ere="" tbad ubad tracked untracked
-    default_ere=$(lint__default_exclude_ere)
+    default_ere=$(lint__default_exclude_ere "$root")
     if [ "$strict" = false ]; then
         user_ere=$(lint__user_exclude_ere "$root" "$@")
     fi

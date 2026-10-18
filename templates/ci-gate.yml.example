@@ -99,9 +99,34 @@ jobs:
     if: needs.changes.outputs.apple == 'true'
     runs-on: [self-hosted, macos]
     timeout-minutes: 45
+    env:
+      # Build caches live outside the checkout so N worktrees and N jobs share
+      # one copy and the cleanup below never evicts them (proc-04 § Worktree
+      # Hygiene). Set the same variables in the runner service's environment.
+      CARGO_TARGET_DIR: ${{ runner.temp }}/../cache/target
+      MIN_FREE_GB: "20"
     steps:
+      # Persistent runners fill up; fail fast with a clear message instead of
+      # dying mid-build with ENOSPC (proc-04 § Worktree Hygiene, arch-08 §6).
+      - name: Disk-free preflight
+        run: |
+          set -euo pipefail
+          free_gb=$(df -Pk . | awk 'NR == 2 { printf "%d", $4 / 1024 / 1024 }')
+          echo "free: ${free_gb} GB (minimum ${MIN_FREE_GB} GB)"
+          if [ "$free_gb" -lt "$MIN_FREE_GB" ]; then
+            echo "::error::Only ${free_gb} GB free on $(hostname); run worktree-gc / clear caches on the runner"
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: make ci-apple
+      # Always runs: stray worktrees, build output and job scratch go; the
+      # shared caches above stay.
+      - name: Post-job cleanup
+        if: always()
+        run: |
+          git worktree prune
+          git clean -ffdx --quiet
+          rm -rf "${RUNNER_TEMP:?}"/*
 
   # The ONLY job to list as a required status check. It passes when every lane
   # either passed or was skipped by the routing table, and fails otherwise.

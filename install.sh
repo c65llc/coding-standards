@@ -150,10 +150,27 @@ diff-standards: ## Show what sync-standards would change (add --exit-code to gat
 MAKEFILE
         echo -e "${GREEN}✅ Added diff-standards target to Makefile${NC}"
     fi
+
+    if grep -q "worktree-gc:" "$PROJECT_ROOT/Makefile"; then
+        echo -e "${YELLOW}⚠️  worktree-gc target already exists in Makefile${NC}"
+    else
+        cat >> "$PROJECT_ROOT/Makefile" << 'MAKEFILE'
+
+.PHONY: worktree-gc
+worktree-gc: ## Remove merged, gone and idle agent worktrees; report the rest (ARGS="--dry-run" to preview)
+	@if [ -d ".standards" ]; then \
+		./.standards/scripts/worktree-gc.sh $(ARGS); \
+	else \
+		echo "❌ .standards directory not found. Run install script first."; \
+		exit 1; \
+	fi
+MAKEFILE
+        echo -e "${GREEN}✅ Added worktree-gc target to Makefile${NC}"
+    fi
 else
-    # Create new Makefile with sync-standards and diff-standards targets
+    # Create new Makefile with sync-standards, diff-standards and worktree-gc targets
     cat > "$PROJECT_ROOT/Makefile" << 'MAKEFILE'
-.PHONY: help sync-standards diff-standards
+.PHONY: help sync-standards diff-standards worktree-gc
 
 help: ## Show this help message
 	@echo "Available targets:"
@@ -170,6 +187,14 @@ sync-standards: ## Sync project standards to latest version (run from project ro
 diff-standards: ## Show what sync-standards would change (add --exit-code to gate CI)
 	@if [ -d ".standards" ]; then \
 		./.standards/scripts/diff-standards.sh; \
+	else \
+		echo "❌ .standards directory not found. Run install script first."; \
+		exit 1; \
+	fi
+
+worktree-gc: ## Remove merged, gone and idle agent worktrees; report the rest (ARGS="--dry-run" to preview)
+	@if [ -d ".standards" ]; then \
+		./.standards/scripts/worktree-gc.sh $(ARGS); \
 	else \
 		echo "❌ .standards directory not found. Run install script first."; \
 		exit 1; \
