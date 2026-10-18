@@ -335,25 +335,25 @@ younger than the threshold", and the registry table at the end of this
 section names the publish-date field per ecosystem. The excerpt is the
 override path around it.
 
-1. **Label *and* body block, both required.** The age-gate job honors a failure
-   only when the PR carries the `dep-age-override` label **and** the PR body
-   contains a `Dep-age override: <package>@<version> — <advisory>` line for
-   **every** version the checker rejected (a grouped bump with three young
-   versions needs three lines; a line naming some other package covers
-   nothing), plus an `Approved-by: @security-owner` line. Either half alone
-   keeps the gate red. Nobody sets `continue-on-error`, deletes the job, or
-   merges on red.
-2. **The label is privileged, and the gate checks who applied it.** Anyone
-   with triage access can apply a label, so the label's presence proves
-   nothing; the gate reads the PR timeline for the `labeled` event, takes its
-   actor, and requires that actor to be listed in the `DEP_AGE_APPROVERS`
-   repository variable (the security owner and team leads), to differ from
-   the PR author, and to be the handle named in `Approved-by:`. The approver
-   applies the label themselves — that act is the approval, and it must
-   postdate the PR's last commit (a push after approval can change which
-   versions are young, so the approver removes and re-applies the label for
-   the new head); a body block the author wrote naming someone who never
-   touched the PR fails.
+1. **Label, approval comment and body block, all required.** The age-gate
+   job honors a failure only when the PR carries the `dep-age-override`
+   label, a listed approver has posted the approval comment described next,
+   **and** the PR body contains a `Dep-age override: <package>@<version> —
+   <advisory>` line for **every** version the checker rejected (a grouped
+   bump with three young versions needs three lines; a line naming some
+   other package covers nothing), plus an `Approved-by: @security-owner`
+   line naming that approver. Any part missing keeps the gate red. Nobody
+   sets `continue-on-error`, deletes the job, or merges on red.
+2. **The approval is a comment bound to the head commit.** Anyone with
+   triage access can apply a label and anyone can edit a PR body, so neither
+   proves who approved what. The approver posts a PR comment
+   `Dep-age approved: <full head SHA>`; the gate accepts it only when the
+   comment's author is listed in the `DEP_AGE_APPROVERS` repository variable
+   (the security owner and team leads), is not the PR author, and the SHA is
+   the head the gate is running on. A comment cannot be authored by someone
+   else, and the SHA cannot be backdated or edited into existence by the
+   author, so a push after approval needs a fresh comment for the new head.
+   The label remains the visible signal the merge-time job keys on.
 3. **Merging opens the follow-up.** A second, trusted workflow runs when the
    PR is merged (`pull_request_target` on `closed`, base-repository context,
    nothing from the PR checked out or executed) and creates an issue
@@ -361,9 +361,9 @@ override path around it.
    assigned to the approver, with two checkpoints computed from `merged_at`
    and a stable marker `dep-age-follow-up-for-pr-<n>` so a rerun finds the
    existing issue instead of opening a duplicate. `Due:` (24 h) is the review:
-   the approver — the actor of the `labeled` event, recorded in the issue and
-   immutable — comments that the advisory still stands and the version shows
-   no yank or new advisory so far. `Matures:` (72 h) is the close condition:
+   the approver — the author of the approval comment for the merged head,
+   recorded in the issue and immutable — comments that the advisory still
+   stands and the version shows no yank or new advisory so far. `Matures:` (72 h) is the close condition:
    the version has aged past the gate with no yank or advisory, or it was
    rolled back. Two dates because a one-hour-old emergency pin cannot be
    confirmed mature at the 24 h mark. The split is deliberate: the gate's
@@ -388,9 +388,10 @@ override path around it.
    closed at or after `Matures:` by anyone other than the approver, or one
    closed before `Matures:` without a `Rolled back:` comment from the
    approver posted by the close. Deadlines are recomputed from the PR's
-   `mergedAt` and the approver from the label event, so editing the issue
-   body or reassigning it changes nothing; a forgotten, late or prematurely
-   closed follow-up surfaces on its own.
+   `mergedAt` and the approver from the approval comment for the merged
+   head, so editing the issue body or reassigning it changes nothing; a
+   forgotten, late or prematurely closed follow-up surfaces on its own and
+   stays red until it is reopened or the approver records the rollback.
 
 ```yaml
 # .github/workflows/dep-age-gate.yml (excerpt) — the gate, on the PR.
@@ -435,7 +436,15 @@ jobs:
         # registry field per ecosystem is in the table below this excerpt; a
         # short script per ecosystem that reads the lockfile diff and that
         # field is enough. The override step reads only the offenders file.
-        run: ./scripts/dep-age-check.sh --max-age-hours 72 --offenders age-offenders.txt
+        # Run the BASE branch's copy: the PR may edit the checker, and a gate
+        # must never execute code supplied by the change it gates.
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git show "origin/$BASE_REF:scripts/dep-age-check.sh" > /tmp/dep-age-check.sh \
+            || { echo "no dep-age-check.sh on the base branch"; exit 1; }
+          chmod +x /tmp/dep-age-check.sh
+          /tmp/dep-age-check.sh --max-age-hours 72 --offenders age-offenders.txt
         continue-on-error: true
       - name: Refuse a stale dep-age-override label
         # The merge-time job opens the follow-up whenever the label is present,
@@ -446,7 +455,7 @@ jobs:
         run: |
           echo "the age gate passes; remove the dep-age-override label — no override is needed and none will be recorded"
           exit 1
-      - name: Honor dep-age-override (privileged label + body block, both required)
+      - name: Honor dep-age-override (label + head-bound approval comment + body block, all required)
         if: steps.age.outcome == 'failure'
         env:
           # The label array as JSON — never a joined string, since a label
@@ -454,27 +463,29 @@ jobs:
           LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           BODY: ${{ github.event.pull_request.body }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
           APPROVERS: ${{ vars.DEP_AGE_APPROVERS }}  # repository variable: comma-separated handles
           GH_TOKEN: ${{ github.token }}
         run: |
+          APPROVERS=$(printf '%s' "$APPROVERS" | tr -d '[:space:]')   # `alice, bob` → `alice,bob`
           # The label must be on the PR now (the follow-up job keys on it too),
           # tested as an exact array element …
           printf '%s' "$LABELS_JSON" | jq -e 'index("dep-age-override") != null' >/dev/null \
             || { echo "age gate failed; no dep-age-override label"; exit 1; }
-          # … and the labels array does not say who applied it; the timeline does.
-          # The approval must POSTDATE the PR's last commit: a push after the
-          # label can change which versions the checker rejects, so it needs a
-          # fresh label event (remove and re-apply). Body-only edits cannot
-          # change the offender set — that comes from the lockfile diff.
-          last_commit=$(gh pr view "$PR" --repo "$REPO" --json commits --jq '.commits | last | .committedDate') \
-            || { echo "could not read the PR's commits"; exit 1; }
-          actor=$(gh api "repos/$REPO/issues/$PR/timeline" --paginate --slurp \
-            | jq -r --arg since "$last_commit" '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override" and .created_at > $since)] | last | .actor.login // empty')
-          [ -n "$actor" ] || { echo "no dep-age-override label event after the last commit ($last_commit) — an approver must re-apply the label for the current head"; exit 1; }
-          case ",$APPROVERS," in *,"$actor",*) ;; *) echo "dep-age-override was applied by @$actor, who is not in DEP_AGE_APPROVERS"; exit 1 ;; esac
-          [ "$actor" != "$AUTHOR" ] || { echo "the PR author cannot approve their own override"; exit 1; }
+          # … and the approval is a PR comment `Dep-age approved: <head sha>`
+          # by a listed approver who is not the author. A comment cannot be
+          # authored by someone else and the SHA binds it to this exact head:
+          # a push after approval needs a fresh comment, and no timestamp —
+          # which a commit's author controls — is involved.
+          actor=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --slurp \
+            | jq -r --arg sha "$HEAD_SHA" --arg list ",$APPROVERS," --arg author "$AUTHOR" \
+                '[.[][] | select((.body | test("^Dep-age approved: " + $sha + "([[:space:]]|$)"))
+                                 and (($list | index("," + .user.login + ",")) != null)
+                                 and .user.login != $author)] | last | .user.login // empty') \
+            || { echo "could not read PR comments"; exit 1; }
+          [ -n "$actor" ] || { echo "no 'Dep-age approved: $HEAD_SHA' comment by a listed approver other than the author — approval is bound to the head; a push needs a fresh one"; exit 1; }
           # The body must cover EVERY offender the checker named — one
           # `Dep-age override: <package>@<version> <advisory text>` line each,
           # matched literally (so `@scope/pkg@1.2.3` works) and followed by a
@@ -494,7 +505,7 @@ jobs:
           done < age-offenders.txt
           [ "$rc" -eq 0 ] || exit 1
           approver=$(printf '%s\n' "$BODY" | sed -n 's/^Approved-by: @\([A-Za-z0-9-]*\).*/\1/p' | head -1)
-          [ "$approver" = "$actor" ] || { echo "Approved-by: @$approver does not match the label's actor @$actor"; exit 1; }
+          [ "$approver" = "$actor" ] || { echo "Approved-by: @$approver does not match the approval comment's author @$actor"; exit 1; }
           echo "override honored for $(tr '\n' ' ' < age-offenders.txt)(approved by @$actor); the follow-up issue opens at merge"
 ```
 
@@ -529,10 +540,12 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           MERGED_AT: ${{ github.event.pull_request.merged_at }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           APPROVERS: ${{ vars.DEP_AGE_APPROVERS }}  # the same list the gate checks
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          APPROVERS=$(printf '%s' "$APPROVERS" | tr -d '[:space:]')
           marker="dep-age-follow-up-for-pr-$PR"
           # Idempotency: an existing follow-up is one THIS workflow created —
           # author filter `app/github-actions`, marker in the body, any state,
@@ -545,15 +558,16 @@ jobs:
             || { echo "could not query existing follow-ups; refusing to guess — rerun this job"; exit 1; }
           case "$existing" in ''|*[!0-9]*) echo "unexpected lookup result '$existing'"; exit 1 ;; esac
           [ "$existing" -eq 0 ] || { echo "follow-up for #$PR already exists (marker $marker)"; exit 0; }
-          # The approver of record is the actor of the last `labeled` event AT OR
-          # BEFORE the merge (immutable timeline), not a body line anyone with
-          # edit rights could change and not a label re-applied on the closed PR
-          # while this job sat in the queue. Re-validated like the gate did.
-          approver=$(gh api "repos/$REPO/issues/$PR/timeline" --paginate --slurp \
-            | jq -r --arg merged "$MERGED_AT" '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override" and .created_at <= $merged)] | last | .actor.login // empty')
-          [ -n "$approver" ] || { echo "no pre-merge dep-age-override labeled event on #$PR; refusing to open a follow-up without an approver"; exit 1; }
-          case ",$APPROVERS," in *,"$approver",*) ;; *) echo "approver @$approver is not in DEP_AGE_APPROVERS; refusing"; exit 1 ;; esac
-          [ "$approver" != "$AUTHOR" ] || { echo "approver @$approver is the PR author; refusing"; exit 1; }
+          # The approver of record is the author of the approval comment for
+          # the MERGED head, posted before the merge — the same test the gate
+          # applied, so a label or body change after the fact cannot alter it.
+          approver=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --slurp \
+            | jq -r --arg sha "$HEAD_SHA" --arg list ",$APPROVERS," --arg author "$AUTHOR" --arg merged "$MERGED_AT" \
+                '[.[][] | select((.body | test("^Dep-age approved: " + $sha + "([[:space:]]|$)"))
+                                 and (($list | index("," + .user.login + ",")) != null)
+                                 and .user.login != $author and .created_at <= $merged)] | last | .user.login // empty') \
+            || { echo "could not read PR comments; refusing to guess"; exit 1; }
+          [ -n "$approver" ] || { echo "no pre-merge 'Dep-age approved: $HEAD_SHA' comment by a listed approver on #$PR; refusing to open a follow-up without an approver"; exit 1; }
           # Every override line goes into the issue: each bypassed version
           # gets its own yank/advisory review, not just the first.
           overrides=$(printf '%s\n' "$BODY" | sed -n 's/^Dep-age override:[[:space:]]*/- /p')
@@ -567,7 +581,7 @@ jobs:
             --description "Dependency age-gate override awaiting its follow-up (sec-01 §5)"
           gh issue create --repo "$REPO" --label dep-age-follow-up --assignee "$approver" \
             --title "$title" \
-            --body "$(printf '%s\nApprover: @%s\n\nOverrides honored (review each):\n%s\n\nDue: %s — 24 h review: the approver comments, starting with "Reviewed:", that for each override the advisory still stands and the version shows no yank or new advisory so far.\nMatures: %s — 72 h after merge at %s: confirm no yank or advisory and close, or roll back and close with an approver comment starting "Rolled back:".\nPR: %s\n(The audit recomputes Due/Matures from the PR merge time and takes the approver from the label event; editing these lines changes nothing.)\n' "$marker" "$approver" "$overrides" "$due" "$matures" "$MERGED_AT" "$PR_URL")"
+            --body "$(printf '%s\nApprover: @%s\n\nOverrides honored (review each):\n%s\n\nDue: %s — 24 h review: the approver comments, starting with "Reviewed:", that for each override the advisory still stands and the version shows no yank or new advisory so far.\nMatures: %s — 72 h after merge at %s: confirm no yank or advisory and close, or roll back and close with an approver comment starting "Rolled back:".\nPR: %s\n(The audit recomputes Due/Matures from the PR merge time and takes the approver from the approval comment for the merged head; editing these lines changes nothing.)\n' "$marker" "$approver" "$overrides" "$due" "$matures" "$MERGED_AT" "$PR_URL")"
 ```
 
 ```yaml
@@ -589,51 +603,52 @@ jobs:
     permissions:
       contents: read
       issues: read
-      pull-requests: read   # mergedAt and the label timeline of the originating PR
+      pull-requests: read   # mergedAt, head SHA and the approval comments of the originating PR
     steps:
       - env:
           REPO: ${{ github.repository }}
           APPROVERS: ${{ vars.DEP_AGE_APPROVERS }}  # the same list the gate checks
           GH_TOKEN: ${{ github.token }}
         run: |
+          APPROVERS=$(printf '%s' "$APPROVERS" | tr -d '[:space:]')
           now=$(date -u +%Y-%m-%dT%H:%M:%SZ); rc=0
           # Only follow-ups THIS workflow created (same author filter as the
           # creation step): a stranger's issue with a guessed marker is not audited.
-          # Bounded set, not a fixed historical cap: every OPEN follow-up, plus
-          # those CLOSED in the last 8 days (an early closure is re-flagged
-          # nightly, so one older than that has already been reported 8 times).
+          # Every open AND every closed follow-up: an invalid closure stays red
+          # until it is reopened or the approver records the rollback — it must
+          # not age out of the set. (1000 is gh's ceiling; a repository with
+          # more dependency-age overrides than that has a different problem.)
           # Both enumerations fail CLOSED: an empty list from an API error must
           # not become a green night.
-          since=$(date -u -d '8 days ago' +%Y-%m-%d)
           open_ids=$(gh issue list --repo "$REPO" --state open --limit 1000 \
             --search 'dep-age-follow-up-for-pr- in:body author:app/github-actions' --json number --jq '.[].number') \
             || { echo "::error::could not enumerate open follow-ups"; exit 1; }
           closed_ids=$(gh issue list --repo "$REPO" --state closed --limit 1000 \
-            --search "dep-age-follow-up-for-pr- in:body author:app/github-actions closed:>=$since" --json number --jq '.[].number') \
-            || { echo "::error::could not enumerate recently closed follow-ups"; exit 1; }
+            --search 'dep-age-follow-up-for-pr- in:body author:app/github-actions' --json number --jq '.[].number') \
+            || { echo "::error::could not enumerate closed follow-ups"; exit 1; }
           for number in $open_ids $closed_ids; do
             gh issue view "$number" --repo "$REPO" --json state,closedAt,body,comments \
               --jq '{state, closedAt, body, cs: [.comments[] | {a: .author.login, t: .createdAt, b: .body}]}' > "issue.json"
             # Deadlines and approver come from IMMUTABLE data, not the editable
-            # issue body: the PR number is in the marker, its mergedAt is fixed,
-            # and the approver is the actor of the `labeled` timeline event.
+            # issue body: the PR number is in the marker; its mergedAt and head
+            # SHA are fixed; the approver is the author of the pre-merge
+            # `Dep-age approved: <head sha>` comment — the same test the gate
+            # and the follow-up job applied, re-run here against the current
+            # approver list in case it changed.
             pr=$(jq -r .body issue.json | sed -n 's/^dep-age-follow-up-for-pr-\([0-9]*\)$/\1/p' | head -1)
-            # One checked call for both facts: a failed lookup aborts this
-            # issue's evaluation as an error instead of leaving `author` empty
-            # and letting the self-approval test pass by accident.
-            pr_meta=$(gh pr view "$pr" --repo "$REPO" --json mergedAt,author --jq '(.mergedAt // "") + " " + (.author.login // "")') \
-              || { echo "::error::#$number: could not read PR #$pr (mergedAt/author)"; rc=1; continue; }
-            read -r merged_at author <<< "$pr_meta"
-            # The approver is frozen at merge: the last `labeled` event AT OR
-            # BEFORE mergedAt. A label removed and re-applied on the closed PR
-            # afterwards does not change it. Re-validate against the approver
-            # list and the author, as the gate did, in case either changed.
-            approver=$(gh api "repos/$REPO/issues/$pr/timeline" --paginate --slurp \
-              | jq -r --arg merged "$merged_at" '[.[][] | select(.event == "labeled" and .label.name == "dep-age-override" and .created_at <= $merged)] | last | .actor.login // empty')
-            [ -n "$pr" ] && [ -n "$merged_at" ] && [ -n "$approver" ] \
-              || { echo "::error::#$number cannot be tied to a merged, label-approved PR (marker/mergedAt/approver missing)"; rc=1; continue; }
-            case ",$APPROVERS," in *,"$approver",*) ;; *) echo "::error::#$number: approver @$approver is not in DEP_AGE_APPROVERS"; rc=1; continue ;; esac
-            [ "$approver" != "$author" ] || { echo "::error::#$number: PR #$pr was approved by its own author @$author"; rc=1; continue; }
+            # One checked call for all three facts: a failed lookup aborts this
+            # issue's evaluation as an error instead of leaving fields empty.
+            pr_meta=$(gh pr view "$pr" --repo "$REPO" --json mergedAt,author,headRefOid --jq '(.mergedAt // "") + " " + (.author.login // "") + " " + (.headRefOid // "")') \
+              || { echo "::error::#$number: could not read PR #$pr (mergedAt/author/head)"; rc=1; continue; }
+            read -r merged_at author head_sha <<< "$pr_meta"
+            approver=$(gh api "repos/$REPO/issues/$pr/comments" --paginate --slurp \
+              | jq -r --arg sha "$head_sha" --arg list ",$APPROVERS," --arg author "$author" --arg merged "$merged_at" \
+                  '[.[][] | select((.body | test("^Dep-age approved: " + $sha + "([[:space:]]|$)"))
+                                   and (($list | index("," + .user.login + ",")) != null)
+                                   and .user.login != $author and .created_at <= $merged)] | last | .user.login // empty') \
+              || { echo "::error::#$number: could not read PR #$pr comments"; rc=1; continue; }
+            [ -n "$pr" ] && [ -n "$merged_at" ] && [ -n "$head_sha" ] && [ -n "$approver" ] \
+              || { echo "::error::#$number cannot be tied to a merged PR with a pre-merge approval comment by a listed approver (marker/mergedAt/head/approver missing)"; rc=1; continue; }
             due=$(date -u -d "$merged_at + 24 hours" +%Y-%m-%dT%H:%M:%SZ)
             matures=$(date -u -d "$merged_at + 72 hours" +%Y-%m-%dT%H:%M:%SZ)
             state=$(jq -r .state issue.json); closed_at=$(jq -r '.closedAt // ""' issue.json)

@@ -191,7 +191,7 @@ Flaky and slow tests, change-scoped suites, and gates that can pass without runn
 - **All 3rd-party dependency versions must be at least 3 days old before adoption.** Do not upgrade to or add a dependency version published less than 72 hours ago.
 - This applies to new dependencies and version upgrades alike.
 - CI should enforce age verification against the registry publish date.
-- Emergency security patches may bypass this gate only through the `dep-age-override` label, applied by a listed approver who is not the PR author, plus a `Dep-age override:` block in the PR body naming that approver; merging then opens a `dep-age-follow-up` issue due 24 hours after merge. A red advisory lane is not an override. See `standards/security/sec-01_security_standards.md` §5 for the reference implementation.
+- Emergency security patches may bypass this gate only through the `dep-age-override` label plus an approval comment `Dep-age approved: <head SHA>` from a listed approver who is not the PR author, plus a `Dep-age override:` block in the PR body naming that approver; merging then opens a `dep-age-follow-up` issue due 24 hours after merge. A red advisory lane is not an override. See `standards/security/sec-01_security_standards.md` §5 for the reference implementation.
 
 ### Package Patches (`patches/`)
 
