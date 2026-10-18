@@ -21,6 +21,11 @@
 #     pyproject.toml carries a version that is not the latest released heading
 #     (SemVer precedence), the manifest was not bumped in the release commit.
 #     Every root manifest with a static version is checked, not just the first.
+#   - Release in flight (WARN): exactly the NEWEST heading untagged, every
+#     older one tagged — a release PR promotes [Unreleased] and the tag is cut
+#     after merge, so this state exists legitimately for a short while. Two or
+#     more untagged headings, or an older untagged heading while newer ones
+#     are tagged (the forgotten-tag pattern from the consumer survey), FAIL.
 #   - Shallow clone (WARN, never PASS or FAIL on a missing tag): a `--depth`
 #     clone only carries the tags that point inside the fetched history, so a
 #     heading without a visible tag is unverifiable rather than untagged. The
@@ -160,7 +165,7 @@ manifest_version_cargo_toml() {
     # `version = "x"` inside [package] or [workspace.package]; a
     # `version.workspace = true` member defers to the workspace and prints nothing.
     awk '
-    /^[[:space:]]*\[/ { sect = $0; gsub(/[[:space:]]/, "", sect); next }
+    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]]/, "", sect); next }
     (sect == "[package]" || sect == "[workspace.package]") && /^[[:space:]]*version[[:space:]]*=/ {
         line = $0
         sub(/^[[:space:]]*version[[:space:]]*=[[:space:]]*/, "", line)
@@ -174,7 +179,7 @@ manifest_version_pyproject() {
     # `version = "x"` under [project] or [tool.poetry]; `dynamic = ["version"]`
     # projects have no static version and print nothing.
     awk '
-    /^[[:space:]]*\[/ { sect = $0; gsub(/[[:space:]]/, "", sect); next }
+    /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]]/, "", sect); next }
     (sect == "[project]" || sect == "[tool.poetry]") && /^[[:space:]]*version[[:space:]]*=/ {
         line = $0
         sub(/^[[:space:]]*version[[:space:]]*=[[:space:]]*/, "", line)
@@ -290,6 +295,12 @@ release-1.0.2'
     printf '[package]\nname = "m"\nversion = '"'"'0.9.0'"'"'\n' > "$tmp/Cargo.toml"
     got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
     [ "$got" = "0.9.0" ] || { rm -rf "$tmp"; echo "Cargo.toml reader rejected a TOML literal string: '$got'"; return 1; }
+    printf '[package] # root crate\nname = "m"\nversion = "0.9.1"\n' > "$tmp/Cargo.toml"
+    got=$(manifest_version_cargo_toml "$tmp/Cargo.toml")
+    [ "$got" = "0.9.1" ] || { rm -rf "$tmp"; echo "Cargo.toml reader lost a section header with a trailing comment: '$got'"; return 1; }
+    printf '[project]   # metadata\nname = "p"\nversion = "4.5.7"\n' > "$tmp/pyproject.toml"
+    got=$(manifest_version_pyproject "$tmp/pyproject.toml")
+    [ "$got" = "4.5.7" ] || { rm -rf "$tmp"; echo "pyproject.toml reader lost a section header with a trailing comment: '$got'"; return 1; }
     printf '[build-system]\nrequires = ["hatchling"]\n\n[project]\nname = "p"\nversion = '"'"'4.5.6'"'"'\n' > "$tmp/pyproject.toml"
     got=$(manifest_version_pyproject "$tmp/pyproject.toml")
     [ "$got" = "4.5.6" ] || { rm -rf "$tmp"; echo "pyproject.toml reader returned '$got'"; return 1; }
@@ -432,9 +443,24 @@ done <<EOF
 $VERSIONS
 EOF
 
+LATEST=$(printf '%s\n' "$VERSIONS" | newest_version)
+
 if [ "$MISSING_COUNT" -gt 0 ]; then
     more=""
     if [ "$MISSING_COUNT" -gt "$MAX_LISTED" ]; then more=" (+$((MISSING_COUNT - MAX_LISTED)) more)"; fi
+    if [ "$MISSING_COUNT" -eq 1 ] && [ "$MISSING" = "$LATEST" ] \
+        && ! tag_for "$LATEST" "$TAGS" __DEFAULT__ >/dev/null; then
+        # A release in flight: the release PR promotes [Unreleased] to a
+        # numbered heading and the tag is cut after the merge (proc-02 §5), so
+        # between those two steps exactly the newest heading has no tag at all.
+        # That is advisory. A tag that exists under the wrong prefix is not in
+        # flight (it is misnamed), and a second untagged heading, or an older
+        # one while newer releases are tagged, is the forgotten-tag pattern;
+        # both FAIL below.
+        if [ "$TAG_PREFIX" = "__DEFAULT__" ]; then want_tag="v$LATEST"; else want_tag="${TAG_PREFIX}${LATEST}"; fi
+        echo "WARN $CHECK_NAME release $LATEST in $CHANGELOG_LABEL has no tag yet — every older heading is tagged, so this looks like a release in flight: create $want_tag once it is merged (proc-02 §5); a second untagged heading would fail"
+        exit 2
+    fi
     if [ "$IS_SHALLOW" = true ]; then
         # A depth-limited clone carries only the tags that point inside the
         # fetched history (e.g. the tip's tag), so an older release's tag may
@@ -457,7 +483,6 @@ fi
 # ---------------------------------------------------------------------------
 # Manifest drift (advisory)
 # ---------------------------------------------------------------------------
-LATEST=$(printf '%s\n' "$VERSIONS" | newest_version)
 DRIFT=""
 if [ -n "$LATEST" ]; then
     while IFS= read -r line; do

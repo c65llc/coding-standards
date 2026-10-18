@@ -315,7 +315,12 @@ separate security-update group).
 conditions above are enforceable; make the bypass a visible, audited path
 rather than a disabled check. Consumers that lacked one ended up with
 "dep-age overridden" commits, a pin justified by "the audit lane is red on
-main", and no record of who agreed or when the pin was re-examined.
+main", and no record of who agreed or when the pin was re-examined. The age
+checker itself (`dep-age-check.sh` in the excerpt) is the consumer's: its
+whole contract is "exit non-zero when a version this PR adds or upgrades is
+younger than the threshold", and the registry table at the end of this
+section names the publish-date field per ecosystem. The excerpt is the
+override path around it.
 
 1. **Label *and* body block, both required.** The age-gate job honors a failure
    only when the PR carries the `dep-age-override` label **and** the PR body
@@ -373,7 +378,13 @@ jobs:
       - uses: actions/checkout@<pinned-sha> # vN
       - name: Dependency age gate (72 h)
         id: age
-        run: ./scripts/dep-age-check.sh --max-age-hours 72 --report age-report.json
+        # CONSUMER-SUPPLIED. Contract: exit 0 when every dependency version
+        # added or upgraded by this PR (lockfile diff against the base) was
+        # published >= 72 h ago, exit 1 otherwise, naming the offenders. The
+        # registry field per ecosystem is in the table below this excerpt;
+        # a short script per ecosystem that reads the lockfile diff and that
+        # field is enough. Nothing else in the gate depends on its output.
+        run: ./scripts/dep-age-check.sh --max-age-hours 72
         continue-on-error: true
       - name: Honor dep-age-override (privileged label + body block, both required)
         if: steps.age.outcome == 'failure'

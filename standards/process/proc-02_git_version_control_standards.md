@@ -217,7 +217,10 @@ Format: `MAJOR.MINOR.PATCH` (e.g., `1.2.3`)
 * **Enforcement:** `scripts/lint-checks/common/changelog-tags.sh` (in
   `make lint-standards` and the standards-review action) reads every released
   `## [x.y.z]` heading and fails when one has no `v<version>` (or `<version>`)
-  tag; it warns when the root `package.json` / `Cargo.toml` / `pyproject.toml`
+  tag — except the single newest heading while every older one is tagged,
+  which is a release in flight (the release PR adds the heading, the tag
+  follows the merge) and warns instead; it warns
+  when the root `package.json` / `Cargo.toml` / `pyproject.toml`
   version is not the latest release, and when a shallow CI clone cannot see a
   heading's tag (use `fetch-depth: 0` or `fetch-tags: true`; a `--depth` clone
   only carries the tags inside the fetched history, so that case is

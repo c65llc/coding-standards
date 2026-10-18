@@ -54,7 +54,7 @@ no automated check modules for them yet. Consumers should not assume
 | `test-directory-structure` | core-standards | A recognizable test directory exists | WARN/FAIL |
 | `ci-workflow-hygiene` | arch-08 §3 | Every `pull_request` workflow declares `concurrency` + `cancel-in-progress` (workflow-level or on every job), `timeout-minutes` on each job that runs steps, and path scoping (`paths:` on the PR trigger, a paths-filter + gate job, or `# ci-hygiene: paths-exempt <reason>`) | WARN |
 | `headless-ci` | arch-08 §6 | Workflows and composite actions free of `store-credentials`, `unlock-keychain … login`, `osascript`, `open -a` (steps that need an unlocked desktop) | WARN |
-| `changelog-tags` | proc-02 §5 | Every released `## [x.y.z]` heading in `CHANGELOG.md` (also `CHANGELOG`, `CHANGES.md`, `HISTORY.md`, or `release.changelog`) has a matching tag — `v<version>` or `<version>` by default, `release.tag_prefix` when declared; `## [Unreleased]` and `[YANKED]` markers are handled. FAIL names the untagged versions (first four, then `(+N more)`) or a declared changelog that is missing or empty. WARN when the root `package.json` / `Cargo.toml` / `pyproject.toml` version is not the latest released heading, when tags exist but the changelog has no release heading, and when a shallow clone cannot see a heading's tag (a `--depth` clone only carries tags inside the fetched history — unverifiable, never a false PASS or FAIL). Self-tests the heading parser, SemVer ordering, tag matcher and manifest readers on every run | WARN/FAIL |
+| `changelog-tags` | proc-02 §5 | Every released `## [x.y.z]` heading in `CHANGELOG.md` (also `CHANGELOG`, `CHANGES.md`, `HISTORY.md`, or `release.changelog`) has a matching tag — `v<version>` or `<version>` by default, `release.tag_prefix` when declared; `## [Unreleased]` and `[YANKED]` markers are handled. FAIL names the untagged versions (first four, then `(+N more)`) or a declared changelog that is missing or empty. WARN when only the newest heading is untagged (a release in flight: heading merged, tag pending), when the root `package.json` / `Cargo.toml` / `pyproject.toml` version is not the latest released heading, when tags exist but the changelog has no release heading, and when a shallow clone cannot see a heading's tag (a `--depth` clone only carries tags inside the fetched history — unverifiable, never a false PASS or FAIL). Self-tests the heading parser, SemVer ordering, tag matcher and manifest readers on every run | WARN/FAIL |
 
 ## Module options
 
@@ -108,6 +108,13 @@ release:
   changelog: docs/CHANGES.md
   tag_prefix: v
 ```
+
+A release PR promotes `[Unreleased]` to a numbered heading before the tag
+exists (the tag is cut after merge), so the state "exactly the newest heading
+untagged, every older one tagged" exists legitimately for a short while and is
+reported as `WARN` — "release in flight" — rather than `FAIL`. Two or more
+untagged headings, or an older untagged heading while newer releases are
+tagged (the forgotten-tag pattern), fail.
 
 In CI the checkout must carry the tags: `actions/checkout` with `fetch-depth: 0`
 (or `fetch-tags: true`). A `--depth` clone only carries the tags that point

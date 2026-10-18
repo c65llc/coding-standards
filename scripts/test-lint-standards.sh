@@ -2960,6 +2960,19 @@ out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct2" 2>/dev/null || true)
 if echo "$out" | grep -q '^FAIL changelog-tags' && echo "$out" | grep -q '0.1.5' && echo "$out" | grep -q '0.1.4' \
    && ! echo "$out" | grep -q '0.1.3'; then pass; else fail "expected FAIL naming 0.1.5 and 0.1.4 only, got: $out"; fi
 
+echo -n "Test 204b: changelog-tags WARNs (release in flight) when only the newest heading is untagged, FAILs when an older one is... "
+ct2b=$(make_project "ct-release-in-flight")
+write_changelog "$ct2b/CHANGELOG.md" "## [0.2.0] - 2026-06-01" "## [0.1.0] - 2026-05-01"
+tag_all "$ct2b" v0.1.0
+out_flight=$(bash "$CHECKS/common/changelog-tags.sh" "$ct2b" 2>/dev/null; echo "rc=$?")
+ct2c=$(make_project "ct-release-older-untagged")
+write_changelog "$ct2c/CHANGELOG.md" "## [0.2.0] - 2026-06-01" "## [0.1.0] - 2026-05-01"
+tag_all "$ct2c" v0.2.0
+out_older=$(bash "$CHECKS/common/changelog-tags.sh" "$ct2c" 2>/dev/null || true)
+if echo "$out_flight" | grep -q '^WARN changelog-tags.*0.2.0.*in flight' && echo "$out_flight" | grep -q 'rc=2' \
+   && echo "$out_older" | grep -q '^FAIL changelog-tags.*0.1.0'; then pass; else
+    fail "in-flight: $out_flight | older-missing: $out_older"; fi
+
 echo -n "Test 205: changelog-tags accepts bare tags, '## 1.2.3 (date)' headings, prereleases and [YANKED]... "
 ct3=$(make_project "ct-forms")
 write_changelog "$ct3/CHANGELOG.md" "## 2.0.0-rc.1 (2026-06-01)" "## [1.2.3] - 2026-05-01 [YANKED]" "## v1.2.2 - 2026-04-01"
