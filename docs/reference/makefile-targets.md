@@ -111,7 +111,7 @@ make doctor
 
 ### `worktree-gc`
 
-Remove finished agent worktrees — merged, upstream gone, or idle for more than 14 days — delete their merged branches, prune stale registrations and report what remains with its idle age and size (proc-04 § Worktree Hygiene). The main checkout and the worktree you run it from are never touched.
+Remove finished agent worktrees — merged, upstream gone, or idle for more than 14 days — delete their merged branches (gone and idle branches are kept, since their commits are not in the base), prune stale registrations and report what remains with its idle age and size (proc-04 § Worktree Hygiene). The main checkout, the worktree you run it from and a worktree that still encloses other worktrees are never touched.
 
 ```bash
 make worktree-gc

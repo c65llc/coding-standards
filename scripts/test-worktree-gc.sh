@@ -199,15 +199,16 @@ echo "$out" | grep -q 'reclaimed'                     || errs="$errs no-size-rep
 if [ -z "$errs" ]; then pass; else fail "$errs:
 $out"; fi
 
-echo -n "Test 10: merged and gone branches are deleted; the stale branch (unmerged work) is kept... "
+echo -n "Test 10: merged branches are deleted; the gone and stale branches (commits not in the base) are kept... "
 branches=$(cd "$repo" && git branch --format='%(refname:short)' | tr '\n' ' ')
 errs=""
 case " $branches " in *" feat/merged "*) errs="$errs merged-branch-kept" ;; esac
-case " $branches " in *" feat/gone "*)   errs="$errs gone-branch-kept" ;; esac
+case " $branches " in *" feat/gone "*)   ;; *) errs="$errs gone-branch-deleted" ;; esac
 case " $branches " in *" feat/dirty "*)  errs="$errs dirty-branch-kept" ;; esac
 case " $branches " in *" feat/stale "*)  ;; *) errs="$errs stale-branch-deleted" ;; esac
 case " $branches " in *" feat/active "*) ;; *) errs="$errs active-branch-deleted" ;; esac
 echo "$out" | grep -q 'branch kept.*feat/stale' || errs="$errs stale-branch-not-reported"
+echo "$out" | grep -q 'branch kept.*feat/gone.*upstream gone.*branch -D' || errs="$errs gone-branch-not-reported"
 if [ -z "$errs" ]; then pass; else fail "$errs: $branches"; fi
 
 echo -n "Test 11: uncommitted changes, nesting and worktrees outside the root are warned about... "
@@ -361,6 +362,62 @@ echo 'print(1)' > "$repo/wt/agent-1/a.py"
 echo 'print(2)' > "$repo/src/b.py"
 out=$(bash -c "source '$REPO_ROOT/scripts/lib/lint-files.sh'; lint_list_files '$repo'")
 if echo "$out" | grep -q 'src/b.py' && ! echo "$out" | grep -q 'wt/agent-1'; then pass; else fail "got: $out"; fi
+
+# --- Safety edges ----------------------------------------------------------
+
+echo -n "Test 26: a merged worktree that encloses another registered worktree is kept (removing it would delete the child)... "
+repo=$(make_repo "encloses")
+add_wt "$repo" .claude/worktrees/parent feat/parent
+( cd "$repo" && G push -q -u origin feat/parent 2>/dev/null && G merge -q --ff-only feat/parent && G push -q origin main 2>/dev/null )
+# The child has unmerged work of its own, so it must be kept in any case.
+( cd "$repo/.claude/worktrees/parent" && G worktree add -q .claude/worktrees/child -b feat/child 2>/dev/null \
+    && cd .claude/worktrees/child && echo "x" > child.txt && G add . && G commit -q -m "feat: child" )
+out=$(cd "$repo" && "$GC" --no-fetch 2>&1); rc=$?
+branches=$(cd "$repo" && git branch --format='%(refname:short)' | tr '\n' ' ')
+errs=""
+[ "$rc" -eq 0 ]                                                         || errs="$errs rc=$rc"
+[ -d "$repo/.claude/worktrees/parent" ]                                 || errs="$errs parent-removed"
+[ -d "$repo/.claude/worktrees/parent/.claude/worktrees/child" ]         || errs="$errs child-removed"
+case " $branches " in *" feat/parent "*) ;; *) errs="$errs parent-branch-deleted" ;; esac
+echo "$out" | grep -q 'encloses.*worktrees/child'                       || errs="$errs no-encloses-warning"
+echo "$out" | grep -q 'keep.*worktrees/parent.*encloses'                || errs="$errs parent-not-reported-kept"
+if [ -z "$errs" ]; then pass; else fail "$errs:
+$out"; fi
+
+echo -n "Test 27: with an explicit project-root argument the worktree the shell runs from is still never removed... "
+repo=$(make_repo "caller")
+add_wt "$repo" .claude/worktrees/merged feat/merged
+( cd "$repo" && G push -q -u origin feat/merged 2>/dev/null && G merge -q --ff-only feat/merged && G push -q origin main 2>/dev/null )
+out=$(cd "$repo/.claude/worktrees/merged" && "$GC" --no-fetch "$repo" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ -d "$repo/.claude/worktrees/merged" ] && echo "$out" | grep -q 'keep.*worktrees/merged.*current'; then pass; else fail "rc=$rc
+$out"; fi
+
+echo -n "Test 28: a linked worktree outside the main checkout altogether is reported as outside the root by worktree-gc and doctor... "
+repo=$(make_repo "external")
+( cd "$repo" && G worktree add -q "$TMP_BASE/external-wt" -b feat/external 2>/dev/null )
+out=$(cd "$repo" && "$GC" --no-fetch --dry-run 2>&1)
+dout=$(cd "$repo" && bash "$DOCTOR" 2>&1) || true
+errs=""
+echo "$out" | grep -q 'external-wt.*outside \.claude/worktrees'                  || errs="$errs gc-no-outside-note"
+echo "$dout" | grep 'Worktrees' | grep -q 'WARN.*outside the worktree root.*external-wt' || errs="$errs doctor-no-outside-warn"
+if [ -z "$errs" ]; then pass; else fail "$errs:
+$out
+$(echo "$dout" | grep Worktrees)"; fi
+
+echo -n "Test 29: the guard treats a configured root containing spaces as one root and still refuses the known agent roots... "
+repo=$(make_repo "guard-spaces")
+printf 'version: 1\nworktree_dir: "agent worktrees"\n' > "$repo/.standards.yml"
+mkdir -p "$repo/.git/hooks" && cp "$GUARD" "$repo/.git/hooks/pre-commit" && chmod +x "$repo/.git/hooks/pre-commit"
+mkdir -p "$repo/agent worktrees/a" "$repo/.claude/worktrees/b" "$repo/agent" && echo x > "$repo/agent worktrees/a/f" && echo x > "$repo/.claude/worktrees/b/f" && echo x > "$repo/agent/ok.txt"
+out=$(cd "$repo" && G add -f "agent worktrees/a/f" && G commit -q -m "chore: oops" 2>&1); rc=$?
+( cd "$repo" && G reset -q )
+out2=$(cd "$repo" && G add -f .claude/worktrees/b/f && G commit -q -m "chore: oops" 2>&1); rc2=$?
+( cd "$repo" && G reset -q )
+out3=$(cd "$repo" && G add agent/ok.txt && G commit -q -m "feat: fine" 2>&1); rc3=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q 'agent worktrees/a/f' && [ "$rc2" -ne 0 ] && echo "$out2" | grep -q '.claude/worktrees/b/f' && [ "$rc3" -eq 0 ]; then pass; else fail "rc=$rc rc2=$rc2 rc3=$rc3
+$out
+$out2
+$out3"; fi
 
 echo ""
 if [ "$FAIL" -gt 0 ]; then

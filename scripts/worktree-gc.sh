@@ -28,7 +28,9 @@ never touched.
 A worktree is removed when it is
   merged     its HEAD is contained in the base branch (origin/main by default)
   gone       its branch tracks an upstream that was deleted (PR merged, remote
-             branch removed) — the local branch is deleted too
+             branch removed); its branch is KEPT, since "gone" alone does not
+             prove the commits landed (closed PR, unpushed commits) — the
+             report prints the 'git branch -D' to run once you know they did
   idle       nothing was committed or checked out in it for more than
              --max-age days (default ${WORKTREE_TTL_DAYS_DEFAULT}); its branch is KEPT, since the work
              is not merged
@@ -107,9 +109,13 @@ if [ "$(git -C "$TARGET" rev-parse --is-inside-work-tree 2>/dev/null)" != "true"
     exit 1
 fi
 
-# The worktree the command targets (its cwd or the given root) is never removed:
-# deleting the directory a shell is running in leaves the caller stranded.
+# Neither the worktree the command targets nor the one the shell runs from is
+# ever removed: deleting the directory a shell is running in leaves the caller
+# stranded. With an explicit project-root argument the two can differ (the
+# collector launched from a linked worktree against the main checkout), so
+# both are protected.
 CURRENT=$(git -C "$TARGET" rev-parse --show-toplevel 2>/dev/null)
+CALLER=$(git rev-parse --show-toplevel 2>/dev/null) || CALLER=""
 MAIN=$(worktree_main_path "$TARGET")
 if [ -z "$MAIN" ]; then
     echo "❌ could not list the worktrees of $TARGET" >&2
@@ -178,19 +184,22 @@ while IFS=$'\t' read -r path branch state; do
         echo "  ⚠️  nested: $rel was created inside $(rel_path "$enclosing") — create worktrees from the main checkout only"
         warnings=$((warnings + 1))
     fi
-    if [ "$rel" != "$path" ] && ! worktree_under_root "$rel" "$WT_ROOT"; then
+    # A worktree outside the main checkout (rel == path, e.g. /tmp/project-x)
+    # is by definition outside the root.
+    if [ "$rel" = "$path" ] || ! worktree_under_root "$rel" "$WT_ROOT"; then
         note=" (outside $WT_ROOT)"
     fi
 
     action=keep
     reason=active
     delete_branch=false
+    branch_note="not merged"
     if [ "$state" = "prunable" ]; then
         action=prune
         reason="prunable (directory gone)"
     elif [ "$state" = "locked" ]; then
         reason="locked"
-    elif [ "$path" = "$CURRENT" ]; then
+    elif [ "$path" = "$CURRENT" ] || [ "$path" = "$CALLER" ]; then
         reason="current worktree"
     elif [ "$branch" != "(detached)" ] && [ -n "$BASE" ] \
          && git -C "$MAIN" merge-base --is-ancestor "refs/heads/$branch" "$BASE" 2>/dev/null; then
@@ -198,12 +207,31 @@ while IFS=$'\t' read -r path branch state; do
         reason="merged into $BASE"
         delete_branch=true
     elif [ "$branch" != "(detached)" ] && worktree_branch_gone "$MAIN" "$branch"; then
+        # "[gone]" only says the upstream ref vanished — after a squash merge,
+        # but equally after a closed PR or with unpushed local commits. The
+        # branch's commits are not in the base (the merged case above would
+        # have matched), so the directory goes and the ref stays.
         action=remove
         reason="upstream gone"
-        delete_branch=true
+        branch_note="upstream gone, not in ${BASE:-the base}; git branch -D $branch once its PR is known merged"
     elif [ "$age" -gt "$MAX_AGE" ]; then
         action=remove
         reason="idle ${age}d > ${MAX_AGE}d"
+    fi
+
+    # Removing a worktree that encloses other registered worktrees would
+    # `--force`-delete their files before they are looked at (an active or
+    # locked child included). Keep the parent until its children are gone.
+    children=""
+    if [ "$action" = "remove" ] && [ -d "$path" ]; then
+        children=$(worktree_encloses "$path" "$LINKED_PATHS") || children=""
+    fi
+    if [ -n "$children" ]; then
+        echo "  ⚠️  $rel encloses linked worktree(s) ($(printf '%s\n' "$children" | while IFS= read -r c; do rel_path "$c"; done | tr '\n' ' ' | sed 's/ $//')) — remove those first"
+        warnings=$((warnings + 1))
+        action=keep
+        reason="encloses nested worktree(s)"
+        delete_branch=false
     fi
 
     dirty=false
@@ -240,7 +268,7 @@ while IFS=$'\t' read -r path branch state; do
                 if [ "$delete_branch" = true ]; then
                     echo "               would delete branch $branch"
                 elif [ "$branch" != "(detached)" ]; then
-                    echo "               branch kept: $branch (not merged)"
+                    echo "               branch kept: $branch ($branch_note)"
                 fi
             elif git -C "$MAIN" worktree remove --force "$path" 2>/dev/null; then
                 report_line "✂️  removed" "$rel$note" "$branch" "$reason" "$age" "$size"
@@ -255,7 +283,7 @@ while IFS=$'\t' read -r path branch state; do
                         warnings=$((warnings + 1))
                     fi
                 elif [ "$branch" != "(detached)" ]; then
-                    echo "               branch kept: $branch (not merged)"
+                    echo "               branch kept: $branch ($branch_note)"
                 fi
             else
                 report_line "❌ failed" "$rel$note" "$branch" "$reason" "$age" "$size"

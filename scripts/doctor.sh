@@ -832,7 +832,9 @@ check_worktrees() {
         if worktree_nested_in "$path" "$paths" >/dev/null; then
             nested="${nested:+$nested, }$rel"
         fi
-        if [ "$rel" != "$path" ] && ! worktree_under_root "$rel" "$root_rel"; then
+        # rel == path means the worktree lives outside the main checkout
+        # altogether (/tmp/project-x): outside the root by definition.
+        if [ "$rel" = "$path" ] || ! worktree_under_root "$rel" "$root_rel"; then
             outside="${outside:+$outside, }$rel"
         fi
     done <<EOF

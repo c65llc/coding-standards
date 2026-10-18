@@ -259,6 +259,26 @@ EOF
     return 1
 }
 
+# worktree_encloses <path> <newline-separated linked worktree paths>
+#
+# Prints the linked worktrees whose directories lie inside <path>, one per
+# line (the inverse of worktree_nested_in). A worktree that encloses another
+# must never be removed with --force: that would delete the child's files
+# before the child is looked at. Returns 1, printing nothing, when none does.
+worktree_encloses() {
+    local p="$1" others="$2" q found=1
+    while IFS= read -r q; do
+        [ -n "$q" ] || continue
+        [ "$q" = "$p" ] && continue
+        case "$q" in
+            "$p"/*) printf '%s\n' "$q"; found=0 ;;
+        esac
+    done <<EOF
+$others
+EOF
+    return $found
+}
+
 # worktree_base_ref <project_root> → the integration branch to judge
 # "merged" against: origin/main, origin/master, main or master, whichever
 # exists first; empty when none does.

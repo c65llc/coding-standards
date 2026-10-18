@@ -120,12 +120,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: make ci-apple
       # Always runs: stray worktrees, build output and job scratch go; the
-      # shared caches above stay.
+      # shared caches above stay. `run` steps execute under `bash -e`, so each
+      # command tolerates failure (the preflight or checkout may have failed
+      # before a repository existed) and the scratch wipe still happens.
       - name: Post-job cleanup
         if: always()
         run: |
-          git worktree prune
-          git clean -ffdx --quiet
+          if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            git worktree prune || true
+            git clean -ffdx --quiet || true
+          fi
           rm -rf "${RUNNER_TEMP:?}"/*
 
   # The ONLY job to list as a required status check. It passes when every lane

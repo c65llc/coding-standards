@@ -207,11 +207,11 @@ make worktree-gc                 # ARGS="--dry-run" to preview
 1. Fetches `origin` with `--prune` (skip with `--no-fetch`) and picks the base branch (`origin/main`, `origin/master`, `main` or `master`; override with `--base`).
 2. Classifies every linked worktree of the repository, wherever it lives:
    - **merged** — its HEAD is contained in the base: worktree removed, branch deleted
-   - **gone** — its branch tracks an upstream that was deleted (PR merged, remote branch removed): worktree removed, branch deleted
+   - **gone** — its branch tracks an upstream that was deleted (PR merged, remote branch removed): worktree removed, **branch kept** — "gone" alone does not prove the commits landed (a closed PR or unpushed commits look the same), so the report prints the `git branch -D` to run once you know they did
    - **idle** — no commit or checkout activity for more than `--max-age` days (default 14): worktree removed, **branch kept** (the work is unmerged)
    - **prunable** — the directory is already gone: the registration is pruned
    - everything else is kept and listed with its branch, idle age and size
-3. Never touches the main checkout, the worktree it runs from, or a locked worktree. Uncommitted changes in a worktree about to be removed are a warning, not a blocker; `--keep-dirty` leaves such worktrees alone.
+3. Never touches the main checkout, the worktree it runs from (or targets, when given a project root), a locked worktree, or a worktree that still encloses other registered worktrees (removing the parent would delete the children's files; they are reported and the parent is kept until they are gone). Uncommitted changes in a worktree about to be removed are a warning, not a blocker; `--keep-dirty` leaves such worktrees alone.
 4. Reports directories under the worktree root that are not registered worktrees, with their size, and leaves them for you to delete.
 5. Prints a summary: worktrees removed, disk reclaimed, branches deleted, worktrees kept, warnings (nesting, strays outside the root, dirty removals).
 

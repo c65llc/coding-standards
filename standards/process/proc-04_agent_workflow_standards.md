@@ -125,12 +125,14 @@ out walking them. These rules keep worktrees cheap:
   pass `--keep-dirty` to opt out. An unmerged branch keeps its ref — only the
   directory goes.
 * **Collect with `make worktree-gc`** (`scripts/worktree-gc.sh`). It fetches with
-  `--prune`, removes worktrees whose branch is merged into the base or whose
-  upstream is gone (deleting those branches), removes idle worktrees, prunes
-  registrations whose directory vanished, reports every remaining worktree with its
-  idle age and size, and never touches the main checkout, the worktree it runs from,
-  or a locked worktree. `--dry-run` previews. Run it after every merge, and from a
-  weekly reminder on long-lived machines.
+  `--prune`, removes worktrees whose branch is merged into the base (deleting those
+  branches) or whose upstream is gone (keeping the branch: "gone" alone does not
+  prove the commits landed), removes idle worktrees, prunes registrations whose
+  directory vanished, reports every remaining worktree with its idle age and size,
+  and never touches the main checkout, the worktree it runs from, a locked
+  worktree, or a worktree that still encloses other worktrees. `--dry-run`
+  previews. Run it after every merge, and from a weekly reminder on long-lived
+  machines.
 * **`make doctor` reports worktree count, oldest idle age and total size**, and warns
   on nesting, strays outside the root, a root that is not gitignored, and worktrees
   past the idle limit.
