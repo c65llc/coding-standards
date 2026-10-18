@@ -47,21 +47,80 @@ def inert(value):
     return text
 
 
+MESSAGE_LIMIT = 500
+
+
+def message_cell(value):
+    """Render a check message as a literal code span.
+
+    Every message is repository-controlled input: modules quote file names,
+    link targets, declared member paths and content excerpts from the PR under
+    review, so a hostile PR could otherwise plant a mention, link, image or
+    HTML in the bot's comment. Deleting ``@[]()<>`` is not enough — GitHub
+    autolinks a bare ``https://evil`` — and it mangles legitimate paths such as
+    ``packages/@scope/app`` or ``[tool.ruff]``. Inside a code span nothing is
+    Markdown-active (no mentions, autolinks, images or HTML), so the text can
+    be shown verbatim. Backticks would end the span early, so they become
+    apostrophes; ``\\|`` keeps a pipe inside a table cell even within a code
+    span (GFM tables). The length is capped so one row cannot flood the comment.
+    """
+    text = cell(value).replace("`", "'").strip()
+    if not text:
+        return ""
+    if len(text) > MESSAGE_LIMIT:
+        text = text[:MESSAGE_LIMIT].rstrip() + " …"
+    return f"`{text}`"
+
+
 icons = {"PASS": ":white_check_mark:", "WARN": ":warning:", "FAIL": ":x:"}
-for r in results:
-    if not isinstance(r, dict):
-        continue
+
+# GitHub rejects comment bodies over 65536 characters, and the action posts the
+# whole table in one `gh pr comment` call under continue-on-error. A hostile (or
+# merely huge) monorepo can declare enough members to make the aggregate output
+# unbounded even with per-message caps, and an oversized body would silently
+# lose every warning. Keep the table within a budget that leaves ample headroom
+# for the rest of the comment; when it does not fit, drop PASS rows first and
+# say explicitly how many rows were omitted.
+MAX_ROWS = 200
+MAX_BYTES = 50000
+
+
+def render(r):
     status = r.get("status", "")
-    raw_check = r.get("check", "")
-    check = cell(raw_check)
+    check = cell(r.get("check", ""))
     member = r.get("member", "")
     if member and member != ".":
         check = f"{member_cell(member)}: {check}"
-    # Every message is repository-controlled input: modules quote file names,
-    # link targets, declared member paths and content excerpts from the PR
-    # under review, so a hostile PR could otherwise plant a mention, link,
-    # image or HTML in the bot's comment. Neutralise all of them, not just
-    # the synthetic members check.
-    message = inert(r.get("message", ""))[:500]
+    message = message_cell(r.get("message", ""))
     icon = icons.get(status, ":grey_question:")
-    print(f"| {icon} {status} | {check} | {message} |")
+    return status, f"| {icon} {status} | {check} | {message} |"
+
+
+def fits(rows):
+    return len(rows) <= MAX_ROWS and sum(len(row.encode("utf-8")) + 1 for row in rows) <= MAX_BYTES
+
+
+rendered = [render(r) for r in results if isinstance(r, dict)]
+rows = [row for _, row in rendered]
+omitted = []
+if not fits(rows):
+    passing = [row for status, row in rendered if status == "PASS"]
+    if passing:
+        rows = [row for status, row in rendered if status != "PASS"]
+        omitted.append(f"{len(passing)} passing")
+    if not fits(rows):
+        kept = []
+        for row in rows:
+            if not fits(kept + [row]):
+                break
+            kept.append(row)
+        omitted.append(f"{len(rows) - len(kept)} further")
+        rows = kept
+
+for row in rows:
+    print(row)
+if omitted:
+    print(
+        f"| :grey_question: TRUNCATED | comment size limit | "
+        f"{' and '.join(omitted)} result row(s) not shown; see the workflow log for the full report |"
+    )
