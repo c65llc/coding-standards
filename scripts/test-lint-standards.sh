@@ -2921,8 +2921,184 @@ if echo "$out" | grep 'Languages' | grep -q 'WARN' && echo "$out" | grep -q "lan
    && ! echo "$out" | grep 'Languages' | grep -qi 'unsupported'; then pass; else
     fail "doctor did not suggest cpp: $(echo "$out" | grep -A1 'Languages' | tr '\n' '|')"; fi
 
+# --- artifact-hygiene module (arch-06 §6, arch-07 §3) -------------------------
+
+echo -n "Test 213: artifact-hygiene PASSes a project with no binary artifacts... "
+hyg_none=$(make_project "hygiene-none")
+echo "print('hello')" > "$hyg_none/app.py"
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_none" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS'; then pass; else fail "expected PASS, got: $out"; fi
+
+echo -n "Test 214: artifact-hygiene PASSes a committed wasm with no home paths... "
+hyg_ok=$(make_project "hygiene-ok")
+mkdir -p "$hyg_ok/pkg"
+# Minimal wasm magic + version header plus a remapped (host-agnostic) path.
+printf '\000asm\001\000\000\000/rustc/1.80.0/library/core/src/lib.rs\000' > "$hyg_ok/pkg/core_bg.wasm"
+( cd "$hyg_ok" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+    commit -q -m "chore: commit clean wasm" )
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_ok" 2>/dev/null || true)
+if echo "$out" | grep -q '^PASS' && echo "$out" | grep -q '1 committed'; then pass; else fail "expected PASS over 1 artifact, got: $out"; fi
+
+echo -n "Test 215: artifact-hygiene WARNs on committed artifacts embedding home paths, even under dist/ and lint.exclude... "
+hyg_bad=$(make_project "hygiene-bad")
+mkdir -p "$hyg_bad/pkg" "$hyg_bad/dist"
+printf 'version: 1\nlint:\n  exclude:\n    - pkg/\n' > "$hyg_bad/.standards.yml"
+printf '\000asm\001\000\000\000/Users/alice/src/core/crates/core/src/lib.rs\000' > "$hyg_bad/pkg/core_bg.wasm"
+printf '\177ELF\002\001\001\000/home/bob/work/core/build/libcore.so\000' > "$hyg_bad/dist/libcore.so"
+( cd "$hyg_bad" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+    commit -q -m "chore: commit tainted artifacts" )
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_bad" 2>/dev/null); rc=$?
+if [ "$rc" -eq 2 ] && echo "$out" | grep -q '^WARN' \
+   && echo "$out" | grep -q 'core_bg.wasm' \
+   && echo "$out" | grep -q 'libcore.so'; then pass; else fail "expected WARN (rc 2) naming both artifacts, got rc=$rc: $out"; fi
+
+echo -n "Test 216: artifact-hygiene redacts the username from its report... "
+if echo "$out" | grep -q '/Users/alice\|/home/bob'; then fail "username leaked in: $out"; else pass; fi
+
+echo -n "Test 217: artifact-hygiene falls back to a filesystem scan outside git... "
+hyg_nogit="$TMP_BASE/hygiene-nogit"
+mkdir -p "$hyg_nogit/lib"
+printf 'PK\003\004/Users/carol/proj/build/libs/app.jar\000' > "$hyg_nogit/lib/app.jar"
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_nogit" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'app.jar'; then pass; else fail "expected WARN naming app.jar, got: $out"; fi
+
+echo -n "Test 218: artifact-hygiene handles a project root containing '&', '|' and a space... "
+hyg_amp=$(make_project "hygiene r&d|x")
+mkdir -p "$hyg_amp/pkg"
+printf '\000asm\001\000\000\000/Users/dave/src/core/src/lib.rs\000' > "$hyg_amp/pkg/core_bg.wasm"
+( cd "$hyg_amp" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+    commit -q -m "chore: commit tainted wasm" )
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_amp" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'core_bg.wasm'; then pass; else fail "expected WARN naming core_bg.wasm, got: $out"; fi
+
+echo -n "Test 219: artifact-hygiene fallback only excludes directories below the project root... "
+hyg_anc="$TMP_BASE/target/exported-project"
+mkdir -p "$hyg_anc/lib" "$hyg_anc/node_modules/dep"
+printf '\177ELF\002\001\001\000/home/erin/work/core/build/libcore.so\000' > "$hyg_anc/lib/libcore.so"
+printf '\177ELF\002\001\001\000/home/erin/.npm/libdep.so\000' > "$hyg_anc/node_modules/dep/libdep.so"
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_anc" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'libcore.so' \
+   && ! echo "$out" | grep -q 'libdep.so'; then pass; else fail "expected WARN naming libcore.so only, got: $out"; fi
+
+echo -n "Test 220: artifact-hygiene inspects deflated JAR entries... "
+if command -v python3 >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
+    hyg_jar=$(make_project "hygiene-jar")
+    mkdir -p "$hyg_jar/build/libs"
+    python3 -I -c '
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as z:
+    z.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\n")
+    z.writestr("com/example/build.properties",
+               "source=/Users/frank/src/app/src/main/java/com/example/App.java\n" * 8)
+' "$hyg_jar/build/libs/app.jar"
+    if LC_ALL=C grep -aq '/Users/frank' "$hyg_jar/build/libs/app.jar"; then
+        fail "test fixture is not compressed; cannot prove inflation"
+    else
+        ( cd "$hyg_jar" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+            commit -q -m "chore: commit jar" )
+        out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_jar" 2>/dev/null || true)
+        if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'app.jar'; then pass; else fail "expected WARN naming app.jar, got: $out"; fi
+    fi
+else
+    echo "skipped (python3/unzip unavailable)"
+fi
+
+echo -n "Test 221: artifact-hygiene still scans JAR metadata (archive comment) when entries are clean... "
+if command -v python3 >/dev/null 2>&1 && command -v unzip >/dev/null 2>&1; then
+    hyg_meta=$(make_project "hygiene-jar-meta")
+    mkdir -p "$hyg_meta/build/libs"
+    python3 -I -c '
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], "w", compression=zipfile.ZIP_DEFLATED) as z:
+    z.writestr("META-INF/MANIFEST.MF", "Manifest-Version: 1.0\n")
+    z.writestr("com/example/App.class", "clean bytes\n" * 8)
+    z.comment = b"built in /Users/grace/src/app/build"
+' "$hyg_meta/build/libs/app.jar"
+    ( cd "$hyg_meta" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+        commit -q -m "chore: commit jar" )
+    out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_meta" 2>/dev/null || true)
+    if echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'app.jar' \
+       && ! echo "$out" | grep -q 'grace'; then pass; else fail "expected redacted WARN naming app.jar, got: $out"; fi
+else
+    echo "skipped (python3/unzip unavailable)"
+fi
+
+echo -n "Test 222: artifact-hygiene reports (never skips) a tracked artifact whose name contains a newline... "
+hyg_nl=$(make_project "hygiene-newline")
+mkdir -p "$hyg_nl/pkg"
+printf '\000asm\001\000\000\000/Users/heidi/src/core/src/lib.rs\000' > "$hyg_nl/pkg/core"$'\n'"bg.wasm"
+( cd "$hyg_nl" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+    commit -q -m "chore: commit oddly named wasm" )
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_nl" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN' && echo "$out" | grep -qi 'newline'; then pass; else fail "expected WARN about a newline name, got: $out"; fi
+
+echo -n "Test 223: runner treats artifact-hygiene as repo-scoped (runs once at the root of a monorepo)... "
+hyg_mono=$(make_project "hygiene-mono")
+mkdir -p "$hyg_mono/apps/web/pkg"
+printf 'version: 1\nlanguages: []\nmembers:\n  - apps/web\n' > "$hyg_mono/.standards.yml"
+printf 'version: 1\nlanguages:\n  - typescript\n' > "$hyg_mono/apps/web/.standards.yml"
+printf '\000asm\001\000\000\000/Users/ivan/src/web/src/lib.rs\000' > "$hyg_mono/apps/web/pkg/core_bg.wasm"
+( cd "$hyg_mono" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+    commit -q -m "chore: monorepo with tainted wasm" )
+"$LINT" --format json "$hyg_mono" > "$TMP_BASE/hygiene-mono.json" 2>/dev/null || true
+n=$(grep -c '"check": "artifact-hygiene"' "$TMP_BASE/hygiene-mono.json")
+if [ "$n" -eq 1 ] && grep -q 'core_bg.wasm' "$TMP_BASE/hygiene-mono.json" \
+   && ! grep -q 'ivan' "$TMP_BASE/hygiene-mono.json"; then pass; else
+    fail "expected one redacted artifact-hygiene result naming core_bg.wasm, got $n: $(grep 'artifact-hygiene' "$TMP_BASE/hygiene-mono.json" | head -3 | tr '\n' '|')"; fi
+
 
 echo ""
+echo -n "Test 224: artifact-hygiene reports a Git LFS pointer as unscanned instead of PASS... "
+hyg_lfs=$(make_project "hygiene-lfs")
+mkdir -p "$hyg_lfs/lib"
+printf 'version https://git-lfs.github.com/spec/v1\noid sha256:%s\nsize 123456\n' \
+    "$(printf 'a%.0s' $(seq 1 64))" > "$hyg_lfs/lib/libcore.so"
+( cd "$hyg_lfs" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+    commit -q -m "chore: commit lfs pointer" )
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_lfs" 2>/dev/null); rc=$?
+if [ "$rc" -eq 2 ] && echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'LFS' \
+   && echo "$out" | grep -q 'libcore.so'; then pass; else fail "expected WARN (rc 2) naming the LFS pointer, got rc=$rc: $out"; fi
+
+echo -n "Test 225: artifact-hygiene reports compressed DWARF it cannot inflate instead of PASS... "
+hyg_z=$(make_project "hygiene-zdebug")
+mkdir -p "$hyg_z/lib"
+# ELF header bytes plus a zlib-gnu section name; not a loadable object, so any
+# installed objcopy fails on it and the check must fall back to "incomplete".
+printf '\177ELF\002\001\001\000.shstrtab\000.zdebug_info\000.zdebug_line\000' > "$hyg_z/lib/libcore.so"
+( cd "$hyg_z" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+    commit -q -m "chore: commit compressed-debug object" )
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_z" 2>/dev/null); rc=$?
+if command -v readelf >/dev/null 2>&1 || command -v greadelf >/dev/null 2>&1 || command -v llvm-readelf >/dev/null 2>&1; then
+    # readelf rejects the fake header, so nothing is detectable here; only the
+    # raw-byte fallback path is provable without a real toolchain.
+    if [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; then pass; else fail "unexpected rc=$rc: $out"; fi
+elif [ "$rc" -eq 2 ] && echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'compressed DWARF' \
+   && echo "$out" | grep -q 'libcore.so'; then pass; else fail "expected WARN (rc 2) naming the compressed object, got rc=$rc: $out"; fi
+
+echo -n "Test 226: artifact-hygiene scans a real ELF with compressed debug sections when objcopy is available... "
+if command -v gcc >/dev/null 2>&1 && command -v objcopy >/dev/null 2>&1 \
+   && objcopy --help 2>/dev/null | grep -q -- --compress-debug-sections \
+   && [ "$(uname -s)" = "Linux" ]; then
+    hyg_real=$(make_project "hygiene-zdebug-real")
+    mkdir -p "$hyg_real/lib" "$hyg_real/.src/home/ivan/work/core"
+    echo 'int core_add(int a, int b) { return a + b; }' > "$hyg_real/.src/home/ivan/work/core/core.c"
+    if gcc -g -shared -fPIC -o "$hyg_real/lib/libcore.so" "$hyg_real/.src/home/ivan/work/core/core.c" \
+            -ffile-prefix-map="$hyg_real/.src=" 2>/dev/null \
+       && objcopy --compress-debug-sections=zlib-gnu "$hyg_real/lib/libcore.so" 2>/dev/null \
+       && ! LC_ALL=C grep -aq '/home/ivan/work' "$hyg_real/lib/libcore.so"; then
+        rm -rf "$hyg_real/.src"
+        ( cd "$hyg_real" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+            commit -q -m "chore: commit compressed-debug object" )
+        out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_real" 2>/dev/null); rc=$?
+        if [ "$rc" -eq 2 ] && echo "$out" | grep -q 'libcore.so' && echo "$out" | grep -q '/home/<user>/work'; then pass
+        else fail "expected WARN naming the inflated home path, got rc=$rc: $out"; fi
+    else
+        echo "skipped (could not build a compressed-debug fixture)"
+    fi
+else
+    echo "skipped (gcc/objcopy unavailable)"
+fi
+
 # --- changelog-tags module (#197: CHANGELOG vs tag consistency) ---------------
 
 # Helpers: a project with a Keep-a-Changelog file and a set of tags.

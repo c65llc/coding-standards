@@ -12,4 +12,4 @@ Meet coverage with real tests — never add dead/unreachable branches to hit a n
 Run the full build, not just a typecheck or syntax pass — a narrow typecheck config often excludes test files and sub-projects that the full build compiles, so the build catches errors typecheck misses. The language block names the exact build command.
 Mirror source structure: `src/domain/user.py` → `tests/domain/test_user.py`
 Use descriptive test names: `test_should_raise_error_when_email_is_invalid`
-Visual/snapshot baselines: regenerate via a CI dispatch job, never commit from a local run — rendered pixels are environment-specific and local baselines drift from CI.
+Visual/snapshot baselines: regenerate via a CI dispatch job, never commit from a local run — rendered pixels are environment-specific and local baselines drift from CI. The job must finish the fix itself (bot commit to the PR branch, or uploaded baselines + `git diff --binary` patch + the one-line apply command), per `arch-06_monorepo_workspace_standards.md` §6.

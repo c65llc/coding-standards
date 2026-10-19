@@ -379,8 +379,13 @@ Visual-regression baselines must be regenerated **on the CI runner**, not locall
 Even a matching local container renders fractionally differently (font hinting,
 anti-aliasing) from the CI host, so locally-generated baselines fail the CI visual
 gate. Regenerate via the pipeline's own mechanism (e.g. a `workflow_dispatch` with
-an `update_snapshots` input that uploads the regenerated baselines as an artifact),
-then commit those. Visual changes remain human-gated.
+an `update_snapshots` input), and have that job finish the fix: push the
+regenerated baselines to the PR branch as a bot commit, or upload them together
+with a `git diff --binary` patch and print the one-line apply command. A dispatch
+that only uploads baselines for the agent to download and commit by hand does not
+meet the auto-fix rule in
+[arch-06_monorepo_workspace_standards.md](../architecture/arch-06_monorepo_workspace_standards.md)
+§6. Visual changes remain human-gated.
 
 ### Cross-platform UI scope
 

@@ -102,6 +102,45 @@ and fails if the result differs from what is committed.
   hand-written code gets. Apply the generated-artifact rules in
   [core-standards.md](../shared/core-standards.md) (Testing Standards) rather than
   restating them here.
+* **The gate MUST offer an auto-fix path.** A per-platform binding gate
+  (`ci-android` for Kotlin, `ci-apple` for Swift, `ci-windows` for C#) that fails
+  and tells a human to "regenerate" is incomplete. Each platform gate either
+  pushes the regenerated binding to the PR branch as a bot commit when the PR
+  carries the opt-in label (e.g. `regen`) — from *that platform's* pinned runner,
+  since a Swift binding regenerated on Linux is not the artifact the gate
+  compares — or uploads the regenerated binding plus a patch and prints the
+  one-line apply command (a `git diff --binary --cached` patch taken after
+  staging the regenerated outputs, so new files are included and `git apply`
+  can restore the bytes). The same applies to visual/snapshot baselines: the CI
+  dispatch job that regenerates them counts as an auto-fix path only when it
+  ends in a bot commit or an uploaded patch plus apply command — one that
+  re-renders snapshots for the developer to download and commit by hand does
+  not. The full rule, the regenerate-before-compare requirement and input-hash
+  baseline caching are in [arch-06](./arch-06_monorepo_workspace_standards.md)
+  §6.
+* **Pin the determinism inputs, per platform.** Cross-platform artifacts carry
+  every determinism hazard in the arch-06 §6 checklist at once, because each
+  platform shell adds its own toolchain to the chain:
+  * wasm: `--remap-path-prefix=<checkout>=/src` passed through `RUSTFLAGS` by
+    the regeneration script (Cargo does not expand `$PWD` in
+    `.cargo/config.toml`), strip the `producers` section
+    (`wasm-opt --strip-producers` or `wasm-bindgen --remove-producers-section`),
+    pin `wasm-pack`/`wasm-bindgen`.
+  * UniFFI Swift/Kotlin: pin `uniffi-bindgen` to the exact crate version the core
+    depends on, and record the host triple the binding was generated on; a
+    binding generated on a different host triple is a different artifact.
+  * C#/JNI/C ABI: `-ffile-prefix-map`/`-fdebug-prefix-map` for native shims,
+    `-trimpath`-style flags for any Go shims, and a stripped static/shared
+    library (`.a`/`.so`/`.dylib`) if one is committed.
+  * All platforms: forbid user-level toolchain profiles (`~/.cargo/config.toml`
+    `[profile.release]`, global Gradle properties) in the regeneration path, and
+    run the regeneration from the pinned platform runner only.
+
+  The `artifact-hygiene` common check in `lint-standards.sh` WARNs when a
+  committed `*.wasm`, `*.a`, `*.so`, `*.dylib` or `*.jar` embeds a `/Users/` or
+  `/home/` path — the cheapest signal that the path-remapping input was missed.
+  The worked example in arch-06 §6 (five commits to stabilise one wasm gate)
+  is the cost of discovering these inputs one red build at a time.
 
 ## 4. UI Changes Are Cross-Platform by Default
 
