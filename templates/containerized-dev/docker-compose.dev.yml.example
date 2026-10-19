@@ -92,6 +92,12 @@ services:
       # bypass containment (devnet has no route to it); it just breaks that host.
       NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1}
       no_proxy: ${NO_PROXY:-localhost,127.0.0.1,::1}
+      # Node's built-in fetch()/undici ignore the proxy variables unless this is
+      # set (Node 24 LTS; also 22.21+). Without it a plain `node -e 'fetch(...)'`
+      # inside devnet fails with EAI_AGAIN while curl, npm, pip, gh and the AI
+      # CLIs (which implement proxy support themselves) all work. npm reads the
+      # proxy variables regardless.
+      NODE_USE_ENV_PROXY: "1"
       # SSH has no proxy variables. Tunnel git-over-SSH through the proxy with a
       # CONNECT ProxyCommand (netcat-openbsd in Dockerfile.dev; ConnectPort 22 in
       # proxy/tinyproxy.conf). The git host still has to be on the allow-list.
@@ -110,7 +116,7 @@ services:
       #   .devcontainer/        read by VS Code on the host
       #   docker-compose.dev.yml, Dockerfile.dev, Dockerfile.egress
       #                         read by `compose up --build` on the host
-      #   .env                  interpolated by compose: SSH_AUTH_SOCK becomes a
+      #   .env                  interpolated by compose: SSH_AGENT_SOURCE becomes a
       #                         bind-mount SOURCE below (pointing it at the Docker
       #                         socket would mount it), HOST_UID/GID are build args
       #   .env.secret           env_file — written by init-workspace.sh on the host
@@ -141,9 +147,17 @@ services:
       - { type: bind, source: ./.gitmodules, target: /workspace/.gitmodules, read_only: true, bind: { create_host_path: false } }
       # Git identity, read-only (arch-09 §5).
       - ${HOME}/.gitconfig:/home/developer/.gitconfig:ro
-      # SSH agent forwarding for git push (arch-09 §5). On macOS/Linux the host
-      # socket path comes from init-workspace.sh via SSH_AUTH_SOCK.
-      - ${SSH_AUTH_SOCK:-/dev/null}:/ssh-agent
+      # SSH agent forwarding for git push (arch-09 §5). The source path comes
+      # from init-workspace.sh via SSH_AGENT_SOURCE in .env: the host socket on
+      # Linux; on macOS the VM-side path /run/host-services/ssh-auth.sock, which
+      # Docker Desktop forwards the agent to (Colima: `colima start --ssh-agent`).
+      # Deliberately NOT ${SSH_AUTH_SOCK}: compose lets the calling shell's
+      # environment override .env, and on macOS that would put the launchd
+      # socket path — which does not exist inside the VM — back into the mount.
+      # Short syntax on purpose: a path that does not exist inside the Docker VM
+      # becomes an empty directory and `ssh-add -l` reports "Permission denied"
+      # — git push over SSH then needs a token or HTTPS, but `up` still works.
+      - ${SSH_AGENT_SOURCE:-/dev/null}:/ssh-agent
       # Named caches survive image rebuilds (arch-09 §3).
       - node-modules-cache:/workspace/node_modules
       - dev-cache:/home/developer/.cache

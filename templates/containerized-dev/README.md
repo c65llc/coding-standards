@@ -32,7 +32,7 @@ Be precise about the security posture before trusting it:
 
 | File | Purpose | arch-09 |
 |------|---------|---------|
-| `Dockerfile.dev.example` | Full-toolchain dev image, non-root sudo user (proxy variables survive `sudo`), baked YOLO agent config | §1, §2, §6 |
+| `Dockerfile.dev.example` | Full-toolchain dev image (base pinned by digest, Node 24 LTS, AI CLIs pinned by version), non-root sudo user (proxy variables survive `sudo`), `claude`/`gemini` YOLO shims on `PATH` | §1, §2, §3, §6 |
 | `Dockerfile.prod.example` | Multi-stage → distroless, no shell, non-root | §1 |
 | `Dockerfile.egress.example` | Egress-proxy sidecar image: Alpine + tinyproxy, unprivileged, config baked in, fail-closed entrypoint | §4 |
 | `docker-compose.dev.yml.example` | Wires the internal network, the egress sidecar, workspace volume (host-executed files read-only), identity, secrets, proxy pointer (both env-var cases, plus `GIT_SSH_COMMAND`); Docker socket and SSH port are commented opt-ins | §3, §4, §5 |
@@ -126,6 +126,16 @@ which turns DNS labels into an exfiltration channel the HTTP checks cannot see.
 Check with `docker version --format '{{.Server.Version}}'` and run the DNS deny
 check in [Validate](#validate-definition-of-done--arch-09-8).
 
+On macOS the host's `SSH_AUTH_SOCK` path does not exist inside the Docker VM, so
+`init-workspace.sh` writes the VM-side path `/run/host-services/ssh-auth.sock`
+to `.env` as `SSH_AGENT_SOURCE` instead (Docker Desktop forwards the agent
+there; Colima only when started with `colima start --ssh-agent`; override with
+`CONTAINER_SSH_AUTH_SOCK`). The mount source has its own key because compose
+lets the calling shell's environment override `.env`, and every macOS shell
+exports `SSH_AUTH_SOCK`. Without a forwarded agent `ssh-add -l` inside the
+container reports "Permission denied" and git over SSH needs a token or HTTPS —
+everything else still works.
+
 ## How egress enforcement works
 
 ```text
@@ -203,7 +213,7 @@ execution on the next start if it could edit them:
 |--------------------|-------|------------|
 | `devcontainer.json` `initializeCommand` (runs on the host) | `scripts/init-workspace.sh`, `scripts/setup-proxy.sh`, `.devcontainer/` | mounted read-only into `dev`; neither script runs `git` or reads any other container-writable configuration |
 | `docker compose up --build` (host daemon) | `docker-compose.dev.yml`, `Dockerfile.dev`, `Dockerfile.egress` | mounted read-only into `dev` |
-| `docker compose` variable interpolation | `.env` (`SSH_AUTH_SOCK` is a bind-mount *source*; `HOST_UID`/`HOST_GID` are build args), `.env.secret` (`env_file`) | mounted read-only into `dev`; both are written by `init-workspace.sh` on the host |
+| `docker compose` variable interpolation | `.env` (`SSH_AGENT_SOURCE` is a bind-mount *source*; `HOST_UID`/`HOST_GID` are build args), `.env.secret` (`env_file`) | mounted read-only into `dev`; both are written by `init-workspace.sh` on the host |
 | **every `git` command you run on the host** | `.git/config` (`core.hooksPath`, `core.fsmonitor`, `core.sshCommand`, aliases, `include`, filters), `.git/hooks`, `.git/modules/*/config`, `.gitmodules` (submodule URLs) | mounted read-only into `dev`; no kit script runs `git` on the host (`init-workspace.sh` reads `.gitignore` directly and leaves submodules to you) |
 | egress sidecar enforcement | `proxy/` (whitelists, generated allow-list, `tinyproxy.conf`, entrypoint) | mounted read-only into `dev`; config baked into the image and asserted; every entry validated at start |
 
@@ -222,7 +232,9 @@ otherwise). Consequences:
   and an `egress` restart, never something the agent can do from inside.
 * **The agent commits, branches, fetches and pushes with the config it was
   given.** `git config`, `git remote add`, installing hooks and `git submodule
-  update` fail inside the container with "Read-only file system"; do those on
+  update` fail inside the container with "Read-only file system" (or "Device or
+  resource busy" for `.git/config`, a single-file mount git tries to replace
+  atomically); do those on
   the host. `git checkout`/`git pull` inside the container fails the same way if
   the incoming change touches a protected path — pull such changes on the host.
 * The global whitelist lives in the standards submodule (`.standards/`, or
@@ -248,8 +260,12 @@ a hint, not a control — and the deny-path check below will tell you so.
 ## Validate (Definition of Done — arch-09 §8)
 
 ```bash
-# 1. Agents run without permission prompts
-docker compose -f docker-compose.dev.yml exec dev bash -lc 'claude --version && gemini --version && ls'
+# 1. Agents run without permission prompts: the shims on PATH carry the flags
+#    (expect /usr/local/bin/claude and /usr/local/bin/gemini, each exec-ing the
+#    real binary with --dangerously-skip-permissions / --yolo)
+docker compose -f docker-compose.dev.yml exec dev bash -lc 'command -v claude gemini; cat "$(command -v claude)"; claude --version && gemini --version && ls'
+#    Authenticating the CLIs is interactive (`claude` login, `gemini` login) unless
+#    ANTHROPIC_API_KEY / GEMINI_API_KEY were captured into .env.secret.
 
 # 2. Egress deny path works — this MUST fail (tinyproxy answers 403 and never
 #    dials out). If it succeeds, egress is NOT contained and the DoD is not met.
@@ -269,12 +285,28 @@ docker compose -f docker-compose.dev.yml exec dev curl -sS --fail --max-time 10 
 docker compose -f docker-compose.dev.yml exec dev getent hosts dns-leak-check.example.com && \
   echo "FAIL: external DNS resolves from devnet — upgrade Docker Engine" || echo "OK: external DNS blocked"
 
-# 2d. ...and the sandbox cannot rewrite what the host runs (every line: "Read-only file system")
+# 2d. ...and the sandbox cannot rewrite what the host runs (every line: "Read-only file system";
+#     the single-file .git/config mount answers "Device or resource busy" — still refused)
 docker compose -f docker-compose.dev.yml exec dev sh -c 'for p in scripts/x proxy/x .git/hooks/x .env; do touch $p 2>&1; sudo touch $p 2>&1; done; git config core.hooksPath /tmp 2>&1'
 
-# 3. An allowed host works (expect 200)
+# 3. An allowed host works (expect 200), also through sudo (env_keep) and from Node
+#    (NODE_USE_ENV_PROXY=1 in the compose file; without it fetch() fails with EAI_AGAIN)
 docker compose -f docker-compose.dev.yml exec dev curl -sS --max-time 10 -o /dev/null -w '%{http_code}\n' https://api.github.com
+docker compose -f docker-compose.dev.yml exec dev sudo curl -sS --max-time 10 -o /dev/null -w '%{http_code}\n' https://registry.npmjs.org/
+docker compose -f docker-compose.dev.yml exec dev node -e 'fetch("https://api.github.com").then(r => console.log(r.status))'
 
 # 4. The proxy logged both verdicts
 docker compose -f docker-compose.dev.yml logs egress | grep -E 'malicious-site.com|api.github.com'
+
+# 5. No host Docker socket, no added capabilities, egress unprivileged and unpublished
+docker inspect "$(docker compose -f docker-compose.dev.yml ps -q dev)" --format '{{json .Mounts}}' | grep -c docker.sock   # expect 0
+docker inspect "$(docker compose -f docker-compose.dev.yml ps -q dev)" --format 'Privileged={{.HostConfig.Privileged}} CapAdd={{.HostConfig.CapAdd}} User={{.Config.User}}'
+docker inspect "$(docker compose -f docker-compose.dev.yml ps -q egress)" --format 'ports={{json .NetworkSettings.Ports}} user={{.Config.User}}'
 ```
+
+A complete run of this list against a real Docker host, with the output observed
+and the kit fixes it produced, is recorded in the standards repo at
+[`docs/guides/containerized-dev-validation.md`](../../docs/guides/containerized-dev-validation.md).
+Use it as the model for your own record: every DoD item names the command, the
+verdict and what was *not* verified (IDE connections and CLI logins are
+interactive and stay manual).

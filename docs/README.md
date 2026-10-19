@@ -20,6 +20,7 @@ retires it.
 | [guides/customization.md](guides/customization.md) | live | Project-specific overrides and `.standards.yml` |
 | [guides/multi-agent-setup.md](guides/multi-agent-setup.md) | live | Running several AI agents against one config |
 | [guides/cursor-commands.md](guides/cursor-commands.md) | live | Cursor slash commands shipped by setup |
+| [guides/containerized-dev-validation.md](guides/containerized-dev-validation.md) | live | How to run the arch-09 Definition of Done against a real Docker host; carries the dated record of the run that pinned the kit (#158) |
 | [PROJECT_SETUP_EXAMPLE.md](PROJECT_SETUP_EXAMPLE.md) | live | End-to-end walkthrough of a new project |
 
 ## Reference
