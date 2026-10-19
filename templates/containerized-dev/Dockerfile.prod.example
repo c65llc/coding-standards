@@ -1,0 +1,36 @@
+# syntax=docker/dockerfile:1
+#
+# Production image (arch-09 §1). Multi-stage: compile in a builder, ship only the
+# runtime artifact in a distroless final stage. No shell, no package manager, no
+# AI tooling, non-root. This example targets a Node.js service — adapt the builder
+# stage to your language, but keep the final-stage constraints.
+
+# --- Stage 1: builder -----------------------------------------------------
+FROM node:20-bookworm-slim AS builder
+WORKDIR /app
+
+# Install deps against the committed lockfile for a reproducible build.
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+RUN npm run build \
+    && npm prune --omit=dev
+
+# --- Stage 2: runtime (distroless, non-root, no shell) --------------------
+# gcr.io/distroless/nodejs20-debian12:nonroot ships no shell and no package
+# manager, and runs as a non-root user by default.
+FROM gcr.io/distroless/nodejs20-debian12:nonroot AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Copy ONLY what the runtime needs — no source, no dev deps, no toolchain.
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package.json ./package.json
+
+# Distroless images run as non-root ("nonroot" tag) by default; assert it.
+USER nonroot
+
+# distroless/nodejs sets node as the entrypoint; provide the app entry only.
+CMD ["dist/main.js"]

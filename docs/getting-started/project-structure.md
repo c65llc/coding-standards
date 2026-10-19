@@ -32,6 +32,7 @@ This document explains the repository layout so you can find what you need quick
 │   │   ├── arch-06_monorepo_workspace_standards.md
 │   │   ├── arch-07_cross_platform_shared_core_standards.md
 │   │   ├── arch-08_ci_cd_pipeline_standards.md
+│   │   ├── arch-09_containerized_agent_dev_standards.md
 │   │   └── arch-10_agent_tools_and_mcp_server_standards.md
 │   │
 │   ├── languages/                  # Language-specific standards

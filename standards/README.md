@@ -6,7 +6,7 @@ This directory contains all coding standards documents organized by category.
 
 | Directory | Prefix | Contents |
 |-----------|--------|----------|
-| `architecture/` | `arch-XX` | Core architecture, automation, data versioning/migration, resilient patterns, monorepo/workspace, cross-platform shared-core, CI/CD pipeline, agent tools/MCP servers |
+| `architecture/` | `arch-XX` | Core architecture, automation, data versioning/migration, resilient patterns, monorepo/workspace, cross-platform shared-core, CI/CD pipeline, containerized agent-dev environment, agent tools/MCP servers |
 | `languages/` | `lang-XX` | Per-language standards (Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby/Rails, Go, Elixir, C++) |
 | `process/` | `proc-XX` | Documentation, git workflow, code review, agent workflow, test governance |
 | `security/` | `sec-XX` | Security guidelines with P0-P2 severity model |
@@ -42,6 +42,7 @@ Every standards document in this tree. This section is generated; edit `catalog.
 - `standards/architecture/arch-06_monorepo_workspace_standards.md` — Monorepo/workspace structure
 - `standards/architecture/arch-07_cross_platform_shared_core_standards.md` — Cross-platform shared-core
 - `standards/architecture/arch-08_ci_cd_pipeline_standards.md` — CI/CD pipeline
+- `standards/architecture/arch-09_containerized_agent_dev_standards.md` — Containerized agent-dev environment (sandboxed Docker dev image, egress allow-list, secret injection, YOLO permissions)
 - `standards/architecture/arch-10_agent_tools_and_mcp_server_standards.md` — Agent tools and MCP servers (schemas, write gating, untrusted-data fencing)
 
 **Language Standards:**
