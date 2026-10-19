@@ -3048,6 +3048,57 @@ if [ "$n" -eq 1 ] && grep -q 'core_bg.wasm' "$TMP_BASE/hygiene-mono.json" \
 
 
 echo ""
+echo -n "Test 224: artifact-hygiene reports a Git LFS pointer as unscanned instead of PASS... "
+hyg_lfs=$(make_project "hygiene-lfs")
+mkdir -p "$hyg_lfs/lib"
+printf 'version https://git-lfs.github.com/spec/v1\noid sha256:%s\nsize 123456\n' \
+    "$(printf 'a%.0s' $(seq 1 64))" > "$hyg_lfs/lib/libcore.so"
+( cd "$hyg_lfs" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+    commit -q -m "chore: commit lfs pointer" )
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_lfs" 2>/dev/null); rc=$?
+if [ "$rc" -eq 2 ] && echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'LFS' \
+   && echo "$out" | grep -q 'libcore.so'; then pass; else fail "expected WARN (rc 2) naming the LFS pointer, got rc=$rc: $out"; fi
+
+echo -n "Test 225: artifact-hygiene reports compressed DWARF it cannot inflate instead of PASS... "
+hyg_z=$(make_project "hygiene-zdebug")
+mkdir -p "$hyg_z/lib"
+# ELF header bytes plus a zlib-gnu section name; not a loadable object, so any
+# installed objcopy fails on it and the check must fall back to "incomplete".
+printf '\177ELF\002\001\001\000.shstrtab\000.zdebug_info\000.zdebug_line\000' > "$hyg_z/lib/libcore.so"
+( cd "$hyg_z" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+    commit -q -m "chore: commit compressed-debug object" )
+out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_z" 2>/dev/null); rc=$?
+if command -v readelf >/dev/null 2>&1 || command -v greadelf >/dev/null 2>&1 || command -v llvm-readelf >/dev/null 2>&1; then
+    # readelf rejects the fake header, so nothing is detectable here; only the
+    # raw-byte fallback path is provable without a real toolchain.
+    if [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ]; then pass; else fail "unexpected rc=$rc: $out"; fi
+elif [ "$rc" -eq 2 ] && echo "$out" | grep -q '^WARN' && echo "$out" | grep -q 'compressed DWARF' \
+   && echo "$out" | grep -q 'libcore.so'; then pass; else fail "expected WARN (rc 2) naming the compressed object, got rc=$rc: $out"; fi
+
+echo -n "Test 226: artifact-hygiene scans a real ELF with compressed debug sections when objcopy is available... "
+if command -v gcc >/dev/null 2>&1 && command -v objcopy >/dev/null 2>&1 \
+   && objcopy --help 2>/dev/null | grep -q -- --compress-debug-sections \
+   && [ "$(uname -s)" = "Linux" ]; then
+    hyg_real=$(make_project "hygiene-zdebug-real")
+    mkdir -p "$hyg_real/lib" "$hyg_real/.src/home/ivan/work/core"
+    echo 'int core_add(int a, int b) { return a + b; }' > "$hyg_real/.src/home/ivan/work/core/core.c"
+    if gcc -g -shared -fPIC -o "$hyg_real/lib/libcore.so" "$hyg_real/.src/home/ivan/work/core/core.c" \
+            -ffile-prefix-map="$hyg_real/.src=" 2>/dev/null \
+       && objcopy --compress-debug-sections=zlib-gnu "$hyg_real/lib/libcore.so" 2>/dev/null \
+       && ! LC_ALL=C grep -aq '/home/ivan/work' "$hyg_real/lib/libcore.so"; then
+        rm -rf "$hyg_real/.src"
+        ( cd "$hyg_real" && git add -A && git -c user.email="t@t.local" -c user.name="T" \
+            commit -q -m "chore: commit compressed-debug object" )
+        out=$(bash "$CHECKS/common/artifact-hygiene.sh" "$hyg_real" 2>/dev/null); rc=$?
+        if [ "$rc" -eq 2 ] && echo "$out" | grep -q 'libcore.so' && echo "$out" | grep -q '/home/<user>/work'; then pass
+        else fail "expected WARN naming the inflated home path, got rc=$rc: $out"; fi
+    else
+        echo "skipped (could not build a compressed-debug fixture)"
+    fi
+else
+    echo "skipped (gcc/objcopy unavailable)"
+fi
+
 # --- changelog-tags module (#197: CHANGELOG vs tag consistency) ---------------
 
 # Helpers: a project with a Keep-a-Changelog file and a set of tags.

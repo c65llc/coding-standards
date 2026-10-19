@@ -109,8 +109,9 @@ and fails if the result differs from what is committed.
   carries the opt-in label (e.g. `regen`) — from *that platform's* pinned runner,
   since a Swift binding regenerated on Linux is not the artifact the gate
   compares — or uploads the regenerated binding plus a patch and prints the
-  one-line apply command (a `git diff --binary` patch, so `git apply` can
-  restore the bytes). The same applies to visual/snapshot baselines: the CI
+  one-line apply command (a `git diff --binary --cached` patch taken after
+  staging the regenerated outputs, so new files are included and `git apply`
+  can restore the bytes). The same applies to visual/snapshot baselines: the CI
   dispatch job that regenerates them counts as an auto-fix path only when it
   ends in a bot commit or an uploaded patch plus apply command — one that
   re-renders snapshots for the developer to download and commit by hand does

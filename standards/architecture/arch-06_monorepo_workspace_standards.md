@@ -144,8 +144,13 @@ provide at least one of:
   `gh run download <run-id> -n regen-patch && git apply regen.patch`. The
   `--binary` flag matters: for the wasm bundles, JARs and native libraries this
   section targets, a default `git diff` emits only `Binary files ... differ`,
-  which `git apply` cannot turn back into bytes. The developer never has to
-  reproduce the runner's environment.
+  which `git apply` cannot turn back into bytes. The job MUST *stage* the
+  regenerated outputs before diffing — `git add -A <artifact dirs> && git diff
+  --binary --cached > regen.patch` — because a regeneration that creates a
+  *new* baseline, binding or golden file leaves it untracked (`??`), and an
+  unstaged `git diff` silently omits it: the patch applies cleanly and still
+  reproduces an incomplete tree. The developer never has to reproduce the
+  runner's environment.
 
 A `workflow_dispatch` regeneration job (the "CI dispatch job" that the testing
 policy, lang-06 and proc-04 require for visual/snapshot baselines) is one way
