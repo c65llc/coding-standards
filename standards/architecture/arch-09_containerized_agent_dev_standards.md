@@ -24,11 +24,13 @@ bootstraps — and ships the enforcing egress layer §4 requires: an `internal: 
 container network whose only way out is a deny-by-default proxy sidecar fed by the
 generated allow-list. It still does **not** make a project compliant on its own:
 the Docker socket mount is an explicit, documented opt-in, image builds run
-outside the contained network, and the whitelists have to be adapted. Copy the kit
-into a consumer project, adapt the toolchain and whitelists, and treat §8 — in
-particular the observed deny-path failure on *your* host — as the only evidence of
-compliance. The kit's README lists exactly which controls it enforces, how, and
-what remains outside their reach.
+outside the contained network, and the whitelists have to be adapted. Install the
+kit into a consumer project with `.standards/scripts/setup.sh --containerized`
+(opt-in; existing files are never overwritten, `.env` and `.env.secret` are
+git-ignored), adapt the toolchain and whitelists, and treat §8 — in particular the
+observed deny-path failure on *your* host — as the only evidence of compliance. The
+kit's README lists exactly which controls it enforces, how, and what remains
+outside their reach.
 
 ## 1. Two Images, Two Purposes — Never One
 

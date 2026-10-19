@@ -3,7 +3,8 @@
 #
 # Usage:
 #   ./scripts/setup.sh [--agents <list>|all|detect] [--languages <list>]
-#                      [--role <role>] [--workflow] [--dry-run] [-h|--help]
+#                      [--role <role>] [--workflow] [--containerized] [--migrate]
+#                      [--dry-run] [-h|--help]
 #
 # Run with --help for the full option reference.
 
@@ -37,6 +38,15 @@ Options:
   --role <role>        Project role block to include (default: service)
   --workflow           Also install the opt-in GitHub workflow templates
                        (standards-review.yml, trufflehog.yml)
+  --containerized      Also install the containerized agent-dev starter kit
+                       (arch-09, templates/containerized-dev/): Dockerfile.dev,
+                       Dockerfile.prod, Dockerfile.egress, docker-compose.dev.yml,
+                       scripts/{init-workspace,setup-proxy,bootstrap-*}.sh,
+                       proxy/, .devcontainer/ and, when cursor is configured,
+                       .cursor/rules/containerized-dev.mdc. An existing file is
+                       never overwritten: one that differs is kept and the kit's
+                       version is staged to .standards-pending/. Adds .env and
+                       .env.secret to .gitignore (arch-09 §5).
   --migrate            Upgrade a pre-1.2 install (agent configs citing
                        renamed standards paths, a .codexrc, a legacy
                        .standards-config): rewrite the dead references in place from
@@ -54,6 +64,7 @@ Examples:
   $0 --agents codex                  # AGENTS.md + standards-owned files only
   $0 --agents claude-code,cursor --languages typescript
   $0 --migrate                       # upgrade a pre-1.2 consumer
+  $0 --containerized                 # also install the arch-09 dev-container kit
   $0 --dry-run
 EOF
 }
@@ -86,6 +97,7 @@ AGENTS_OVERRIDE=""
 LANGUAGES_OVERRIDE=""
 DRY_RUN=false
 INSTALL_WORKFLOW=false
+INSTALL_CONTAINERIZED=false
 MIGRATE=false
 
 while [ $# -gt 0 ]; do
@@ -132,6 +144,10 @@ while [ $# -gt 0 ]; do
             ;;
         --workflow)
             INSTALL_WORKFLOW=true
+            shift
+            ;;
+        --containerized)
+            INSTALL_CONTAINERIZED=true
             shift
             ;;
         -h|--help)
@@ -873,6 +889,230 @@ install_agent_skills() {
     fi
 }
 
+# --- Containerized agent-dev kit (arch-09, #159) ------------------------------
+# Opt-in like --workflow. Copies templates/containerized-dev/ into the project
+# with the .example suffix stripped and every script made executable. Safe-setup
+# rules: a file that does not exist is installed; one identical to the kit's is
+# left alone; one that differs is kept and the kit's version is staged to
+# .standards-pending/<path> for /merge-standards. Kit files are meant to be
+# adapted (toolchain, pinned versions, whitelists), so they are not recorded in
+# .standards-checksums and sync-standards never touches them. The Cursor rules
+# file is an agent-side artifact and follows the --agents gating (#181).
+CONTAINERIZED_KIT_FOUND=false
+CONTAINERIZED_NOTES=""   # Markdown bullets for the MERGE_PLAN kit section
+
+# The global egress whitelist normally stays in the standards checkout, where the
+# installed setup-proxy.sh reads it (.standards/ or coding_standards/). When setup
+# runs from a clone outside the project ("Using standards from script location")
+# neither path exists, so the kit snapshots it to proxy/global-whitelist.txt,
+# which setup-proxy.sh falls back to.
+CONTAINERIZED_SNAPSHOT_GLOBAL=false
+
+# containerized_kit_target <kit-relative path>: the project-relative destination,
+# or nothing for files that are not installed — the kit's own documentation, the
+# global whitelist (unless snapshotted, see above) and the .env.secret shape
+# (init-workspace.sh generates the real one).
+containerized_kit_target() {
+    case "$1" in
+        README.md|env.secret.example) return 0 ;;
+        network/global-whitelist.txt)
+            [ "$CONTAINERIZED_SNAPSHOT_GLOBAL" = true ] && echo "proxy/global-whitelist.txt"
+            return 0 ;;
+        network/*) return 0 ;;
+        cursorrules.example) echo ".cursor/rules/containerized-dev.mdc" ;;
+        *.example) echo "${1%.example}" ;;
+        *) echo "$1" ;;
+    esac
+}
+
+# containerized_cursor_configured: is Cursor among the agents this run sets up?
+# With an explicit --agents list that is agent_requested; in detect mode
+# agent_requested is permissive (every agent-side artifact installs), so the
+# Cursor rules file is gated on the detected set instead (#181).
+containerized_cursor_configured() {
+    if agents_explicit; then
+        agent_requested cursor
+        return
+    fi
+    local a
+    for a in ${DETECTED_AGENTS:-}; do
+        [ "$a" = cursor ] && return 0
+    done
+    return 1
+}
+
+# kit_file_is_script <file>: anything with a shebang is run on the host
+# (scripts/*.sh) or copied into an image (proxy/egress-entrypoint.sh).
+kit_file_is_script() {
+    head -c 2 "$1" 2>/dev/null | grep -q '^#!'
+}
+
+# kit_path_has_symlink <project-relative path>: true when any component of the
+# path, the leaf included, is a symlink. Kit files are written only beneath the
+# project root: a `scripts -> /elsewhere` link must not receive executables.
+kit_path_has_symlink() {
+    local p="" c
+    local IFS='/'
+    for c in $1; do
+        [ -n "$c" ] || continue
+        p="${p:+$p/}$c"
+        [ -L "$PROJECT_ROOT/$p" ] && return 0
+    done
+    return 1
+}
+
+# abort_if_tracked_secrets: .env / .env.secret already in the git index (a
+# committed placeholder, or a force-added copy of an earlier init-workspace run)
+# cannot be made safe by ignoring them, and init-workspace.sh has no reliable
+# way to tell them apart from its own output. Runs on the host, before setup
+# writes anything, so a refusal leaves the project exactly as it was.
+abort_if_tracked_secrets() {
+    local tracked t
+    tracked=$(cd "$PROJECT_ROOT" && git ls-files -- .env .env.secret 2>/dev/null | tr '\n' ' ' || true)
+    tracked=$(trim_ws "$tracked")
+    [ -n "$tracked" ] || return 0
+    echo "🚨 P0 (arch-09 §5): ${tracked// / and } is tracked by git. Ignoring a tracked file does not untrack it, and"
+    echo "   scripts/init-workspace.sh would refresh live API keys into it, ready for the next commit."
+    echo "   --containerized refuses to continue. On the host:"
+    for t in $tracked; do echo "     git rm --cached $t && rm $t"; done
+    echo "   then commit the removal, rotate anything a committed copy ever held, and re-run setup."
+    exit 1
+}
+
+# install_containerized_kit <kit dir>
+# Appends every conflict to PENDING_LIST (the MERGE_PLAN "Pending files" list)
+# and describes it in CONTAINERIZED_NOTES.
+install_containerized_kit() {
+    local kit="$1"
+    local rel src src_label target dest pending_target compose_tmp=""
+    echo ""
+    echo "🐳 Installing the containerized agent-dev kit (arch-09)..."
+    # docker-compose.dev.yml bind-mounts ./.git/modules and ./.gitmodules with
+    # create_host_path: false (a missing source fails `compose up` instead of
+    # mounting an empty directory). A project without a submodule gets the file
+    # without those two mounts; the comparison below uses the same trimmed
+    # content, so a re-run still reports it as installed.
+    CONTAINERIZED_OMIT_SUBMODULE_MOUNTS=false
+    if [ ! -f "$PROJECT_ROOT/.gitmodules" ] || [ ! -d "$PROJECT_ROOT/.git/modules" ]; then
+        CONTAINERIZED_OMIT_SUBMODULE_MOUNTS=true
+        echo "   ℹ️  No git submodule in this project: docker-compose.dev.yml is installed without the ./.git/modules and ./.gitmodules"
+        echo "      bind mounts (create_host_path: false would fail \`compose up\`). Vendor the standards as a submodule and re-run to restore them."
+    fi
+    CONTAINERIZED_SNAPSHOT_GLOBAL=false
+    if [ ! -f "$PROJECT_ROOT/.standards/templates/containerized-dev/network/global-whitelist.txt" ] \
+       && [ ! -f "$PROJECT_ROOT/coding_standards/templates/containerized-dev/network/global-whitelist.txt" ]; then
+        CONTAINERIZED_SNAPSHOT_GLOBAL=true
+        echo "   ℹ️  The standards checkout is outside this project: network/global-whitelist.txt is snapshotted to proxy/global-whitelist.txt"
+        echo "      (setup-proxy.sh falls back to it; re-run --containerized after updating the standards to stage a newer copy)"
+    fi
+    # find | sort rather than globs: the kit nests two levels and has a dot-dir.
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        src="$kit/$rel"
+        src_label="$src"
+        if [ "$rel" = "docker-compose.dev.yml.example" ] && [ "$CONTAINERIZED_OMIT_SUBMODULE_MOUNTS" = true ]; then
+            compose_tmp=$(mktemp "${TMPDIR:-/tmp}/compose-dev.XXXXXX")
+            grep -v -e 'source: \./\.git/modules,' -e 'source: \./\.gitmodules,' \
+                    -e 'Remove the next two lines if the standards are not vendored as a submodule' \
+                    "$src" > "$compose_tmp"
+            src="$compose_tmp"
+            src_label="$kit/$rel (without the submodule mounts)"
+        fi
+        target=$(containerized_kit_target "$rel")
+        [ -n "$target" ] || continue
+        case "$target" in
+            .cursor/*)
+                if ! containerized_cursor_configured; then
+                    echo "   ℹ️  $rel skipped: cursor is not configured (pass --agents cursor, or add a .cursorrules so detect finds it, to install it as $target)"
+                    continue
+                fi
+                ;;
+        esac
+        if kit_path_has_symlink "$target"; then
+            echo "   ⚠️  $target skipped: a path component is a symlink — kit files are written only beneath the project root (replace the link with a real directory and re-run)"
+            continue
+        fi
+        dest="$PROJECT_ROOT/$target"
+        if [ -e "$dest" ] || [ -L "$dest" ]; then
+            if cmp -s "$src" "$dest"; then
+                # Identical contents but no execute bit (a plain `cp` of the 0644
+                # template): the documented ./scripts/*.sh invocations would fail.
+                if [ ! -x "$dest" ] && kit_file_is_script "$src"; then
+                    if [ "$DRY_RUN" = true ]; then
+                        echo "  [dry-run] Would chmod +x: $dest"
+                    else
+                        chmod +x "$dest"
+                    fi
+                    echo "   ✅ $target already installed (made executable)"
+                else
+                    echo "   ✅ $target already installed"
+                fi
+                continue
+            fi
+            pending_target="$PROJECT_ROOT/$PENDING_DIR/$target"
+            if [ "$DRY_RUN" = true ]; then
+                echo "  [dry-run] Would stage: $src_label → $pending_target ($target exists and differs)"
+            else
+                mkdir -p "$(dirname "$pending_target")"
+                cp "$src" "$pending_target"
+                echo "   ⚠️  $target exists and differs from the kit — kit version staged to $PENDING_DIR/$target"
+            fi
+            PENDING_LIST="${PENDING_LIST:+$PENDING_LIST }$target"
+            CONTAINERIZED_NOTES="${CONTAINERIZED_NOTES:+$CONTAINERIZED_NOTES
+}- \`$target\` is yours and was kept; the kit's version is at \`.standards-pending/$target\`. Diff the two and pull in what you want, then delete the staged copy."
+            continue
+        fi
+        [ -d "$(dirname "$dest")" ] || dry_run_mkdir "$(dirname "$dest")"
+        if [ "$DRY_RUN" = true ]; then
+            echo "  [dry-run] Would copy: $src_label → $dest"
+        else
+            cp "$src" "$dest"
+            if kit_file_is_script "$dest"; then
+                chmod +x "$dest"
+            fi
+            echo "   ✅ Installed $target"
+        fi
+    done <<EOF
+$(cd "$kit" && find . -type f | sed 's|^\./||' | sort)
+EOF
+    if [ -n "$compose_tmp" ]; then
+        rm -f "$compose_tmp"
+    fi
+    if [ -n "$CONTAINERIZED_NOTES" ]; then
+        CONTAINERIZED_NOTES="- Kit files are templates to adapt (toolchain, pinned versions, whitelists): setup never overwrites one and does not record them in \`.standards-checksums\`, so \`sync-standards\` leaves them alone and re-running \`--containerized\` stages a differing kit version again until you adopt it or delete the staged copy.
+$CONTAINERIZED_NOTES"
+    fi
+}
+
+# gitignore_ignores <gitignore> <top-level file name>: true when the file, read
+# in order the way git does, leaves that top-level path ignored. Every rule is
+# matched as a glob against the name (`.env*`, `*.secret`, `.env.[a-z]*` all
+# count), a `!rule` that matches un-ignores it, and the last matching rule wins.
+# A rule containing a slash (nested path, `dir/` pattern) never matches a
+# top-level file; a leading `/` or `**/` anchors to the root and is dropped.
+# Appending a plain `<name>` rule therefore always makes the result true.
+gitignore_ignores() {
+    [ -f "$1" ] || return 1
+    local line pat neg listed=1
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%"${line##*[![:space:]]}"}"
+        case "$line" in ''|'#'*) continue ;; esac
+        neg=0; pat="$line"
+        case "$pat" in
+            '!'*)        neg=1; pat="${pat#!}" ;;
+            '\!'*|'\#'*) pat="${pat#\\}" ;;
+        esac
+        pat="${pat#\*\*/}"
+        pat="${pat#/}"
+        case "$pat" in */*) continue ;; esac
+        # shellcheck disable=SC2254  # $pat is a glob on purpose
+        case "$2" in
+            $pat) if [ "$neg" = 1 ]; then listed=1; else listed=0; fi ;;
+        esac
+    done < "$1"
+    return "$listed"
+}
+
 echo "🔧 Setting up project standards..."
 
 # Determine if we're in the standards repo or a project using it
@@ -891,6 +1131,13 @@ else
     else
         echo "❌ Error: Could not find standards directory"
         exit 1
+    fi
+
+    # --- Containerized kit precondition (arch-09 §5, P0) --------------------
+    # Checked before anything is written: a tracked .env / .env.secret cannot be
+    # made safe by this run, so it stops here with the fix instead of installing.
+    if [ "$INSTALL_CONTAINERIZED" = true ]; then
+        abort_if_tracked_secrets
     fi
 
     # --- Pre-1.2 migration (#184) ------------------------------------------
@@ -1057,13 +1304,27 @@ EOF
     echo "🤖 Setting up AI agent configurations..."
     setup_ai_agents "$STANDARDS_DIR" "$SCRIPT_DIR" "$PROJECT_ROOT"
 
+    # Containerized agent-dev kit (arch-09, #159): opt-in, mirrors --workflow.
+    # Runs before the merge plan is written so staged kit files are listed in it.
+    CONTAINERIZED_KIT_DIR="$STANDARDS_DIR/templates/containerized-dev"
+    if [ "$INSTALL_CONTAINERIZED" = true ]; then
+        if [ -d "$CONTAINERIZED_KIT_DIR" ]; then
+            CONTAINERIZED_KIT_FOUND=true
+            install_containerized_kit "$CONTAINERIZED_KIT_DIR"
+        else
+            echo "⚠️  Containerized agent-dev kit not found at $CONTAINERIZED_KIT_DIR — update the standards checkout (cd .standards && git pull) and re-run with --containerized."
+        fi
+    elif [ -d "$CONTAINERIZED_KIT_DIR" ] && [ ! -f "$PROJECT_ROOT/docker-compose.dev.yml" ]; then
+        echo "ℹ️  Containerized agent-dev kit (arch-09) available. To install: $SETUP_CMD --containerized"
+    fi
+
     # Emit MERGE_PLAN.md if setup staged any pending updates (or --migrate has
     # notes to hand over). Never in dry-run: nothing was staged.
     if [ -f "$SCRIPT_DIR/lib/merge-plan.sh" ] && [ "$DRY_RUN" = false ] \
        && { [ -n "${PENDING_LIST:-}" ] || [ -n "${MIGRATE_NOTES:-}" ]; }; then
         # shellcheck disable=SC1091
         source "$SCRIPT_DIR/lib/merge-plan.sh"
-        write_merge_plan "$PROJECT_ROOT" "$PENDING_LIST" "${DETECTED_AGENTS:-}" "${ASSEMBLED_AGENTS_LIST:-}" "${MIGRATE_NOTES:-}"
+        write_merge_plan "$PROJECT_ROOT" "$PENDING_LIST" "${DETECTED_AGENTS:-}" "${ASSEMBLED_AGENTS_LIST:-}" "${MIGRATE_NOTES:-}" "${CONTAINERIZED_NOTES:-}"
         echo ""
         echo "📋 Pending updates staged. See .standards-pending/MERGE_PLAN.md or run:"
         echo "   Claude Code: /merge-standards"
@@ -1343,6 +1604,25 @@ if [ -f "$PROJECT_ROOT/.gitignore" ]; then
             echo "✅ Worktree root $WORKTREE_DIR/ added to .gitignore"
         fi
     fi
+    # Containerized agent-dev kit (arch-09 §5, P0): the files init-workspace.sh
+    # and setup-proxy.sh generate hold identity and API keys and must never be
+    # committed. init-workspace.sh refuses to run until .env.secret is ignored.
+    if [ "$INSTALL_CONTAINERIZED" = true ] && [ "$CONTAINERIZED_KIT_FOUND" = true ]; then
+        CONTAINERIZED_IGNORE=""
+        gitignore_ignores "$PROJECT_ROOT/.gitignore" .env || CONTAINERIZED_IGNORE=".env"
+        gitignore_ignores "$PROJECT_ROOT/.gitignore" .env.secret \
+            || CONTAINERIZED_IGNORE="${CONTAINERIZED_IGNORE:+$CONTAINERIZED_IGNORE }.env.secret"
+        if [ -n "$CONTAINERIZED_IGNORE" ]; then
+            {
+                echo ""
+                echo "# Containerized agent-dev environment (arch-09 §5): written by scripts/init-workspace.sh, never committed"
+                for _e in $CONTAINERIZED_IGNORE; do echo "$_e"; done
+            } | dry_run_append "$PROJECT_ROOT/.gitignore"
+            if [ "$DRY_RUN" = false ]; then
+                echo "✅ ${CONTAINERIZED_IGNORE// / and } added to .gitignore"
+            fi
+        fi
+    fi
 elif [ "$SCRIPT_DIR" != "$PROJECT_ROOT" ]; then
     # Create .gitignore if it doesn't exist (only for client projects, not standards repo itself)
     {
@@ -1359,6 +1639,12 @@ elif [ "$SCRIPT_DIR" != "$PROJECT_ROOT" ]; then
         echo ""
         echo "# Agent worktree root (proc-04 Worktree Hygiene; worktree_dir: in .standards.yml)"
         echo "$WORKTREE_DIR/"
+        if [ "$INSTALL_CONTAINERIZED" = true ] && [ "$CONTAINERIZED_KIT_FOUND" = true ]; then
+            echo ""
+            echo "# Containerized agent-dev environment (arch-09 §5): written by scripts/init-workspace.sh, never committed"
+            echo ".env"
+            echo ".env.secret"
+        fi
         echo ""
         echo "# Note: .standards.yml should be committed — it is the project's declared config."
     } | dry_run_write "$PROJECT_ROOT/.gitignore"
@@ -1392,3 +1678,18 @@ echo "8. To sync standards later, run from the project root: ./.standards/script
 echo "   Note: After syncing, fully restart your IDE again to load updated configurations"
 echo "9. Agent worktrees go under $WORKTREE_DIR/ (one gitignored root, never nested); collect finished"
 echo "   ones with: ./.standards/scripts/worktree-gc.sh  (--dry-run to preview)"
+
+if [ "$INSTALL_CONTAINERIZED" = true ] && [ "$CONTAINERIZED_KIT_FOUND" = true ]; then
+    echo ""
+    echo "🐳 Containerized agent-dev kit (arch-09) — next steps, all on the host:"
+    echo "1. Adapt Dockerfile.dev (toolchain, pinned versions) and proxy/project-whitelist.txt (egress allow-list)"
+    echo "2. ./scripts/init-workspace.sh                              # identity + secrets → .env, .env.secret (git-ignored)"
+    echo "3. ./scripts/setup-proxy.sh                                 # validate + generate proxy/allowlist.generated.txt"
+    echo "   (commit or git-ignore the generated allow-list; regenerate it, never edit it)"
+    echo "4. docker compose -f docker-compose.dev.yml up -d --build   # egress sidecar first, then dev"
+    echo "5. Run the Definition of Done checks in $STANDARDS_DIR/templates/containerized-dev/README.md:"
+    echo "   the observed deny-path failure on your host is the only evidence of arch-09 compliance"
+    if [ -n "$CONTAINERIZED_NOTES" ]; then
+        echo "   Some kit files already existed and differ — see .standards-pending/MERGE_PLAN.md"
+    fi
+fi

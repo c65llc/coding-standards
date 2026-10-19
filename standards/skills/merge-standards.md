@@ -64,7 +64,9 @@ When `MERGE_PLAN.md` has a **Migration** section, the pending files are the proj
 
 3. For a **staged skill file**, the project's file was kept because the standards never installed it, or it was edited since they did. Show the diff between the project's file and the staged version. On approval, replace the file with the staged version and record its hash under its project-relative path; on rejection, delete the staged copy — the next sync stages it again only while the two still differ, and says so.
 
-4. After all files are processed, delete `.standards-pending/` if empty.
+4. For a **staged containerized kit file** (`MERGE_PLAN.md` has a *Containerized agent-dev kit* section; paths such as `Dockerfile.dev`, `scripts/init-workspace.sh`, `proxy/tinyproxy.conf`), the section-based strategy below does not apply: these are shell scripts, Dockerfiles and proxy configs, not assembled Markdown. Show a plain diff of the project's file against the staged copy. On approval write the merged result (normally the project's adaptations carried onto the kit's changes), keep the execute bit on anything with a shebang (`chmod +x`), and do **not** add it to `.standards-checksums` — kit files are templates to adapt and are never checksum-tracked. Delete the staged copy either way; re-running `setup.sh --containerized` stages it again only while the two still differ.
+
+5. After all files are processed, delete `.standards-pending/` if empty.
 
 ## Merge Strategy
 

@@ -14,7 +14,7 @@ All automation scripts live in the `scripts/` directory. They are written in Bas
 **Usage:**
 
 ```bash
-./scripts/setup.sh [--agents <list>|all|detect] [--languages <list>] [--role <role>] [--workflow] [--migrate] [--dry-run]
+./scripts/setup.sh [--agents <list>|all|detect] [--languages <list>] [--role <role>] [--workflow] [--containerized] [--migrate] [--dry-run]
 ./scripts/setup.sh --help
 ```
 
@@ -40,6 +40,7 @@ make setup
 4. Writes `.standards.yml` (declared languages, agents, role; a declared `members:` list is preserved) and `.standards-checksums`. In a monorepo the root `.standards.yml` keeps only the root's own languages, detected from the root's own manifests (a non-empty list makes `lint-standards.sh` run language checks against the root; a sub-root that carries other languages is pointed out so it can become a member), while the root agent configs are assembled from the union of the root's and every member's (see [Monorepos: Members](../guides/customization.md#monorepos-members)); a declared member without a `.standards.yml` gets one bootstrapped with the languages detected in it.
 5. In detect mode only: installs a `post-merge` git hook that checks for standards updates, installs the pre-commit worktree guard (`templates/pre-commit-worktree-guard.example`, refusing commits that stage a path under the worktree root) when no pre-commit hook exists and `hooks:` names the standards as the hook manager — otherwise prints how to wire it into husky / lefthook / the existing hook — and runs `setup-git-aliases.sh` to configure global git aliases.
 6. Adds `.cursorrules.backup`, `.standards_tmp/`, `.standards-pending/` and the worktree root (`worktree_dir:` in `.standards.yml`, default `.claude/worktrees/`) to `.gitignore`.
+7. With `--containerized`: installs the [arch-09 starter kit](../../templates/containerized-dev/README.md) from `templates/containerized-dev/` — `Dockerfile.dev`, `Dockerfile.prod`, `Dockerfile.egress`, `docker-compose.dev.yml`, `scripts/*.sh` (`.example` stripped, made executable), `proxy/`, `.devcontainer/devcontainer.json` and, when `cursor` is a configured agent, `.cursor/rules/containerized-dev.mdc` — and adds `.env` and `.env.secret` to `.gitignore`. A file that already exists is never overwritten: identical files are reported as installed, differing ones are kept and the kit's version is staged to `.standards-pending/<path>`, listed in `MERGE_PLAN.md` under its own section. Kit files are meant to be adapted, so they are not recorded in `.standards-checksums` and `sync-standards.sh` leaves them alone. Without the flag, setup prints how to install the kit (unless `docker-compose.dev.yml` already exists). Tests: `scripts/test-setup-safe.sh` (Tests 103–109).
 
 **Flags:**
 
@@ -49,6 +50,7 @@ make setup
 | `--languages <list>` | Comma-separated languages; skips `detect-languages.sh`. |
 | `--role <role>` | Role content block to include (default `service`). |
 | `--workflow` | Also install the opt-in `standards-review.yml` and `trufflehog.yml` workflow templates. |
+| `--containerized` | Also install the opt-in containerized agent-dev kit (arch-09) from `templates/containerized-dev/`; never overwrites, stages conflicts to `.standards-pending/`, git-ignores `.env` and `.env.secret`. |
 | `--migrate` | Upgrade a pre-1.2 install (see below). Without it, a pre-1.2 shape is only reported, never rewritten. |
 | `--dry-run` | Print every write that would happen without modifying anything. |
 | `-h`, `--help` | Print usage and exit 0 without touching the project. |

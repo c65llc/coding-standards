@@ -1584,6 +1584,260 @@ doc=$(cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1) || true
 echo "$doc" | grep -q 'All config checksums match'                                 || errs="$errs doctor:drift-reported"
 if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; doctor: $(echo "$doc" | grep -i checksum)"; fi
 
+# --- #159: setup.sh --containerized installs the arch-09 starter kit ----------
+# fake_standards symlinks templates/, so the kit and the global whitelist both
+# resolve under .standards/ exactly as in a consumer project.
+
+echo -n "Test 103: without --containerized setup installs no kit file, ignores no .env, and prints how to install the kit... "
+proj=$(make_project "kit-hint")
+fake_standards "$proj"
+out=$(cd "$proj" && "$SETUP" --agents codex --languages typescript 2>&1) || true
+errs=""
+echo "$out" | grep -q 'To install: .standards/scripts/setup.sh --containerized' || errs="$errs hint-missing"
+for f in Dockerfile.dev Dockerfile.prod Dockerfile.egress docker-compose.dev.yml scripts/init-workspace.sh proxy/project-whitelist.txt .devcontainer/devcontainer.json; do
+    [ -e "$proj/$f" ] && errs="$errs installed:$f"
+done
+grep -qxF '.env' "$proj/.gitignore" 2>/dev/null && errs="$errs env-ignored-without-flag"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
+echo -n "Test 104: --containerized installs every kit file with the .example suffix stripped and scripts executable, adds .env + .env.secret to .gitignore, and copies nothing else (README, env.secret shape, global whitelist)... "
+proj=$(make_project "kit-install")
+fake_standards "$proj"
+# A submodule layout, so docker-compose.dev.yml is installed verbatim (Test 111 covers the no-submodule trim).
+mkdir -p "$proj/.git/modules"; printf '[submodule ".standards"]\n\tpath = .standards\n\turl = https://example.invalid/standards.git\n' > "$proj/.gitmodules"
+out=$(cd "$proj" && "$SETUP" --agents cursor --languages typescript --containerized 2>&1) || true
+errs=""
+for f in .cursor/rules/containerized-dev.mdc .devcontainer/devcontainer.json docker-compose.dev.yml Dockerfile.dev Dockerfile.egress Dockerfile.prod \
+         proxy/egress-entrypoint.sh proxy/project-whitelist.txt proxy/tinyproxy.conf \
+         scripts/bootstrap-antigravity.sh scripts/bootstrap-zed.sh scripts/init-workspace.sh scripts/setup-proxy.sh; do
+    [ -f "$proj/$f" ] || errs="$errs missing:$f"
+done
+for f in Dockerfile.dev docker-compose.dev.yml scripts/setup-proxy.sh scripts/init-workspace.sh; do
+    cmp -s "$REPO_ROOT/templates/containerized-dev/$f.example" "$proj/$f" || errs="$errs differs:$f"
+done
+cmp -s "$REPO_ROOT/templates/containerized-dev/proxy/tinyproxy.conf" "$proj/proxy/tinyproxy.conf" || errs="$errs differs:tinyproxy.conf"
+cmp -s "$REPO_ROOT/templates/containerized-dev/cursorrules.example" "$proj/.cursor/rules/containerized-dev.mdc" || errs="$errs differs:cursor-rules"
+for f in scripts/bootstrap-antigravity.sh scripts/bootstrap-zed.sh scripts/init-workspace.sh scripts/setup-proxy.sh proxy/egress-entrypoint.sh; do
+    [ -x "$proj/$f" ] || errs="$errs not-executable:$f"
+done
+leftovers=$(cd "$proj" && find . -path ./.git -prune -o -path ./.standards -prune -o -type f \
+    \( -name '*.example' -o -name 'global-whitelist.txt' -o -name 'env.secret*' -o -path './README.md' \) -print)
+[ -z "$leftovers" ] || errs="$errs unexpected:$(echo "$leftovers" | tr '\n' ',')"
+[ -d "$proj/network" ] && errs="$errs network-dir-copied"
+grep -qxF '.env' "$proj/.gitignore"        || errs="$errs env-not-ignored"
+grep -qxF '.env.secret' "$proj/.gitignore" || errs="$errs env-secret-not-ignored"
+echo "$out" | grep -q 'Containerized agent-dev kit (arch-09) — next steps' || errs="$errs next-steps-missing"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
+echo -n "Test 105: the Cursor rules follow --agents gating: skipped (no .cursor/ at all) for --agents claude-code, installed in detect mode when .cursorrules exists... "
+proj=$(make_project "kit-cursor-gate")
+fake_standards "$proj"
+out=$(cd "$proj" && "$SETUP" --agents claude-code --languages typescript --containerized 2>&1) || true
+errs=""
+[ -e "$proj/.cursor" ] && errs="$errs cursor-dir-created"
+echo "$out" | grep -q 'cursorrules.example skipped: cursor is not configured' || errs="$errs skip-not-reported"
+[ -f "$proj/Dockerfile.dev" ] || errs="$errs kit-not-installed"
+proj2=$(make_project "kit-cursor-detect")
+fake_standards "$proj2"
+printf '# mine\n' > "$proj2/.cursorrules"
+fake_home="$TMPDIR_BASE/kit-cursor-detect-home"; mkdir -p "$fake_home"
+out2=$(cd "$proj2" && HOME="$fake_home" GIT_CONFIG_GLOBAL="$fake_home/.gitconfig" \
+    "$SETUP" --languages typescript --containerized 2>&1) || true
+[ -f "$proj2/.cursor/rules/containerized-dev.mdc" ] || errs="$errs detect:rules-not-installed"
+grep -q '^alwaysApply: true' "$proj2/.cursor/rules/containerized-dev.mdc" 2>/dev/null || errs="$errs detect:no-frontmatter"
+grep -q '# mine' "$proj2/.cursorrules" || errs="$errs detect:cursorrules-clobbered"
+# Detect mode with no Cursor artifacts: agent_requested is permissive there, so the
+# rules file must be gated on the detected set — Cursor was not detected, nothing installs.
+proj3=$(make_project "kit-cursor-undetected")
+fake_standards "$proj3"
+printf '# mine\n' > "$proj3/CLAUDE.md"
+out3=$(cd "$proj3" && HOME="$fake_home" GIT_CONFIG_GLOBAL="$fake_home/.gitconfig" \
+    "$SETUP" --languages typescript --containerized 2>&1) || true
+[ -e "$proj3/.cursor/rules/containerized-dev.mdc" ] && errs="$errs undetected:rules-installed"
+echo "$out3" | grep -q 'cursorrules.example skipped: cursor is not configured' || errs="$errs undetected:skip-not-reported"
+[ -f "$proj3/Dockerfile.dev" ] || errs="$errs undetected:kit-not-installed"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; detect: $out2; undetected: $out3"; fi
+
+echo -n "Test 106: --containerized never clobbers: a differing scripts/init-workspace.sh is kept and the kit's copy staged to .standards-pending/scripts/ with a MERGE_PLAN section; an identical file is not staged; .env is added once to a .gitignore that already lists .env.secret... "
+proj=$(make_project "kit-conflict")
+fake_standards "$proj"
+mkdir -p "$proj/scripts" "$proj/proxy"
+printf '#!/bin/bash\necho mine\n' > "$proj/scripts/init-workspace.sh"
+cp "$REPO_ROOT/templates/containerized-dev/proxy/tinyproxy.conf" "$proj/proxy/tinyproxy.conf"
+printf 'node_modules/\n.env.secret\n' > "$proj/.gitignore"
+out=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || true
+errs=""
+grep -q 'echo mine' "$proj/scripts/init-workspace.sh" || errs="$errs clobbered"
+[ -f "$proj/.standards-pending/scripts/init-workspace.sh" ] || errs="$errs not-staged"
+cmp -s "$REPO_ROOT/templates/containerized-dev/scripts/init-workspace.sh.example" "$proj/.standards-pending/scripts/init-workspace.sh" || errs="$errs staged-differs"
+echo "$out" | grep -q 'scripts/init-workspace.sh exists and differs from the kit' || errs="$errs conflict-not-reported"
+[ -e "$proj/.standards-pending/proxy/tinyproxy.conf" ] && errs="$errs identical-staged"
+echo "$out" | grep -q 'proxy/tinyproxy.conf already installed' || errs="$errs identical-not-reported"
+plan="$proj/.standards-pending/MERGE_PLAN.md"
+grep -q '^## Containerized agent-dev kit (setup.sh --containerized)' "$plan" 2>/dev/null || errs="$errs plan-section-missing"
+grep -q '`.standards-pending/scripts/init-workspace.sh` → merge into `scripts/init-workspace.sh`' "$plan" 2>/dev/null || errs="$errs plan-pending-entry-missing"
+grep -q 'scripts/init-workspace.sh` is yours and was kept' "$plan" 2>/dev/null || errs="$errs plan-note-missing"
+# The closing instructions must not send a kit file into .standards-checksums (doctor would flag every adaptation).
+grep -q 'do NOT add it to `.standards-checksums`' "$plan" 2>/dev/null || errs="$errs plan-step3-not-kit-aware"
+grep -q '^3. After merging, delete the pending file and update `.standards-checksums`.$' "$plan" 2>/dev/null && errs="$errs plan-step3-generic"
+[ "$(grep -cxF '.env' "$proj/.gitignore")" = "1" ]        || errs="$errs env-count=$(grep -cxF '.env' "$proj/.gitignore")"
+[ "$(grep -cxF '.env.secret' "$proj/.gitignore")" = "1" ] || errs="$errs env-secret-duplicated"
+grep -qxF 'node_modules/' "$proj/.gitignore"              || errs="$errs gitignore-lost-entries"
+[ -f "$proj/Dockerfile.dev" ] || errs="$errs rest-not-installed"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
+echo -n "Test 107: a second --containerized run reports every kit file as already installed, stages nothing and duplicates no .gitignore line; --dry-run announces Would copy / Would stage and writes nothing... "
+proj=$(make_project "kit-rerun")
+fake_standards "$proj"
+(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized >/dev/null 2>&1) || true
+# An identical script that lost its execute bit (a plain cp of the 0644 template) is repaired.
+chmod -x "$proj/scripts/setup-proxy.sh"
+out=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || true
+errs=""
+n_already=$(echo "$out" | grep -c 'already installed')
+[ "$n_already" -ge 12 ] || errs="$errs rerun:already-installed=$n_already"
+echo "$out" | grep -q 'staged to' && errs="$errs rerun:staged"
+[ -x "$proj/scripts/setup-proxy.sh" ] || errs="$errs rerun:exec-bit-not-restored"
+echo "$out" | grep -q 'scripts/setup-proxy.sh already installed (made executable)' || errs="$errs rerun:chmod-not-reported"
+[ -e "$proj/.standards-pending" ] && errs="$errs rerun:pending-dir"
+[ "$(grep -cxF '.env' "$proj/.gitignore")" = "1" ] || errs="$errs rerun:env-duplicated"
+proj2=$(make_project "kit-dry")
+fake_standards "$proj2"
+mkdir -p "$proj2/proxy"; echo "custom" > "$proj2/proxy/project-whitelist.txt"
+before=$(cd "$proj2" && git status --porcelain --untracked-files=all | sort)
+dry=$(cd "$proj2" && "$SETUP" --agents codex --languages typescript --containerized --dry-run 2>&1) || true
+after=$(cd "$proj2" && git status --porcelain --untracked-files=all | sort)
+[ "$before" = "$after" ] || errs="$errs dry:wrote"
+echo "$dry" | grep -q 'Would copy: .*Dockerfile.dev.example → .*/Dockerfile.dev$' || errs="$errs dry:no-copy-line"
+echo "$dry" | grep -q 'Would stage: .*project-whitelist.txt → .*\.standards-pending/proxy/project-whitelist.txt' || errs="$errs dry:no-stage-line"
+echo "$dry" | grep -q 'Would write: .*/.gitignore' || errs="$errs dry:no-gitignore-line"
+[ -e "$proj2/.standards-pending" ] && errs="$errs dry:staged"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; dry: $dry"; fi
+
+echo -n "Test 108: the installed scripts/setup-proxy.sh finds the global whitelist under .standards/ with no configuration and generates the allow-list... "
+proj=$(make_project "kit-proxy-e2e")
+fake_standards "$proj"
+(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized >/dev/null 2>&1) || true
+out=$(cd "$proj" && ./scripts/setup-proxy.sh 2>&1) || true
+errs=""
+[ -f "$proj/proxy/allowlist.generated.txt" ] || errs="$errs no-allowlist"
+grep -q '^#   .standards/templates/containerized-dev/network/global-whitelist.txt$' "$proj/proxy/allowlist.generated.txt" 2>/dev/null || errs="$errs global-source-not-standards"
+grep -qx 'registry.npmjs.org' "$proj/proxy/allowlist.generated.txt" 2>/dev/null || errs="$errs global-entry-missing"
+grep -q '^EGRESS_PROXY=' "$proj/.env" 2>/dev/null || errs="$errs env-not-written"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
+echo -n "Test 109: --help documents --containerized; when the standards checkout has no kit the flag warns, installs nothing, and setup still completes... "
+help_out=$("$SETUP" --help 2>&1) || true
+errs=""
+echo "$help_out" | grep -q -- '^  --containerized' || errs="$errs help-missing"
+proj=$(make_project "kit-missing")
+mkdir -p "$proj/.standards"
+ln -s "$REPO_ROOT/standards" "$proj/.standards/standards"
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+rc=0; out=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || rc=$?
+[ "$rc" -eq 0 ] || errs="$errs rc=$rc"
+echo "$out" | grep -q 'kit not found' || errs="$errs no-warning"
+[ -f "$proj/AGENTS.md" ] || errs="$errs setup-incomplete"
+[ -e "$proj/Dockerfile.dev" ] && errs="$errs installed-without-kit"
+grep -qxF '.env' "$proj/.gitignore" 2>/dev/null && errs="$errs env-ignored-without-kit"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
+echo -n "Test 110: the .gitignore check reads rules in order like git: '.env*' then '!.env.secret' gets an authoritative '.env.secret' appended after the negation, and a negation that is itself re-ignored later adds nothing... "
+proj=$(make_project "kit-gitignore-negation")
+fake_standards "$proj"
+printf 'node_modules/\n.env*\n!.env.secret\n' > "$proj/.gitignore"
+out=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || true
+errs=""
+[ "$(grep -cxF '.env.secret' "$proj/.gitignore")" = "1" ] || errs="$errs secret-not-appended"
+[ "$(grep -cxF '.env' "$proj/.gitignore")" = "0" ] || errs="$errs env-appended-despite-glob"
+neg_line=$(grep -nxF '!.env.secret' "$proj/.gitignore" | cut -d: -f1)
+sec_line=$(grep -nxF '.env.secret' "$proj/.gitignore" | cut -d: -f1)
+[ -n "$neg_line" ] && [ -n "$sec_line" ] && [ "$sec_line" -gt "$neg_line" ] || errs="$errs secret-not-after-negation(neg=$neg_line,sec=$sec_line)"
+echo "$out" | grep -q '.env.secret added to .gitignore' || errs="$errs not-reported"
+proj2=$(make_project "kit-gitignore-reignored")
+fake_standards "$proj2"
+printf '.env*\n!.env.secret\n.env.secret\n' > "$proj2/.gitignore"
+(cd "$proj2" && "$SETUP" --agents codex --languages typescript --containerized >/dev/null 2>&1) || true
+[ "$(grep -cxF '.env.secret' "$proj2/.gitignore")" = "1" ] || errs="$errs reignored:duplicated"
+grep -q 'Containerized agent-dev environment' "$proj2/.gitignore" && errs="$errs reignored:block-appended"
+# Rules are globs, not spellings: a wildcard negation un-ignores too, and a class/glob rule ignores.
+proj3=$(make_project "kit-gitignore-wildcard-negation")
+fake_standards "$proj3"
+printf '.env*\n!.env.secr*\n' > "$proj3/.gitignore"
+(cd "$proj3" && "$SETUP" --agents codex --languages typescript --containerized >/dev/null 2>&1) || true
+[ "$(grep -cxF '.env.secret' "$proj3/.gitignore")" = "1" ] || errs="$errs wildcard-negation:secret-not-appended"
+[ "$(grep -cxF '.env' "$proj3/.gitignore")" = "0" ] || errs="$errs wildcard-negation:env-appended"
+proj4=$(make_project "kit-gitignore-glob-rules")
+fake_standards "$proj4"
+printf '/.env\n.env.[a-z]*\n' > "$proj4/.gitignore"
+(cd "$proj4" && "$SETUP" --agents codex --languages typescript --containerized >/dev/null 2>&1) || true
+grep -q 'Containerized agent-dev environment' "$proj4/.gitignore" && errs="$errs glob-rules:block-appended"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; gitignore: $(cat "$proj/.gitignore")"; fi
+
+echo -n "Test 111: setup run from a clone outside the project (standards from script location) snapshots the global whitelist to proxy/global-whitelist.txt and the installed setup-proxy.sh falls back to it... "
+proj=$(make_project "kit-script-location")
+out=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || true
+errs=""
+echo "$out" | grep -q 'Using standards from script location' || errs="$errs not-script-location-mode"
+[ -f "$proj/proxy/global-whitelist.txt" ] || errs="$errs snapshot-missing"
+cmp -s "$REPO_ROOT/templates/containerized-dev/network/global-whitelist.txt" "$proj/proxy/global-whitelist.txt" || errs="$errs snapshot-differs"
+[ -d "$proj/network" ] && errs="$errs network-dir-copied"
+echo "$out" | grep -q 'snapshotted to proxy/global-whitelist.txt' || errs="$errs snapshot-not-reported"
+# No submodule here either: the compose file is installed without the two submodule mounts, everything else kept.
+echo "$out" | grep -q 'installed without the ./.git/modules and ./.gitmodules' || errs="$errs compose:trim-not-reported"
+grep -q 'source: ./.gitmodules,' "$proj/docker-compose.dev.yml" && errs="$errs compose:gitmodules-mount-kept"
+grep -q 'source: ./.git/modules,' "$proj/docker-compose.dev.yml" && errs="$errs compose:git-modules-mount-kept"
+grep -q 'source: ./.git/config,' "$proj/docker-compose.dev.yml" || errs="$errs compose:git-config-mount-lost"
+grep -q 'source: ./.env.secret,' "$proj/docker-compose.dev.yml" || errs="$errs compose:env-secret-mount-lost"
+rerun=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || true
+echo "$rerun" | grep -q 'docker-compose.dev.yml already installed' || errs="$errs compose:rerun-not-idempotent"
+pout=$(cd "$proj" && ./scripts/setup-proxy.sh 2>&1) || errs="$errs setup-proxy-failed"
+grep -q '^#   proxy/global-whitelist.txt$' "$proj/proxy/allowlist.generated.txt" 2>/dev/null || errs="$errs global-source-not-snapshot"
+grep -qx 'registry.npmjs.org' "$proj/proxy/allowlist.generated.txt" 2>/dev/null || errs="$errs global-entry-missing"
+# With .standards/ present the global list is not snapshotted (Test 104 covers the file set).
+proj2=$(make_project "kit-submodule-no-snapshot")
+fake_standards "$proj2"
+(cd "$proj2" && "$SETUP" --agents codex --languages typescript --containerized >/dev/null 2>&1) || true
+[ -e "$proj2/proxy/global-whitelist.txt" ] && errs="$errs snapshot-despite-submodule"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; proxy: $pout"; fi
+
+echo -n "Test 112: --containerized refuses to run while .env.secret is tracked (even a header-bearing copy of an earlier init-workspace run): P0 with git rm --cached instructions, non-zero exit, nothing written; no false positive when untracked... "
+proj=$(make_project "kit-tracked-secret")
+fake_standards "$proj"
+printf '# Generated by init-workspace.sh — DO NOT COMMIT. Injected at runtime.\nANTHROPIC_API_KEY=sk-old\n' > "$proj/.env.secret"
+(cd "$proj" && git add -f .env.secret && git -c user.email="test@test.local" -c user.name="Test" commit -q -m "placeholder")
+before=$(cd "$proj" && git status --porcelain --untracked-files=all | sort)
+rc=0; out=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || rc=$?
+after=$(cd "$proj" && git status --porcelain --untracked-files=all | sort)
+errs=""
+[ "$rc" -ne 0 ] || errs="$errs rc=0"
+echo "$out" | grep -q '🚨 P0 (arch-09 §5): .env.secret is tracked by git' || errs="$errs p0-not-reported"
+echo "$out" | grep -q 'git rm --cached .env.secret && rm .env.secret' || errs="$errs no-instructions"
+[ -e "$proj/Dockerfile.dev" ] && errs="$errs kit-installed"
+[ -e "$proj/AGENTS.md" ] && errs="$errs agents-written"
+[ -e "$proj/.gitignore" ] && errs="$errs gitignore-written"
+[ "$before" = "$after" ] || errs="$errs tree-changed"
+# After the documented fix the same command installs the kit.
+(cd "$proj" && git rm -q --cached .env.secret && rm .env.secret && git -c user.email="test@test.local" -c user.name="Test" commit -q -m "untrack")
+rc2=0; out2=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || rc2=$?
+[ "$rc2" -eq 0 ] && [ -f "$proj/Dockerfile.dev" ] || errs="$errs after-fix:rc=$rc2"
+echo "$out2" | grep -q 'is tracked by git' && errs="$errs after-fix:false-positive"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; after fix: $out2"; fi
+
+echo -n "Test 113: a kit destination whose path component is a symlink (scripts -> outside the repo) is skipped with a warning and nothing is written through the link; the rest of the kit installs... "
+proj=$(make_project "kit-symlink-dest")
+fake_standards "$proj"
+outside="$TMPDIR_BASE/kit-symlink-outside"; mkdir -p "$outside"
+ln -s "$outside" "$proj/scripts"
+out=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || true
+errs=""
+[ -z "$(ls -A "$outside")" ] || errs="$errs wrote-through-symlink:$(ls -A "$outside" | tr '\n' ',')"
+n_skipped=$(echo "$out" | grep -c 'skipped: a path component is a symlink')
+[ "$n_skipped" -eq 4 ] || errs="$errs skipped=$n_skipped"
+[ -f "$proj/Dockerfile.dev" ] || errs="$errs kit-not-installed"
+[ -f "$proj/proxy/tinyproxy.conf" ] || errs="$errs proxy-not-installed"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"
