@@ -185,6 +185,33 @@ gh project list --owner <org-name>
 - Sections for description, testing, documentation
 - Enforces Definition of Done checklist
 
+### 5. Stacked PRs (gh-stack)
+
+When one task is too large to review as a single PR, deliver it as a **stack of
+focused PRs** — each layer targets the one below it, the bottom targets `main`,
+and GitHub links them in the PR UI. The local workflow is GitHub's official
+`gh stack` extension:
+
+```bash
+gh extension install github/gh-stack   # gh >= 2.0, git >= 2.36
+gh extension upgrade stack             # keep it current
+gh skill install github/gh-stack       # optional: agent skill for the gh stack CLI
+
+gh stack init <type>/<task>/01-<layer> # start a stack in the task's worktree
+gh stack add  <type>/<task>/02-<layer> # next layer on top
+gh stack submit                        # one PR per layer, linked as a stack
+gh stack rebase && gh stack push       # cascade a fix made in a lower layer
+gh stack merge --squash                # merge bottom-up, one squashed commit per layer
+```
+
+`make doctor` prints an informational line saying whether the extension is
+installed. The when-to-stack thresholds and the full command walk-through are
+in [proc-02 § 11](../standards/process/proc-02_git_version_control_standards.md#11-stacked-prs-gh-stack);
+reviewer rules in [proc-03 § 9](../standards/process/proc-03_code_review_expectations.md);
+agent rules in [proc-04 § 8](../standards/process/proc-04_agent_workflow_standards.md#8-stacked-prs).
+Use [`templates/stacked-pr-description.md.example`](../templates/stacked-pr-description.md.example)
+as each layer's PR body (`Stack: n of m` line, layer table, per-layer evidence).
+
 ## AI Agent Instructions
 
 > **Important**: This section provides explicit instructions for AI agents (including YOLO-mode) on how to use this tooling system.
@@ -340,6 +367,12 @@ EOF
    git add .
    git commit -m "chore: resolve merge conflicts"
    ```
+
+8. **Stack, don't bloat**: a task that would exceed ~400 changed lines or spans
+   dependent layers becomes a stack of focused PRs (`gh stack`, see
+   [Components § 5](#5-stacked-prs-gh-stack)) — one worktree per stack, every
+   layer green on its own, merged bottom-up. Never amend or reorder a layer
+   someone is reviewing; append commits and cascade with `gh stack rebase`.
 
 ### Containerized Development Environment
 

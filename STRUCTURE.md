@@ -171,6 +171,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 | Config | Root | .cursorrules |
 | Document templates | `templates/docs/` | adr.md, spec.md, plan.md, design-pass.md, verification.md |
 | C++ tooling templates | `templates/cpp/` | .clang-format, .clang-tidy, CMakePresets.json, ProjectWarnings.cmake |
+| PR body templates | `templates/` | pull_request_template.md.example, stacked-pr-description.md.example (one layer of a stack) |
 
 ### Documentation
 
