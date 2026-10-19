@@ -5,7 +5,7 @@ description: "Reference for the custom Cursor slash commands included in this re
 
 # Cursor Commands
 
-This repository ships three custom slash commands for Cursor AI. They live in `.cursor/commands/` and are available in the Cursor chat interface after setup.
+This repository ships three custom slash commands for Cursor AI. They live in `.cursor/commands/` and are available in the Cursor chat interface after setup. The standards skills (`merge-standards`, `standards-audit`, `security-gate`, `coverage-enforcer`, `dependency-age-gate`, `naming-convention`, `config-assembly`, `setup-wizard`) are installed into the same directory as commands by `scripts/assemble-skills.sh`; they are the agent-neutral runbooks under `standards/skills/`, so the same `/merge-standards` exists for Claude Code and Copilot too.
 
 ## Setup
 
@@ -14,6 +14,7 @@ The commands are installed automatically by `scripts/setup.sh`. If you need to i
 ```bash
 mkdir -p .cursor/commands
 cp .standards/.cursor/commands/* .cursor/commands/
+.standards/scripts/assemble-skills.sh cursor   # the skills as commands
 ```
 
 After copying the files, **quit Cursor completely and reopen it** to load the new commands.

@@ -243,6 +243,11 @@ if [ ! -f "$SCRIPT_DIR/lib/assembly.sh" ]; then
 fi
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/assembly.sh"
+# Skills (#194): the checksum-entry helper for the skill files assemble-skills.sh installs.
+if [ -f "$SCRIPT_DIR/lib/skills.sh" ]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/lib/skills.sh"
+fi
 
 # Map detected languages to block filenames (shared: scripts/lib/languages.sh)
 # shellcheck source=lib/languages.sh disable=SC1091
@@ -803,6 +808,19 @@ setup_ai_agents() {
         done
     fi
 
+    # Skill files (#194) are recorded in .standards-checksums by
+    # assemble-skills.sh, which runs after this write. Carry their entries
+    # over so an unmodified skill stays recognised as standards-owned and an
+    # upstream change replaces it instead of staging it.
+    if [ -f "$PROJECT_ROOT/$CHECKSUMS_FILE" ] && declare -f skills_checksum_entries >/dev/null 2>&1; then
+        local carried_skill_entries
+        carried_skill_entries=$(skills_checksum_entries "$PROJECT_ROOT/$CHECKSUMS_FILE")
+        if [ -n "$carried_skill_entries" ]; then
+            NEW_CHECKSUMS="${NEW_CHECKSUMS:+$NEW_CHECKSUMS
+}$carried_skill_entries"
+        fi
+    fi
+
     # Write initial checksums
     if [ "$DRY_RUN" = false ] && type compute_hash &>/dev/null && [ -n "$NEW_CHECKSUMS" ]; then
         echo "$NEW_CHECKSUMS" > "$PROJECT_ROOT/$CHECKSUMS_FILE"
@@ -811,16 +829,47 @@ setup_ai_agents() {
         echo "  [dry-run] Would write: $PROJECT_ROOT/$CHECKSUMS_FILE"
     fi
 
-    # Install merge-standards skill (lives under .claude/, so claude-code only)
-    local SKILL_SOURCE="$AGENTS_DIR/claude-code/skills/merge-standards.md"
-    if agent_requested claude-code && [ -f "$SKILL_SOURCE" ]; then
-        dry_run_mkdir "$PROJECT_ROOT/.claude/skills"
-        if [ "$DRY_RUN" = true ]; then
-            echo "  [dry-run] Would copy: $SKILL_SOURCE → $PROJECT_ROOT/.claude/skills/merge-standards.md"
-        else
-            cp "$SKILL_SOURCE" "$PROJECT_ROOT/.claude/skills/merge-standards.md"
-            echo "✅ /merge-standards skill installed"
-        fi
+    # Skills (#194): the agent-neutral runbooks under standards/skills/ are
+    # emitted in each assembled agent's own shape — Claude Code skill files,
+    # Cursor commands, Copilot prompt files. Codex, Gemini and Aider read a
+    # "## Skills" index inside their assembled config instead (assembler).
+    install_agent_skills "$ASSEMBLED_AGENTS_LIST"
+}
+
+# install_agent_skills <comma- or space-separated agents>
+# Runs assemble-skills.sh for the file-based agents in the list.
+install_agent_skills() {
+    local agents
+    agents=$(echo "$1" | tr ',' ' ')
+    [ -n "$(echo "$agents" | tr -d '[:space:]')" ] || return 0
+
+    local SKILLS_SCRIPT="" SKILLS_SOURCE=""
+    if [ -x "$SCRIPT_DIR/assemble-skills.sh" ]; then
+        SKILLS_SCRIPT="$SCRIPT_DIR/assemble-skills.sh"
+    elif [ -n "${STANDARDS_DIR:-}" ] && [ -x "$STANDARDS_DIR/scripts/assemble-skills.sh" ]; then
+        SKILLS_SCRIPT="$STANDARDS_DIR/scripts/assemble-skills.sh"
+    fi
+    if [ -n "${STANDARDS_DIR:-}" ] && [ -d "$STANDARDS_DIR/standards/skills" ]; then
+        SKILLS_SOURCE="$STANDARDS_DIR/standards/skills"
+    elif [ -d "$SCRIPT_DIR/../standards/skills" ]; then
+        SKILLS_SOURCE="$SCRIPT_DIR/../standards/skills"
+    fi
+    [ -n "$SKILLS_SCRIPT" ] && [ -n "$SKILLS_SOURCE" ] || return 0
+
+    local file_agents="" a
+    for a in $agents; do
+        case "$a" in
+            claude-code|cursor|copilot) file_agents="${file_agents:+$file_agents }$a" ;;
+        esac
+    done
+    [ -n "$file_agents" ] || return 0
+
+    echo "📝 Installing skills for: $file_agents"
+    local dry_flag=""
+    [ "$DRY_RUN" = true ] && dry_flag="--dry-run"
+    # shellcheck disable=SC2086
+    if ! "$SKILLS_SCRIPT" --project-root "$PROJECT_ROOT" --skills-dir "$SKILLS_SOURCE" --quiet $dry_flag $file_agents; then
+        echo "⚠️  Failed to install some skills (non-fatal, continuing...)"
     fi
 }
 
@@ -1019,6 +1068,8 @@ EOF
         echo "📋 Pending updates staged. See .standards-pending/MERGE_PLAN.md or run:"
         echo "   Claude Code: /merge-standards"
         echo "   Cursor:      /merge-standards"
+        echo "   Copilot:     /merge-standards (prompt file)"
+        echo "   Codex, Gemini, Aider: the merge-standards runbook in the config's Skills section"
         echo "   CLI:         make merge-standards"
     fi
 fi

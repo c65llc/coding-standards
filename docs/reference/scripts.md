@@ -29,12 +29,14 @@ make setup
 1. Detects whether it is running inside the standards repo itself or inside a project that uses it as a submodule.
 2. Determines which agents to configure: the ones already present in the project (`--agents detect`, the default) or the explicit list you pass.
 3. Assembles each agent's config from the shared content blocks, never clobbering a customized file (see [Safe setup](../getting-started/how-it-works.md)):
-   - `CLAUDE.md` (Claude Code), plus `.claude/settings.json` and the `/merge-standards` skill
-   - `.cursorrules` and `.cursor/commands/` (Cursor)
-   - `.github/copilot-instructions.md` (GitHub Copilot)
+   - `CLAUDE.md` (Claude Code), plus `.claude/settings.json` and the skills as `.claude/skills/*/SKILL.md`
+   - `.cursorrules` and `.cursor/commands/` (Cursor), the skills as commands among them
+   - `.github/copilot-instructions.md` (GitHub Copilot), plus the skills as `.github/prompts/*.prompt.md`
    - `.gemini/GEMINI.md` and `.gemini/settings.json` (Gemini CLI)
    - `AGENTS.md` (OpenAI Codex)
    - `.aider-instructions.md` and `.aiderrc` (Aider)
+
+   Every assembled config resolves `{{WORKTREE_DIR}}` to `worktree_dir:` from `.standards.yml` (default `.claude/worktrees`), so all declared agents name the same worktree root. Codex, Gemini and Aider configs carry a `## Skills` index (name, description, triggers, runbook path) instead of skill files; see [assemble-skills.sh](#assemble-skillssh).
 4. Writes `.standards.yml` (declared languages, agents, role; a declared `members:` list is preserved) and `.standards-checksums`. In a monorepo the root `.standards.yml` keeps only the root's own languages, detected from the root's own manifests (a non-empty list makes `lint-standards.sh` run language checks against the root; a sub-root that carries other languages is pointed out so it can become a member), while the root agent configs are assembled from the union of the root's and every member's (see [Monorepos: Members](../guides/customization.md#monorepos-members)); a declared member without a `.standards.yml` gets one bootstrapped with the languages detected in it.
 5. In detect mode only: installs a `post-merge` git hook that checks for standards updates, installs the pre-commit worktree guard (`templates/pre-commit-worktree-guard.example`, refusing commits that stage a path under the worktree root) when no pre-commit hook exists and `hooks:` names the standards as the hook manager — otherwise prints how to wire it into husky / lefthook / the existing hook — and runs `setup-git-aliases.sh` to configure global git aliases.
 6. Adds `.cursorrules.backup`, `.standards_tmp/`, `.standards-pending/` and the worktree root (`worktree_dir:` in `.standards.yml`, default `.claude/worktrees/`) to `.gitignore`.
@@ -105,9 +107,32 @@ make sync-standards
 2. If a `.standards` submodule exists, fetches from the remote and pulls if there are new commits. An unreachable remote is a warning, not a failure — the sync continues from the local checkout.
 3. Reads `agents:`, `languages:`, `role:` and `members:` from `.standards.yml` (falls back to the legacy `.standards-config`, then to all agents + language auto-detection). A pre-1.2 install (no checksums, configs citing renamed standards paths, a `.codexrc`) is pointed at `setup.sh --migrate` first, because a sync alone skips those files as manually created. Members (declared, or auto-discovered `*/.standards.yml`) are listed with their languages, and their languages are added to the root's for the assembly step; a declared member that does not exist is a warning, not a failure.
 4. Re-assembles one config per declared agent (`CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md`, `.gemini/GEMINI.md`, `AGENTS.md`, `.aider-instructions.md`), filling `{{PROJECT_OVERVIEW}}` / `{{KEY_COMMANDS}}` from `project_overview:` / `key_commands:` in `.standards.yml`. Customized files are staged to `.standards-pending/` instead of being overwritten — unless the fresh assembly reproduces the installed file exactly (the project text was persisted since the last run), in which case the checksum baseline is recorded. A file declared `managed: false` is curated: never regenerated or staged, reported as such. When a customized config has a filled-in overview or commands the yml does not persist, the YAML to add is printed (see [Curated Agent Configs](../guides/customization.md#curated-agent-configs)).
-5. Installs agent-specific extras **only for declared agents**: Cursor custom commands (`cursor`), `.gemini/settings.json` (`gemini`, JSON-validated first), `.claude/settings.json` and the `/merge-standards` skill (`claude-code`).
+5. Installs agent-specific extras **only for declared agents**: Cursor custom commands (`cursor`), `.gemini/settings.json` (`gemini`, JSON-validated first), `.claude/settings.json` (`claude-code`), and the skills in each file-based agent's shape via `assemble-skills.sh` (`.claude/skills/*/SKILL.md`, `.cursor/commands/*.md`, `.github/prompts/*.prompt.md`); a skill file is rewritten only when its content changed.
 6. Syncs language-specific tool configs for detected languages.
 7. Lists available standards files.
+
+---
+
+## assemble-skills.sh
+
+**Purpose:** Emit the agent-neutral skills under `standards/skills/*.md` in each declared agent's own shape. Called by `setup.sh` and `sync-standards.sh` for the agents they assemble; usable on its own.
+
+**Usage:**
+
+```bash
+.standards/scripts/assemble-skills.sh [--project-root <dir>] [--skills-dir <dir>] [--dry-run] [--quiet] <agent> [<agent> ...]
+```
+
+| Agent | Output | Shape |
+| ----- | ------ | ----- |
+| `claude-code` | `.claude/skills/<name>/SKILL.md` | Frontmatter (`name`, `description`) kept as written |
+| `cursor` | `.cursor/commands/<name>.md` | `description:` frontmatter only; the file name is the command |
+| `copilot` | `.github/prompts/<name>.prompt.md` | `description:` frontmatter only |
+| `codex`, `gemini`, `aider` | nothing written here | `assemble-config.sh` appends a `## Skills` index (name, description, the skill's "When to Use" triggers, and the runbook path) to `AGENTS.md`, `.gemini/GEMINI.md`, `.aider-instructions.md` |
+
+Skills are installed as written — no template variable is resolved, so the installed runbook is the same text the single-file agents read from `standards/skills/` (a `{{WORKTREE_DIR}}` in a skill is the literal placeholder). A file is rewritten only when its rendered content differs from what is installed, so a repeated run reports `Skills up to date`.
+
+Installed skill files are recorded in `.standards-checksums` under their project-relative path (`.claude/skills/<name>/SKILL.md`, `.cursor/commands/<name>.md`, …), like the assembled configs, hashed whole rather than up to the PROJECT-SPECIFIC sentinel (some runbooks mention the sentinel in their text). A destination that differs and is not recorded as standards-owned (the project's own file), or whose recorded hash no longer matches (edited since it was installed), is kept; the new version is staged to `.standards-pending/<path>` for review and the exit code stays 0. `setup.sh` carries these entries across its rewrite of `.standards-checksums`, and `doctor` checks them like any other entry. `--dry-run` prints each `Would write:` / `Would stage:` line. Unknown agents exit 2; a write failure exits 1 after the remaining agents are processed. The per-agent shapes live in `scripts/lib/skills.sh`; `assemble-config.sh` takes `--skills-dir <dir>` to point the index at another skills directory. Tests: `scripts/test-setup-safe.sh` (Tests 91–102).
 
 ---
 

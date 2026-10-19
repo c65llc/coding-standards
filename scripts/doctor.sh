@@ -20,6 +20,12 @@ if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
     # shellcheck disable=SC1091
     source "$SCRIPT_DIR/lib/checksums.sh"
 fi
+# Installed skill files (#194): recognised by their checksums key and hashed whole.
+if [ -f "$SCRIPT_DIR/lib/skills.sh" ]; then
+    # shellcheck source=scripts/lib/skills.sh
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/lib/skills.sh"
+fi
 # Supported language keys (languages.sh) and monorepo members (members.sh).
 if [ -f "$SCRIPT_DIR/lib/languages.sh" ]; then
     # shellcheck source=scripts/lib/languages.sh
@@ -286,6 +292,10 @@ check_checksums() {
         local current_hash
         if [ "$key" = ".aiderrc" ]; then
             current_hash=$(shasum -a 256 "$full_path" | awk '{print $1}')
+        elif declare -f skills_owned_key >/dev/null 2>&1 && skills_owned_key "$key"; then
+            # Skill files are hashed whole (assemble-skills.sh): compute_hash
+            # would stop at a sentinel mention inside the runbook's own text.
+            current_hash=$(skill_file_hash "$full_path")
         else
             current_hash=$(compute_hash "$full_path")
         fi

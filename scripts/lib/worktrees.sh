@@ -19,7 +19,8 @@ WORKTREE_DIR_DEFAULT=".claude/worktrees"
 WORKTREE_TTL_DAYS_DEFAULT=14
 # Roots that agents create on their own; the pre-commit guard refuses all of
 # them in addition to the configured root, and doctor reports worktrees found
-# under one of them as outside the root (#194 will unify the agent text).
+# under one of them as outside the root. The assembled agent configs all name
+# the configured root through {{WORKTREE_DIR}} (lib/template-vars.sh, #194).
 WORKTREE_KNOWN_ROOTS=".claude/worktrees .worktrees .Codex/worktrees .codex/worktrees .cursor/worktrees .workspaces"
 
 # yaml_block_scalar lives in checksums.sh; load it when the caller has not.

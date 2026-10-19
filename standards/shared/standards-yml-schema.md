@@ -310,6 +310,7 @@ The single directory agent worktrees live under (proc-04 § Worktree Hygiene). D
 | `doctor.sh` | `Worktrees` check: passes when the root is gitignored; reports linked worktree count, oldest idle age and total size; warns on nested worktrees, worktrees outside the root, worktrees idle beyond 14 days or whose directory is gone. |
 | `worktree-gc.sh` | Reports the root, collects every linked worktree of the repository (inside or outside the root) that is merged, gone or idle, and flags unregistered directories under the root. |
 | `lint-standards.sh`, members discovery | The root joins the built-in exclusions, so a non-hidden root (`worktrees/`) is never scanned and a worktree's own `.standards.yml` is never discovered as a member. |
+| `assemble-config.sh`, `assemble-skills.sh` | Resolve `{{WORKTREE_DIR}}` in every agent's base template, the `git-workflow` block and the skills to this value, so `CLAUDE.md`, `AGENTS.md`, `.cursorrules` and the rest all name the same root (#194). |
 
 The value must stay inside the project: an absolute path, `~`, or a `..` segment is rejected — `setup.sh`, `doctor.sh` and `worktree-gc.sh` warn and use the default. The pre-commit guard additionally refuses the roots other agents create on their own (`.worktrees`, `.Codex/worktrees`, `.cursor/worktrees`, `.workspaces`).
 

@@ -1,8 +1,8 @@
 #!/bin/bash
 # Emit .standards-pending/MERGE_PLAN.md — the briefing that tells the user's
 # preferred LLM what to finish after setup.sh completes. Read by the
-# merge-standards skill (Claude Code), .cursor/commands/merge-standards.md
-# (Cursor), and surfaced via `make merge-standards`.
+# merge-standards skill (standards/skills/merge-standards.md, emitted per agent
+# by assemble-skills.sh) and surfaced via `make merge-standards`.
 
 # Usage:
 #   write_merge_plan <project_root> <pending_list> <detected_agents> <requested_agents> [migration_notes]
@@ -38,6 +38,8 @@ write_merge_plan() {
         echo ""
         echo "- **Claude Code:** run \`/merge-standards\`"
         echo "- **Cursor:** run the \`merge-standards\` command"
+        echo "- **Copilot:** run the \`merge-standards\` prompt (\`.github/prompts/merge-standards.prompt.md\`)"
+        echo "- **Codex / Gemini / Aider:** follow the \`merge-standards\` runbook listed in your config's Skills section"
         echo "- **Any agent / manual:** \`make merge-standards\` or read the steps below"
         echo ""
         echo "## Pending files"

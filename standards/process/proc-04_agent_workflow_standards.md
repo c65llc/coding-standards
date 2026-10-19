@@ -10,18 +10,20 @@ Every discrete piece of agent work follows the same end-to-end lifecycle: isolat
 
 Non-trivial work (a new feature, a change crossing architectural layers, a migration) starts **before step 1** with a design spec and an implementation plan — see [proc-01 §11](./proc-01_documentation_standards.md#11-spec-plan-design-pass-and-verification-documents) and the templates in `templates/docs/`. UI work adds a design pass (§7). Trivial fixes go straight to the worktree.
 
+This standard is agent-neutral: the same lifecycle applies whichever agent runs it (Claude Code, Codex, Cursor, Copilot, Gemini CLI, Aider, Antigravity). `{{WORKTREE_DIR}}` below is the project's worktree root — `worktree_dir:` in `.standards.yml`, default `.claude/worktrees` — and the assembled agent configs carry the resolved value, so every agent in a project names the same directory. Anything that exists only for one agent lives in that agent's appendix under `standards/agents/<agent>/` (see §5).
+
 Every agent task MUST follow these steps in order:
 
-1. **Create worktree + branch.**
+1. **Create worktree + branch** — from the main checkout, never from inside another worktree.
 
    ```bash
-   git worktree add .claude/worktrees/<branch-name> -b <branch-name>
-   cd .claude/worktrees/<branch-name>
+   git worktree add {{WORKTREE_DIR}}/<branch-name> -b <branch-name>
+   cd {{WORKTREE_DIR}}/<branch-name>
    ```
 
 2. **Write tests first (TDD).** Red → Green → Refactor. No implementation code before a failing test.
 3. **Implement.** Write the minimum code to pass tests. Maintain ≥ 95% coverage in all modified modules. Python code must pass `mypy --strict`.
-4. **Run `make ci`.** The full pipeline must pass before proceeding.
+4. **Run the project's full local gate (`make ci`).** It must pass before proceeding, and it must mirror CI: every check CI runs is in `make ci` and vice versa, so a local pass predicts the CI result. A gate that passes locally and fails in CI (or the reverse) is a bug in the gate — fix the gate rather than route around it.
 5. **Push the branch.**
 
    ```bash
@@ -37,7 +39,7 @@ Every agent task MUST follow these steps in order:
 7. **Clean up after merge.** Remove worktree, delete local branch, delete remote branch:
 
    ```bash
-   git worktree remove .claude/worktrees/<branch-name>
+   git worktree remove {{WORKTREE_DIR}}/<branch-name>
    git branch -D <branch-name>
    git push origin --delete <branch-name>
    ```
@@ -45,7 +47,7 @@ Every agent task MUST follow these steps in order:
 ### Workspace Isolation
 
 * **Requirement:** AI agents MUST work in git worktrees, never the developer's root checkout.
-* **Location:** Worktrees live in `.claude/worktrees/` (Claude Code), `.cursor/worktrees/` (Cursor), or equivalent per-agent directory.
+* **Location:** Every agent's worktrees live under the one root `{{WORKTREE_DIR}}/` (`worktree_dir:` in `.standards.yml`, default `.claude/worktrees`) — not a per-agent directory. A project that prefers `.worktrees/` or `.codex/worktrees/` declares it once and every assembled agent config follows.
 * **Rationale:** The root checkout is the developer's active workspace. Agent modifications cause conflicts with IDE state (unsaved buffers, debug configurations, terminal sessions). Worktrees provide full isolation at near-zero cost.
 * Never modify files in the root checkout from an automated agent session.
 * Create a new worktree at the start of each feature/fix branch.
@@ -105,8 +107,8 @@ of four consumer projects found 17 worktrees under one checkout (`.claude/worktr
 two deep, a worktree accidentally committed as a submodule, and a linter that timed
 out walking them. These rules keep worktrees cheap:
 
-* **Every worktree lives under one gitignored root.** The root is `worktree_dir:` in
-  `.standards.yml` (default `.claude/worktrees`); `setup.sh` writes the `.gitignore`
+* **Every worktree lives under one gitignored root.** The root is `{{WORKTREE_DIR}}` —
+  `worktree_dir:` in `.standards.yml` (default `.claude/worktrees`); `setup.sh` writes the `.gitignore`
   entry and installs a pre-commit guard (`templates/pre-commit-worktree-guard.example`)
   that refuses any commit staging a path under it — a worktree arriving as a gitlink
   (the shape of a submodule) is the failure this prevents. Worktrees found elsewhere
@@ -114,7 +116,7 @@ out walking them. These rules keep worktrees cheap:
   `worktree-gc` collects them like any other.
 * **Never create a worktree from inside a worktree.** `git worktree add` resolves a
   relative path against the current directory, so running it from inside
-  `.claude/worktrees/a` produces `.claude/worktrees/a/.claude/worktrees/b`: a nested
+  `{{WORKTREE_DIR}}/a` produces `{{WORKTREE_DIR}}/a/{{WORKTREE_DIR}}/b`: a nested
   tree that doubles the disk cost and is skipped by nothing. Create worktrees from
   the main checkout, or pass the absolute path under the root. `doctor` warns on
   nesting.
@@ -181,7 +183,24 @@ for the rest of the runner rules.
 
 ## 2. Project-Level AI Guide
 
-Every project SHOULD have a `CLAUDE.md` (or equivalent agent guide) at the repository root. This file is distinct from `.cursorrules` or `.github/copilot-instructions.md` — it documents project-specific context that evolves during development.
+Every project SHOULD have an agent guide at the repository root — `CLAUDE.md`, `AGENTS.md`, `.gemini/GEMINI.md`, or whichever file its agents read; `setup.sh` assembles one per declared agent from the same blocks. The guide is distinct from the behavioural rules in `.cursorrules` or `.github/copilot-instructions.md` — it documents project-specific context that evolves during development.
+
+### Shape: a map plus known traps
+
+An agent guide has two kinds of content, and nothing else:
+
+* **A map.** Where things are and how they fit: the sections in the table below. The map is stable and short — it points at detailed docs rather than inlining them.
+* **Known traps.** Project-specific pitfalls that have already cost a debugging session, kept as a table whose rows carry the **issue number** that documented the trap and the **date** it was recorded, so a reader can judge whether it is still live. A trap row without an issue and a date cannot be audited; one consumer carried a wrong trap for months because nobody could tell when it had been true. Add a row whenever a bug's root cause was "the agent did not know this"; delete the row when the trap is engineered away, and say so in the issue.
+
+```markdown
+## Known Traps
+
+| Trap | Why it bites | Issue | Date |
+|------|--------------|-------|------|
+| Run `make ci` from the repo root, not a package directory | Sub-make targets resolve paths from the working directory and silently skip suites | #412 | 2026-03-02 |
+```
+
+**Subtree guides add only what is local.** A guide in a subdirectory (`apps/web/CLAUDE.md`, `crates/core/AGENTS.md`) holds the map and traps of that subtree and nothing the root guide already says — no repeated workflow, no repeated conventions, no second copy of the worktree rules. An agent reads the root guide and the subtree guide together; duplication is where they drift apart (a consumer's subtree guide had to be hand-corrected when it carried its own copy of the worktree directory).
 
 ### Required Sections
 
@@ -195,14 +214,16 @@ Every project SHOULD have a `CLAUDE.md` (or equivalent agent guide) at the repos
 | Testing | Structure, coverage baselines, per-package commands |
 | Key Source Files | Table mapping files to responsibilities |
 | Commit Message Format | Conventional Commits reference with project-specific scopes |
-| What NOT To Do | Explicit anti-patterns discovered during development |
-| Agent Workflow | Worktree requirement, permission model |
+| Known Traps | The table above: trap, why it bites, issue, date |
+| Agent Workflow | Worktree root (`{{WORKTREE_DIR}}`), permission model |
 
 ### Guidelines
 
 * Keep it under 300 lines. Link to detailed docs rather than inlining everything.
 * Include concrete examples of invariants and how they break.
 * Update it as the project evolves — it is a living document, not a one-time artifact.
+* Describe the local gate honestly: `make ci` is "the project's full local gate" only when it mirrors CI; if the project has no such target, say which commands CI runs instead of claiming one.
+* Make `CHANGELOG.md` guidance conditional: a project with release automation (release-drafter, semantic-release, release-please, Changesets) must not tell agents to hand-edit the changelog.
 
 ## 3. Agent Permission Models
 
@@ -231,6 +252,9 @@ Permission models should be defined in agent-specific configuration files:
 * Claude Code: `.claude/settings.json`
 * Cursor: `.cursorrules`
 * Copilot: `.github/copilot-instructions.md`
+* Codex: `AGENTS.md` (approval mode section)
+* Gemini CLI: `.gemini/settings.json`
+* Aider: `.aiderrc`
 
 ## 4. Devloop Pattern (UI Projects)
 
@@ -261,39 +285,15 @@ setup-devloop: ## Install devloop dependencies
 devloop:       ## Start devloop HTTP server for agent-driven UI iteration
 ```
 
-## 5. Mission Isolation (Antigravity)
+## 5. Agent-Specific Appendices
 
-When an agent (typically [Google Antigravity](https://antigravity.google.com)) starts work on a major feature, it sets the active Mission URL in `.gemini/active_mission.log`. Other agents (Claude Code, Cursor, Aider, Codex, Gemini CLI) read this file and stay aligned with the Mission's scope.
+Everything above applies to every agent. Rules that exist only because of how one agent works live beside that agent's base template under `standards/agents/<agent>/`, so the shared standard never carries one agent's vocabulary:
 
-### Feature Bracketing
+| Agent | Appendix | Covers |
+|-------|----------|--------|
+| Google Antigravity (via Gemini) | [`standards/agents/gemini/antigravity.md`](../agents/gemini/antigravity.md) | Mission Isolation: one Mission per feature, `.gemini/active_mission.log`, `mission-set.sh` / `mission-clear.sh`, the read protocol other agents follow when a Mission is active |
 
-* **One Mission per major feature.** Don't lump multiple features into one Mission — the cost is review confusion and Mission scope drift.
-* **Cross-reference issue/PR.** The Mission URL should resolve to a Mission that links the work back to a GitHub Issue or PR.
-* **Don't run two Missions in the same project simultaneously** — they will overwrite each other's `active_mission.log`.
-
-### Lifecycle
-
-```bash
-./scripts/mission-set.sh https://antigravity.google.com/missions/<id>   # at start
-./scripts/mission-clear.sh                                              # on completion
-```
-
-| Phase | Action |
-|-------|--------|
-| **Set** | Before the first agent action on the feature. Validates HTTPS-only, writes URL + UTC timestamp atomically. |
-| **Active** | Other agents reading `.gemini/active_mission.log` will see the URL on first line; treat as authoritative scope. |
-| **Clear** | Immediately on completion — PR merge, Mission close, or abandonment. Do not leave stale entries. |
-| **Stale** | A non-empty `active_mission.log` whose timestamp is more than ~7 days old. Treat as forgotten clear; verify with the Mission owner before assuming it's still valid. |
-
-### Read Protocol
-
-Before starting work in a project, agents SHOULD check the file:
-
-```bash
-[ -s .gemini/active_mission.log ] && head -1 .gemini/active_mission.log
-```
-
-If a Mission URL is present, agents SHOULD reference it in commit messages and PR descriptions. Scope creep beyond the Mission's stated goals SHOULD trigger a new issue rather than expanded edits.
+Skills (`standards/skills/`) are agent-neutral runbooks emitted in each agent's own shape — Claude Code skill files, Cursor commands, Copilot prompt files, a "Skills" section in `AGENTS.md`, `GEMINI.md` and the Aider instructions — by `scripts/assemble-skills.sh` and `scripts/assemble-config.sh`. A skill never names one agent's tooling where another agent would have to translate.
 
 ## 6. Agent-Generated Artifacts
 

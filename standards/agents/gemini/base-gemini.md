@@ -26,9 +26,18 @@ Implement, test, verify — in that order.
 - Run tests after each logical change.
 - Commit atomically with Conventional Commits messages.
 
-## Checkpointing
+## Agent Workflow
 
-Maintain `.gemini/active_mission.log` (gitignored) with timestamped steps for any task spanning multiple files or sessions.
+1. Create worktree + branch from the main checkout: `git worktree add {{WORKTREE_DIR}}/<branch> -b <branch>` (the root is `worktree_dir:` in `.standards.yml`; never create a worktree from inside another worktree, never work in the root checkout).
+2. Write tests first (TDD). Red → Green → Refactor.
+3. Implement — minimum code to pass tests.
+4. Run the project's full local gate (`make ci`). It must mirror CI.
+5. Push branch and open PR from the worktree. One task = one branch = one worktree = one PR.
+6. After merge, clean up: `git worktree remove {{WORKTREE_DIR}}/<branch>`
+
+## Checkpointing and Missions
+
+Maintain `.gemini/active_mission.log` (gitignored) with timestamped steps for any task spanning multiple files or sessions. Under Google Antigravity, that file carries the active Mission URL: see `.standards/standards/agents/gemini/antigravity.md` (Mission Isolation) for the set / read / clear protocol.
 
 ## Safety Constraints
 
@@ -37,7 +46,7 @@ Maintain `.gemini/active_mission.log` (gitignored) with timestamped steps for an
 - Run tests before committing; do not commit broken code.
 - Ask when uncertain about scope or approach — do not guess on destructive operations.
 - Create a new branch for any non-trivial change; never commit directly to `main`.
-- If sync-standards reports customized files, pending updates are in `.standards-pending/`. See `.standards/docs/reference/merge-standards-prompt.md` to merge.
+- If sync-standards reports customized files, pending updates are in `.standards-pending/`. Follow the `merge-standards` runbook in the Skills section below, or see `.standards/docs/reference/merge-standards-prompt.md`.
 
 ## Tool Usage
 

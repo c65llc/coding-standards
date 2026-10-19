@@ -6,7 +6,17 @@
 - Detect the active language from file extension and apply the matching language-specific rules in the Language Standards section below.
 - Prefer simple, readable code over clever code. Apply SOLID principles.
 - Tone: terse, objective, professional — no filler.
-- If sync-standards reports customized files, pending updates are in `.standards-pending/`. See `.standards/docs/reference/merge-standards-prompt.md` to merge.
+- If sync-standards reports customized files, pending updates are in `.standards-pending/`. Run the `merge-standards` prompt (`.github/prompts/merge-standards.prompt.md`) or see `.standards/docs/reference/merge-standards-prompt.md`.
+- The standards skills (`standards-audit`, `security-gate`, `coverage-enforcer`, `dependency-age-gate`, `naming-convention`, `config-assembly`, `setup-wizard`, `merge-standards`) are installed as prompt files in `.github/prompts/`.
+
+## Agent Workflow
+
+1. Create worktree + branch from the main checkout: `git worktree add {{WORKTREE_DIR}}/<branch> -b <branch>` (the root is `worktree_dir:` in `.standards.yml`; never create a worktree from inside another worktree, never work in the root checkout).
+2. Write tests first (TDD). Red → Green → Refactor.
+3. Implement — minimum code to pass tests.
+4. Run the project's full local gate (`make ci`). It must mirror CI.
+5. Push branch and open PR from the worktree. One task = one branch = one worktree = one PR.
+6. After merge, clean up: `git worktree remove {{WORKTREE_DIR}}/<branch>`
 
 ## Code Suggestions
 

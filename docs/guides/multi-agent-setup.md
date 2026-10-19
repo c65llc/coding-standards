@@ -88,7 +88,7 @@ make add-copilot-instructions
 - **How it works:** Gemini CLI reads `.gemini/GEMINI.md` as the system prompt for the repository. The settings file controls checkpointing, model selection, and MCP server configuration.
 - **Installation:** Follow the [Gemini CLI installation guide](https://ai.google.dev/gemini-api/docs/cli).
 - **After setup:** No restart needed; configuration is read on each command.
-- **Antigravity integration:** Each major feature should use a separate Antigravity Mission. Copy the mission URL into `.gemini/active_mission.log` for cross-agent synchronization.
+- **Antigravity integration:** Each major feature should use a separate Antigravity Mission. Copy the mission URL into `.gemini/active_mission.log` for cross-agent synchronization — the protocol is the agent-specific appendix [`standards/agents/gemini/antigravity.md`](https://github.com/c65llc/coding-standards/blob/main/standards/agents/gemini/antigravity.md), not part of the shared proc-04 standard.
 
 ## Standards Source
 

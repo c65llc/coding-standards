@@ -312,7 +312,7 @@ fake_standards "$proj"
 write_standards_yml "$proj" codex
 out=$(cd "$proj" && "$SYNC" 2>&1) || true
 if [ ! -d "$proj/.cursor/commands" ] && [ ! -f "$proj/.gemini/settings.json" ] \
-   && [ ! -f "$proj/.claude/settings.json" ] && [ ! -f "$proj/.claude/skills/merge-standards.md" ] \
+   && [ ! -f "$proj/.claude/settings.json" ] && [ ! -f "$proj/.claude/skills/merge-standards/SKILL.md" ] \
    && [ -f "$proj/AGENTS.md" ]; then
     pass
 else
@@ -325,7 +325,7 @@ fake_standards "$proj"
 write_standards_yml "$proj" cursor gemini claude-code
 out=$(cd "$proj" && "$SYNC" 2>&1) || true
 if [ -d "$proj/.cursor/commands" ] && [ -f "$proj/.gemini/settings.json" ] \
-   && [ -f "$proj/.claude/skills/merge-standards.md" ]; then
+   && [ -f "$proj/.claude/skills/merge-standards/SKILL.md" ]; then
     pass
 else
     fail "declared agent extras missing; output: $out"
@@ -1363,6 +1363,226 @@ if stat -c %a / >/dev/null 2>&1; then mode=$(stat -c %a "$proj/config/aiderrc");
 [ "$(find "$proj/config" -mindepth 1 ! -name aiderrc | wc -l | tr -d ' ')" = "0" ] || errs="$errs temp-left:$(find "$proj/config" -mindepth 1 ! -name aiderrc -exec basename {} \; | tr '\n' ',')"
 grep -q '03_python_standards.md' "$proj/.aiderrc.pre-standards-setup" 2>/dev/null || errs="$errs backup-not-original"
 if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+# --- #194: agent-neutral workflow text and per-agent skills -------------------
+
+ALL_AGENTS="claude-code cursor copilot gemini codex aider"
+SKILL_NAMES=$(for f in "$REPO_ROOT"/standards/skills/*.md; do basename "$f" .md; done | tr '\n' ' ')
+
+# assemble_for <proj> <agent> <out> — assemble one agent config into <out>.
+assemble_for() {
+    bash "$REPO_ROOT/scripts/assemble-config.sh" --project-root "$1" "$2" \
+        "$REPO_ROOT/standards/shared/blocks" \
+        "$REPO_ROOT/standards/agents/$2/base-$2.md" \
+        "$3" lang-typescript.md role-service.md >/dev/null 2>&1 || true
+}
+
+echo -n "Test 91: {{WORKTREE_DIR}} resolves from worktree_dir: in every agent's assembly, and defaults to .claude/worktrees... "
+proj=$(make_project "wt-var")
+printf 'version: 1\nlanguages:\n  - typescript\nagents: []\nrole: service\nworktree_dir: tools/wt\n' > "$proj/.standards.yml"
+errs=""
+for a in $ALL_AGENTS; do
+    out="$proj/out-$a.md"
+    assemble_for "$proj" "$a" "$out"
+    [ -f "$out" ]                             || { errs="$errs $a:not-written"; continue; }
+    grep -q '{{WORKTREE_DIR}}' "$out"         && errs="$errs $a:literal-var"
+    grep -q 'tools/wt' "$out"                 || errs="$errs $a:worktree_dir-not-applied"
+    grep -q '\.claude/worktrees' "$out"       && errs="$errs $a:default-leaked"
+done
+proj2=$(make_project "wt-var-default")
+assemble_for "$proj2" "codex" "$proj2/AGENTS.md"
+grep -q '\.claude/worktrees' "$proj2/AGENTS.md" || errs="$errs default-missing"
+grep -q '{{WORKTREE_DIR}}' "$proj2/AGENTS.md"   && errs="$errs default:literal-var"
+[ -n "$SKILL_NAMES" ]                           || errs="$errs no-skills-dir"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 92: assemble-skills.sh claude-code writes every standards/skills/*.md to .claude/skills/<name>/SKILL.md with its frontmatter intact... "
+proj=$(make_project "skills-claude")
+rc=0; out=$(bash "$REPO_ROOT/scripts/assemble-skills.sh" --project-root "$proj" claude-code 2>&1) || rc=$?
+errs=""
+[ "$rc" -eq 0 ] || errs="$errs rc=$rc"
+for n in $SKILL_NAMES; do
+    f="$proj/.claude/skills/$n/SKILL.md"
+    [ -f "$f" ]                               || { errs="$errs $n:missing"; continue; }
+    head -1 "$f" | grep -q '^---$'            || errs="$errs $n:no-frontmatter"
+    grep -q "^name: $n$" "$f"                 || errs="$errs $n:no-name"
+    grep -q '^description: ' "$f"             || errs="$errs $n:no-description"
+done
+echo "$out" | grep -q 'claude-code' || errs="$errs not-reported"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
+echo -n "Test 93: assemble-skills.sh cursor writes .cursor/commands/<name>.md with a description frontmatter and no name: key... "
+proj=$(make_project "skills-cursor")
+bash "$REPO_ROOT/scripts/assemble-skills.sh" --project-root "$proj" cursor >/dev/null 2>&1 || true
+errs=""
+for n in $SKILL_NAMES; do
+    f="$proj/.cursor/commands/$n.md"
+    [ -f "$f" ]                               || { errs="$errs $n:missing"; continue; }
+    head -1 "$f" | grep -q '^---$'            || errs="$errs $n:no-frontmatter"
+    grep -q '^description: ' "$f"             || errs="$errs $n:no-description"
+    grep -q '^name: ' "$f"                    && errs="$errs $n:name-key-kept"
+done
+[ -e "$proj/.claude" ] && errs="$errs claude-dir-written"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 94: assemble-skills.sh copilot writes .github/prompts/<name>.prompt.md with a description frontmatter... "
+proj=$(make_project "skills-copilot")
+bash "$REPO_ROOT/scripts/assemble-skills.sh" --project-root "$proj" copilot >/dev/null 2>&1 || true
+errs=""
+for n in $SKILL_NAMES; do
+    f="$proj/.github/prompts/$n.prompt.md"
+    [ -f "$f" ]                               || { errs="$errs $n:missing"; continue; }
+    head -1 "$f" | grep -q '^---$'            || errs="$errs $n:no-frontmatter"
+    grep -q '^description: ' "$f"             || errs="$errs $n:no-description"
+    grep -q "^# " "$f"                        || errs="$errs $n:no-body"
+done
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 95: codex, gemini and aider assemblies carry a '## Skills' index naming every skill; claude-code, cursor and copilot do not... "
+proj=$(make_project "skills-index")
+errs=""
+for a in codex gemini aider; do
+    out="$proj/out-$a.md"
+    assemble_for "$proj" "$a" "$out"
+    grep -q '^## Skills$' "$out" || { errs="$errs $a:no-section"; continue; }
+    for n in $SKILL_NAMES; do
+        grep -q "^### $n$" "$out" || errs="$errs $a:$n-missing"
+    done
+    grep -q 'standards/skills/merge-standards.md' "$out" || errs="$errs $a:no-runbook-path"
+    # the index must come before the project-specific section
+    idx=$(grep -n '^## Skills$' "$out" | cut -d: -f1); sen=$(grep -n 'BEGIN PROJECT-SPECIFIC' "$out" | cut -d: -f1)
+    [ "$idx" -lt "$sen" ] || errs="$errs $a:after-sentinel"
+done
+for a in claude-code cursor copilot; do
+    out="$proj/out-$a.md"
+    assemble_for "$proj" "$a" "$out"
+    grep -q '^## Skills$' "$out" && errs="$errs $a:unexpected-section"
+done
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 96: setup.sh --agents copilot installs the prompt files only; --agents codex installs no skill files at all... "
+proj=$(make_project "setup-skills-copilot")
+fake_standards "$proj"
+(cd "$proj" && "$SETUP" --agents copilot --languages typescript >/dev/null 2>&1) || true
+errs=""
+[ -f "$proj/.github/prompts/merge-standards.prompt.md" ] || errs="$errs copilot:prompt-missing"
+[ -e "$proj/.claude" ]                                   && errs="$errs copilot:.claude-written"
+[ -e "$proj/.cursor" ]                                   && errs="$errs copilot:.cursor-written"
+proj=$(make_project "setup-skills-codex")
+fake_standards "$proj"
+(cd "$proj" && "$SETUP" --agents codex --languages typescript >/dev/null 2>&1) || true
+[ -e "$proj/.claude" ]                                   && errs="$errs codex:.claude-written"
+[ -e "$proj/.github/prompts" ]                           && errs="$errs codex:prompts-written"
+grep -q '^## Skills$' "$proj/AGENTS.md"                  || errs="$errs codex:no-index"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 97: sync-standards with agents: [claude-code, cursor, copilot] installs all three skill sets; --dry-run announces them without writing... "
+proj=$(make_project "sync-skills")
+fake_standards "$proj"
+write_standards_yml "$proj" claude-code cursor copilot
+dry=$(cd "$proj" && "$SYNC" --dry-run 2>&1) || true
+errs=""
+echo "$dry" | grep -q 'Would write: .*\.claude/skills/merge-standards/SKILL.md'            || errs="$errs dry:claude-not-announced"
+echo "$dry" | grep -q 'Would write: .*\.github/prompts/merge-standards.prompt.md'    || errs="$errs dry:copilot-not-announced"
+[ -e "$proj/.claude/skills" ]                                                        && errs="$errs dry:written"
+out=$(cd "$proj" && "$SYNC" 2>&1) || true
+[ -f "$proj/.claude/skills/security-gate/SKILL.md" ]            || errs="$errs claude-skill-missing"
+[ -f "$proj/.cursor/commands/security-gate.md" ]          || errs="$errs cursor-command-missing"
+[ -f "$proj/.cursor/commands/pr.md" ]                     || errs="$errs cursor-pr-command-missing"
+[ -f "$proj/.github/prompts/security-gate.prompt.md" ]    || errs="$errs copilot-prompt-missing"
+# a second sync is quiet about unchanged skills
+out2=$(cd "$proj" && "$SYNC" 2>&1) || true
+echo "$out2" | grep -q 'skills.*unchanged\|Skills up to date' || errs="$errs second-sync-not-quiet"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
+echo -n "Test 98: assemble-skills.sh rejects an unknown agent (exit 2) and --dry-run writes nothing... "
+proj=$(make_project "skills-usage")
+bad_rc=0; bad_out=$(bash "$REPO_ROOT/scripts/assemble-skills.sh" --project-root "$proj" nope 2>&1) || bad_rc=$?
+dry_rc=0; dry_out=$(bash "$REPO_ROOT/scripts/assemble-skills.sh" --project-root "$proj" --dry-run claude-code cursor 2>&1) || dry_rc=$?
+errs=""
+[ "$bad_rc" -eq 2 ]                                   || errs="$errs bad-rc=$bad_rc"
+echo "$bad_out" | grep -q 'Unknown agent'             || errs="$errs no-unknown-msg"
+[ "$dry_rc" -eq 0 ]                                   || errs="$errs dry-rc=$dry_rc"
+echo "$dry_out" | grep -q 'Would write: .*\.cursor/commands/merge-standards.md' || errs="$errs dry-not-announced"
+if [ -e "$proj/.claude" ] || [ -e "$proj/.cursor" ]; then errs="$errs dry-wrote-files"; fi
+if [ -z "$errs" ]; then pass; else fail "$errs; $bad_out $dry_out"; fi
+
+echo -n "Test 99: assembled text calls make ci the project's full local gate that mirrors CI, and makes CHANGELOG.md conditional on release automation... "
+proj=$(make_project "assembled-text")
+assemble_for "$proj" "claude-code" "$proj/CLAUDE.md"
+errs=""
+grep -q "full local gate" "$proj/CLAUDE.md"                 || errs="$errs no-local-gate"
+grep -qi "mirror CI" "$proj/CLAUDE.md"                      || errs="$errs no-mirror-ci"
+grep -q "full pipeline must pass" "$proj/CLAUDE.md"         && errs="$errs old-pipeline-text"
+grep -q "release automation" "$proj/CLAUDE.md"              || errs="$errs changelog-unconditional"
+grep -q '^Maintain `CHANGELOG.md`' "$proj/CLAUDE.md"        && errs="$errs changelog-leads-unconditionally"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 100: assemble-skills.sh never replaces a skill file it did not install or that was edited since — it stages the new version to .standards-pending/<path> and records what it installs in .standards-checksums... "
+proj=$(make_project "skills-guard")
+mkdir -p "$proj/.claude/skills/security-gate"
+printf -- '---\nname: security-gate\ndescription: mine\n---\n\nMy own security gate.\n' > "$proj/.claude/skills/security-gate/SKILL.md"
+rc=0; out=$(bash "$REPO_ROOT/scripts/assemble-skills.sh" --project-root "$proj" claude-code 2>&1) || rc=$?
+errs=""
+[ "$rc" -eq 0 ]                                                                    || errs="$errs rc=$rc"
+grep -q 'My own security gate' "$proj/.claude/skills/security-gate/SKILL.md"       || errs="$errs foreign-replaced"
+[ -f "$proj/.standards-pending/.claude/skills/security-gate/SKILL.md" ]            || errs="$errs foreign-not-staged"
+echo "$out" | grep -q 'not installed by the standards'                             || errs="$errs foreign-not-reported"
+echo "$out" | grep -q '1 staged'                                                   || errs="$errs summary-no-staged"
+grep -q '^\.claude/skills/merge-standards/SKILL\.md ' "$proj/.standards-checksums" || errs="$errs checksum-not-recorded"
+grep -q '^\.claude/skills/security-gate/SKILL\.md ' "$proj/.standards-checksums"   && errs="$errs foreign-checksum-recorded"
+# an installed skill the user edits afterwards is kept on the next run
+printf '\nLocal note.\n' >> "$proj/.claude/skills/merge-standards/SKILL.md"
+out2=$(bash "$REPO_ROOT/scripts/assemble-skills.sh" --project-root "$proj" claude-code 2>&1) || true
+grep -q 'Local note' "$proj/.claude/skills/merge-standards/SKILL.md"              || errs="$errs customized-replaced"
+[ -f "$proj/.standards-pending/.claude/skills/merge-standards/SKILL.md" ]         || errs="$errs customized-not-staged"
+echo "$out2" | grep -q 'edited since'                                              || errs="$errs customized-not-reported"
+# --dry-run announces the staging without writing anything
+proj=$(make_project "skills-guard-dry")
+mkdir -p "$proj/.cursor/commands"; echo "mine" > "$proj/.cursor/commands/security-gate.md"
+dry=$(bash "$REPO_ROOT/scripts/assemble-skills.sh" --project-root "$proj" --dry-run cursor 2>&1) || true
+echo "$dry" | grep -q 'Would stage: .*\.standards-pending/\.cursor/commands/security-gate\.md' || errs="$errs dry:not-announced"
+[ -e "$proj/.standards-pending" ]                                                  && errs="$errs dry:staged"
+[ "$(cat "$proj/.cursor/commands/security-gate.md")" = "mine" ]                    || errs="$errs dry:replaced"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out $out2 $dry"; fi
+
+echo -n "Test 101: skills are installed as written — no template variable is resolved, so the installed runbook equals the source the single-file agents read... "
+proj=$(make_project "skills-literal")
+printf 'version: 1\nlanguages: []\nagents: []\nrole: service\nworktree_dir: tools/wt\n' > "$proj/.standards.yml"
+bash "$REPO_ROOT/scripts/assemble-skills.sh" --project-root "$proj" claude-code cursor >/dev/null 2>&1 || true
+errs=""
+cmp -s "$REPO_ROOT/standards/skills/merge-standards.md" "$proj/.claude/skills/merge-standards/SKILL.md" || errs="$errs claude-not-verbatim"
+grep -q '{{PROJECT_OVERVIEW}}' "$proj/.claude/skills/merge-standards/SKILL.md"    || errs="$errs overview-placeholder-resolved"
+grep -q '{{WORKTREE_DIR}}' "$proj/.cursor/commands/config-assembly.md"            || errs="$errs worktree-placeholder-resolved"
+grep -q 'tools/wt' "$proj/.cursor/commands/config-assembly.md"                    && errs="$errs worktree_dir-substituted"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 102: a second setup.sh run still owns the skills it installed — an upstream skill change updates an unmodified file instead of staging it... "
+proj=$(make_project "setup-skills-rerun")
+mkdir -p "$proj/.standards/standards"
+for d in "$REPO_ROOT"/standards/*; do
+    case "$(basename "$d")" in
+        skills) cp -R "$d" "$proj/.standards/standards/skills" ;;
+        *)      ln -s "$d" "$proj/.standards/standards/" ;;
+    esac
+done
+ln -s "$REPO_ROOT/scripts"   "$proj/.standards/scripts"
+ln -s "$REPO_ROOT/templates" "$proj/.standards/templates"
+ln -s "$REPO_ROOT/.cursor"   "$proj/.standards/.cursor"
+ln -s "$REPO_ROOT/.gemini"   "$proj/.standards/.gemini"
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+errs=""
+[ -f "$proj/.claude/skills/security-gate/SKILL.md" ]                               || errs="$errs skill-missing"
+grep -q '^\.claude/skills/security-gate/SKILL\.md ' "$proj/.standards-checksums"   || errs="$errs checksum-missing"
+printf '\nUpstream addition.\n' >> "$proj/.standards/standards/skills/security-gate.md"
+out=$(cd "$proj" && "$SETUP" --agents claude-code --languages typescript 2>&1) || true
+grep -q 'Upstream addition' "$proj/.claude/skills/security-gate/SKILL.md"          || errs="$errs upstream-not-applied"
+[ -e "$proj/.standards-pending/.claude/skills" ]                                   && errs="$errs wrongly-staged"
+grep -q '^\.claude/skills/security-gate/SKILL\.md ' "$proj/.standards-checksums"   || errs="$errs checksum-dropped"
+# doctor hashes the skill entries the same way: no drift right after install
+doc=$(cd "$proj" && bash "$REPO_ROOT/scripts/doctor.sh" 2>&1) || true
+echo "$doc" | grep -q 'All config checksums match'                                 || errs="$errs doctor:drift-reported"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; doctor: $(echo "$doc" | grep -i checksum)"; fi
 
 echo ""
 if [ "$FAIL" -gt 0 ]; then

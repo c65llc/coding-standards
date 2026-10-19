@@ -109,7 +109,13 @@ Template configs deployed to consumer projects during setup:
 - `copilot/.github/copilot-instructions.md` — GitHub Copilot
 - `aider/.aiderrc` — Aider
 - OpenAI Codex reads `AGENTS.md` at the project root (the legacy `codex/.codexrc` is deprecated)
-- Gemini CLI config lives at `.gemini/` (root level, per Gemini convention)
+- Gemini CLI config lives at `.gemini/` (root level, per Gemini convention); `gemini/antigravity.md` is the Antigravity Mission Isolation appendix (moved out of proc-04 so the shared standard stays agent-neutral)
+
+Every base template and `standards/shared/blocks/git-workflow.md` name the worktree root as `{{WORKTREE_DIR}}`; `scripts/lib/template-vars.sh` resolves it from `worktree_dir:` in the consumer's `.standards.yml` (default `.claude/worktrees`). Never hardcode `.claude/worktrees` in a template or block.
+
+### Skills (`standards/skills/`)
+
+Agent-neutral runbooks (`merge-standards`, `standards-audit`, `security-gate`, `coverage-enforcer`, `dependency-age-gate`, `naming-convention`, `config-assembly`, `setup-wizard`) with a `name:` / `description:` frontmatter and a `## When to Use` section. `scripts/assemble-skills.sh` (via `scripts/lib/skills.sh`) emits them per declared agent — `.claude/skills/<name>/SKILL.md`, `.cursor/commands/<name>.md`, `.github/prompts/<name>.prompt.md` — and `scripts/assemble-config.sh` appends a `## Skills` index to the single-file agents' configs (`AGENTS.md`, `.gemini/GEMINI.md`, `.aider-instructions.md`). Write a skill once for every agent: reference `.standards/scripts/...`, never one agent's tooling. Tests: `scripts/test-setup-safe.sh` Tests 91–102.
 
 ### Scripts (`scripts/`)
 
@@ -142,6 +148,6 @@ Copy-and-fill templates for the documents proc-01 asks for: `adr.md` (bullet met
 - **Shell scripts**: Must pass `bash -n` syntax validation.
 - **Safety**: Never modify `.standards_tmp/`, `.secret`, or `.tfstate` files. Always preserve standards file numbering.
 - **Worktree hygiene (proc-04)**: one gitignored worktree root per repo (`worktree_dir:` in `.standards.yml`, default `.claude/worktrees`), created from the main checkout only — never from inside another worktree. `setup.sh` gitignores the root and installs `templates/pre-commit-worktree-guard.example`; `make doctor` reports count/age/size; `make worktree-gc` collects merged, gone and idle worktrees. Tests: `scripts/test-worktree-gc.sh`.
-- **Safe setup (1.2+)**: `setup.sh` never clobbers existing agent configs. Customized files are staged to `.standards-pending/` with a `MERGE_PLAN.md` describing how to reconcile them. The merge skill (`/merge-standards` in Claude Code / Cursor, `make merge-standards` via CLI) drives the agent-agnostic handoff.
+- **Safe setup (1.2+)**: `setup.sh` never clobbers existing agent configs. Customized files are staged to `.standards-pending/` with a `MERGE_PLAN.md` describing how to reconcile them. The merge skill (`/merge-standards` in Claude Code / Cursor / Copilot, the Skills index for Codex / Gemini / Aider, `make merge-standards` via CLI) drives the agent-agnostic handoff.
 - **Curated configs (#183)**: `project_overview:` / `key_commands:` in `.standards.yml` are the source for `{{PROJECT_OVERVIEW}}` / `{{KEY_COMMANDS}}` (filled-in text stays checksum-stable); `managed: { CLAUDE.md: false }` marks a config hand-curated (sync/setup leave it, doctor reports curated, diff-standards still previews upstream changes); `hooks: custom|lefthook|husky|standards` tells doctor and setup who owns the git hooks. Readers live in `scripts/lib/checksums.sh` (`yaml_block_scalar`, `yaml_map_value`, `file_managed`) and `scripts/lib/project-sections.sh` (capture hint).
 - **Pre-1.2 migration (#184)**: `setup.sh --migrate` rewrites dead standards references in consumer agent configs from `docs/reference/renamed-files.md` (the table between the `BEGIN/END RENAME MAP` markers is machine-read; add a row whenever a standard is renamed or removed, `(removed)` for deletions), converts `.codexrc` → `AGENTS.md`, seeds `.standards.yml` from a legacy `.standards-config`, and stages the assembled configs with a *Migration* section in `MERGE_PLAN.md`. The checksum baseline for a staged file is the staged assembled version, so sync never overwrites a migrated file. `doctor.sh` and `sync-standards.sh` detect the shape (`pre12_shape` in `scripts/lib/migrate.sh`) and print the one command. Tests: `scripts/test-setup-safe.sh` (pre-1.2 fixture, Tests 68+).

@@ -52,17 +52,19 @@ When `MERGE_PLAN.md` has a **Migration** section, the pending files are the proj
 
 ## Workflow
 
-1. List files in `.standards-pending/`. If the directory is empty or doesn't exist, report: "All agent configs are up to date — no pending standards updates."
+1. List files in `.standards-pending/`, recursively: a staged skill file keeps its project-relative path (`.standards-pending/.claude/skills/security-gate/SKILL.md` belongs to `.claude/skills/security-gate/SKILL.md`), and `MERGE_PLAN.md` is the briefing, not a pending file. If the directory is empty or doesn't exist, report: "All agent configs are up to date — no pending standards updates."
 
 2. For each pending file (e.g., `.standards-pending/CLAUDE.md`):
    a. Read the **current customized file** at its normal location (e.g., `CLAUDE.md`)
-   b. Read the **pending assembled version** in `.standards-pending/` (skip the first 3 lines — those are the instruction comment header)
+   b. Read the **pending assembled version** in `.standards-pending/` (for an assembled config, skip the first 3 lines — the instruction comment header; a staged skill file has no header and is the complete new version)
    c. Produce a merged version using the merge strategy below
    d. Show the user a diff of current vs. proposed merged version
    e. On approval: write the merged file, update the checksum, delete the pending file
    f. On rejection: leave both files as-is, move to next file
 
-3. After all files are processed, delete `.standards-pending/` if empty.
+3. For a **staged skill file**, the project's file was kept because the standards never installed it, or it was edited since they did. Show the diff between the project's file and the staged version. On approval, replace the file with the staged version and record its hash under its project-relative path; on rejection, delete the staged copy — the next sync stages it again only while the two still differ, and says so.
+
+4. After all files are processed, delete `.standards-pending/` if empty.
 
 ## Merge Strategy
 
@@ -75,7 +77,7 @@ Standards sections are identified by `##` headers injected by the assembler: `##
 - Pending version **changed a rule** (different wording for same concept) → update to the new version
 - Current file has **extra content** within a standards section (user additions like project-specific conventions) → preserve it
 
-**Content outside standards sections** (project overview, key commands, custom sections the user or /claude-md-improver added):
+**Content outside standards sections** (project overview, key commands, custom sections the user or a guide-improver tool added):
 
 - Always preserve the current version — never replace or remove user-authored sections
 - Project overview and key commands: persist the current text as `project_overview:` / `key_commands:` in `.standards.yml` when they are not there yet, so the merged file matches its next assembly
@@ -98,7 +100,7 @@ Standards sections are identified by `##` headers injected by the assembler: `##
    hash=$(printf '%s' "$content" | shasum -a 256 | awk '{print $1}')
    ```
 
-   Replace the line matching this file in `.standards-checksums` with: `<hash>  <filename>`
+   Replace the line matching this file in `.standards-checksums` with: `<filename> <hash>` — the key is the basename for an assembled config (`CLAUDE.md`) and the project-relative path for a skill file (`.claude/skills/<name>/SKILL.md`). A skill file is hashed whole (`shasum -a 256 <file>`), not with the snippet above: that stops at the first sentinel mention, and some runbooks mention the sentinel in their text.
 
 1. Delete the consumed file from `.standards-pending/`.
 
