@@ -24,11 +24,16 @@ cd "$ROOT_DIR"
 
 # Global layer ships with the standards checkout: .standards/ when the kit was
 # installed by `setup.sh --containerized`, coding_standards/ for a hand-vendored
-# copy; GLOBAL_WHITELIST overrides either. The local layer is project-owned.
+# copy. proxy/global-whitelist.txt is the snapshot setup.sh writes when the
+# standards checkout is outside the project (setup run from a clone), refreshed
+# by re-running --containerized. GLOBAL_WHITELIST overrides all three. The local
+# layer is project-owned.
 if [ -z "${GLOBAL_WHITELIST:-}" ]; then
-    for _std_dir in .standards coding_standards; do
-        if [ -f "$_std_dir/templates/containerized-dev/network/global-whitelist.txt" ]; then
-            GLOBAL_WHITELIST="$_std_dir/templates/containerized-dev/network/global-whitelist.txt"
+    for _candidate in .standards/templates/containerized-dev/network/global-whitelist.txt \
+                      coding_standards/templates/containerized-dev/network/global-whitelist.txt \
+                      proxy/global-whitelist.txt; do
+        if [ -f "$_candidate" ]; then
+            GLOBAL_WHITELIST="$_candidate"
             break
         fi
     done

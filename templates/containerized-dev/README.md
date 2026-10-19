@@ -69,8 +69,11 @@ version is staged to `.standards-pending/<path>` with a note in `MERGE_PLAN.md`
 are yours to adapt, so they are not checksum-tracked and `sync-standards` never
 touches them. The global whitelist (`network/global-whitelist.txt`) stays in the
 standards checkout, where `setup-proxy.sh` reads it: `.standards/` first, then
-`coding_standards/`, or `GLOBAL_WHITELIST=<path>`. Without the flag, `setup.sh`
-only prints how to install the kit.
+`coding_standards/`, or `GLOBAL_WHITELIST=<path>`. When neither directory is in
+the project (setup run from a clone of the standards repo), setup snapshots it to
+`proxy/global-whitelist.txt`, which `setup-proxy.sh` falls back to; re-run
+`--containerized` after updating the standards to stage a newer copy. Without the
+flag, `setup.sh` only prints how to install the kit.
 
 Installing by hand, with the standards vendored at `coding_standards/`:
 

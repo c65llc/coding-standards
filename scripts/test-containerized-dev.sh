@@ -450,6 +450,21 @@ else
     fail "rc=$rc; output: $out"
 fi
 
+# Test 22b: the guard reads .gitignore in order like git: `.env*` followed by `!.env.secret`
+# leaves the secret trackable (refuse); a later `.env.secret` re-ignores it (proceed)
+echo -n "Test 22b: init-workspace — honours a !.env.secret negation after .env*, and a later re-ignore... "
+d="$TMP_BASE/iw22b"; mkdir -p "$d/scripts"
+cp "$INIT_WORKSPACE" "$d/scripts/init-workspace.sh"; chmod +x "$d/scripts/init-workspace.sh"
+printf '.env*\n!.env.secret\n' > "$d/.gitignore"
+out="$(run_init "$d")"; rc=$?
+errs=""
+{ [ "$rc" -ne 0 ] && echo "$out" | grep -q 'Refusing to write .env.secret' && [ ! -f "$d/.env.secret" ]; } \
+    || errs="$errs negation-not-honoured(rc=$rc)"
+printf '.env*\n!.env.secret\n.env.secret\n' > "$d/.gitignore"
+out2="$(run_init "$d")"; rc2=$?
+{ [ "$rc2" -eq 0 ] && [ -f "$d/.env.secret" ]; } || errs="$errs reignore-refused(rc=$rc2)"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; second: $out2"; fi
+
 # Test 23: with the README's .gitignore lines it writes .env (identity) and .env.secret, and touches no submodule
 echo -n "Test 23: init-workspace — with .env.secret ignored, writes .env + 0600 .env.secret and leaves submodules alone... "
 d="$TMP_BASE/iw23"; mkdir -p "$d/scripts"

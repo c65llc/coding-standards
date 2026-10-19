@@ -1644,7 +1644,17 @@ out2=$(cd "$proj2" && HOME="$fake_home" GIT_CONFIG_GLOBAL="$fake_home/.gitconfig
 [ -f "$proj2/.cursor/rules/containerized-dev.mdc" ] || errs="$errs detect:rules-not-installed"
 grep -q '^alwaysApply: true' "$proj2/.cursor/rules/containerized-dev.mdc" 2>/dev/null || errs="$errs detect:no-frontmatter"
 grep -q '# mine' "$proj2/.cursorrules" || errs="$errs detect:cursorrules-clobbered"
-if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; detect: $out2"; fi
+# Detect mode with no Cursor artifacts: agent_requested is permissive there, so the
+# rules file must be gated on the detected set — Cursor was not detected, nothing installs.
+proj3=$(make_project "kit-cursor-undetected")
+fake_standards "$proj3"
+printf '# mine\n' > "$proj3/CLAUDE.md"
+out3=$(cd "$proj3" && HOME="$fake_home" GIT_CONFIG_GLOBAL="$fake_home/.gitconfig" \
+    "$SETUP" --languages typescript --containerized 2>&1) || true
+[ -e "$proj3/.cursor/rules/containerized-dev.mdc" ] && errs="$errs undetected:rules-installed"
+echo "$out3" | grep -q 'cursorrules.example skipped: cursor is not configured' || errs="$errs undetected:skip-not-reported"
+[ -f "$proj3/Dockerfile.dev" ] || errs="$errs undetected:kit-not-installed"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; detect: $out2; undetected: $out3"; fi
 
 echo -n "Test 106: --containerized never clobbers: a differing scripts/init-workspace.sh is kept and the kit's copy staged to .standards-pending/scripts/ with a MERGE_PLAN section; an identical file is not staged; .env is added once to a .gitignore that already lists .env.secret... "
 proj=$(make_project "kit-conflict")
@@ -1675,11 +1685,15 @@ echo -n "Test 107: a second --containerized run reports every kit file as alread
 proj=$(make_project "kit-rerun")
 fake_standards "$proj"
 (cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized >/dev/null 2>&1) || true
+# An identical script that lost its execute bit (a plain cp of the 0644 template) is repaired.
+chmod -x "$proj/scripts/setup-proxy.sh"
 out=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || true
 errs=""
 n_already=$(echo "$out" | grep -c 'already installed')
 [ "$n_already" -ge 12 ] || errs="$errs rerun:already-installed=$n_already"
 echo "$out" | grep -q 'staged to' && errs="$errs rerun:staged"
+[ -x "$proj/scripts/setup-proxy.sh" ] || errs="$errs rerun:exec-bit-not-restored"
+echo "$out" | grep -q 'scripts/setup-proxy.sh already installed (made executable)' || errs="$errs rerun:chmod-not-reported"
 [ -e "$proj/.standards-pending" ] && errs="$errs rerun:pending-dir"
 [ "$(grep -cxF '.env' "$proj/.gitignore")" = "1" ] || errs="$errs rerun:env-duplicated"
 proj2=$(make_project "kit-dry")
@@ -1722,6 +1736,45 @@ echo "$out" | grep -q 'kit not found' || errs="$errs no-warning"
 [ -e "$proj/Dockerfile.dev" ] && errs="$errs installed-without-kit"
 grep -qxF '.env' "$proj/.gitignore" 2>/dev/null && errs="$errs env-ignored-without-kit"
 if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
+echo -n "Test 110: the .gitignore check reads rules in order like git: '.env*' then '!.env.secret' gets an authoritative '.env.secret' appended after the negation, and a negation that is itself re-ignored later adds nothing... "
+proj=$(make_project "kit-gitignore-negation")
+fake_standards "$proj"
+printf 'node_modules/\n.env*\n!.env.secret\n' > "$proj/.gitignore"
+out=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || true
+errs=""
+[ "$(grep -cxF '.env.secret' "$proj/.gitignore")" = "1" ] || errs="$errs secret-not-appended"
+[ "$(grep -cxF '.env' "$proj/.gitignore")" = "0" ] || errs="$errs env-appended-despite-glob"
+neg_line=$(grep -nxF '!.env.secret' "$proj/.gitignore" | cut -d: -f1)
+sec_line=$(grep -nxF '.env.secret' "$proj/.gitignore" | cut -d: -f1)
+[ -n "$neg_line" ] && [ -n "$sec_line" ] && [ "$sec_line" -gt "$neg_line" ] || errs="$errs secret-not-after-negation(neg=$neg_line,sec=$sec_line)"
+echo "$out" | grep -q '.env.secret added to .gitignore' || errs="$errs not-reported"
+proj2=$(make_project "kit-gitignore-reignored")
+fake_standards "$proj2"
+printf '.env*\n!.env.secret\n.env.secret\n' > "$proj2/.gitignore"
+(cd "$proj2" && "$SETUP" --agents codex --languages typescript --containerized >/dev/null 2>&1) || true
+[ "$(grep -cxF '.env.secret' "$proj2/.gitignore")" = "1" ] || errs="$errs reignored:duplicated"
+grep -q 'Containerized agent-dev environment' "$proj2/.gitignore" && errs="$errs reignored:block-appended"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; gitignore: $(cat "$proj/.gitignore")"; fi
+
+echo -n "Test 111: setup run from a clone outside the project (standards from script location) snapshots the global whitelist to proxy/global-whitelist.txt and the installed setup-proxy.sh falls back to it... "
+proj=$(make_project "kit-script-location")
+out=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || true
+errs=""
+echo "$out" | grep -q 'Using standards from script location' || errs="$errs not-script-location-mode"
+[ -f "$proj/proxy/global-whitelist.txt" ] || errs="$errs snapshot-missing"
+cmp -s "$REPO_ROOT/templates/containerized-dev/network/global-whitelist.txt" "$proj/proxy/global-whitelist.txt" || errs="$errs snapshot-differs"
+[ -d "$proj/network" ] && errs="$errs network-dir-copied"
+echo "$out" | grep -q 'snapshotted to proxy/global-whitelist.txt' || errs="$errs snapshot-not-reported"
+pout=$(cd "$proj" && ./scripts/setup-proxy.sh 2>&1) || errs="$errs setup-proxy-failed"
+grep -q '^#   proxy/global-whitelist.txt$' "$proj/proxy/allowlist.generated.txt" 2>/dev/null || errs="$errs global-source-not-snapshot"
+grep -qx 'registry.npmjs.org' "$proj/proxy/allowlist.generated.txt" 2>/dev/null || errs="$errs global-entry-missing"
+# With .standards/ present the global list is not snapshotted (Test 104 covers the file set).
+proj2=$(make_project "kit-submodule-no-snapshot")
+fake_standards "$proj2"
+(cd "$proj2" && "$SETUP" --agents codex --languages typescript --containerized >/dev/null 2>&1) || true
+[ -e "$proj2/proxy/global-whitelist.txt" ] && errs="$errs snapshot-despite-submodule"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; proxy: $pout"; fi
 
 echo ""
 if [ "$FAIL" -gt 0 ]; then

@@ -44,11 +44,20 @@ upsert_env() {
 # --- 0. Guard: .env.secret must be git-ignored before we ever write it --------
 # Checked by reading .gitignore directly, not via `git check-ignore`: git would
 # consult the container-writable .git/config (see the header). Accepts the exact
-# patterns the kit README installs, plus the obvious equivalents.
+# patterns the kit README installs, plus the obvious equivalents, read in order
+# the way git does: a later `!<pattern>` un-ignores, and the last match wins.
 is_secret_ignored() {
     [ -f "$ROOT_DIR/.gitignore" ] || return 1
-    sed -e 's/[[:space:]]*$//' "$ROOT_DIR/.gitignore" \
-        | grep -q -x -E '/?\.env\.secret|/?\*\.secret|/?\.env\*|/?\.env\.\*'
+    local line listed=1
+    local pat='/?\.env\.secret|/?\*\.secret|/?\.env\*|/?\.env\.\*'
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%"${line##*[![:space:]]}"}"
+        case "$line" in
+            '!'*) printf '%s\n' "${line#!}" | grep -qxE "$pat" && listed=1 ;;
+            *)    printf '%s\n' "$line"     | grep -qxE "$pat" && listed=0 ;;
+        esac
+    done < "$ROOT_DIR/.gitignore"
+    return "$listed"
 }
 if ! is_secret_ignored; then
     warn "Refusing to write .env.secret: .gitignore does not list it."

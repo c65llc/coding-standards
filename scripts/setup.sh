@@ -901,17 +901,50 @@ install_agent_skills() {
 CONTAINERIZED_KIT_FOUND=false
 CONTAINERIZED_NOTES=""   # Markdown bullets for the MERGE_PLAN kit section
 
+# The global egress whitelist normally stays in the standards checkout, where the
+# installed setup-proxy.sh reads it (.standards/ or coding_standards/). When setup
+# runs from a clone outside the project ("Using standards from script location")
+# neither path exists, so the kit snapshots it to proxy/global-whitelist.txt,
+# which setup-proxy.sh falls back to.
+CONTAINERIZED_SNAPSHOT_GLOBAL=false
+
 # containerized_kit_target <kit-relative path>: the project-relative destination,
 # or nothing for files that are not installed — the kit's own documentation, the
-# global whitelist (it stays in the standards checkout, where setup-proxy.sh
-# reads it) and the .env.secret shape (init-workspace.sh generates the real one).
+# global whitelist (unless snapshotted, see above) and the .env.secret shape
+# (init-workspace.sh generates the real one).
 containerized_kit_target() {
     case "$1" in
-        README.md|env.secret.example|network/*) return 0 ;;
+        README.md|env.secret.example) return 0 ;;
+        network/global-whitelist.txt)
+            [ "$CONTAINERIZED_SNAPSHOT_GLOBAL" = true ] && echo "proxy/global-whitelist.txt"
+            return 0 ;;
+        network/*) return 0 ;;
         cursorrules.example) echo ".cursor/rules/containerized-dev.mdc" ;;
         *.example) echo "${1%.example}" ;;
         *) echo "$1" ;;
     esac
+}
+
+# containerized_cursor_configured: is Cursor among the agents this run sets up?
+# With an explicit --agents list that is agent_requested; in detect mode
+# agent_requested is permissive (every agent-side artifact installs), so the
+# Cursor rules file is gated on the detected set instead (#181).
+containerized_cursor_configured() {
+    if agents_explicit; then
+        agent_requested cursor
+        return
+    fi
+    local a
+    for a in ${DETECTED_AGENTS:-}; do
+        [ "$a" = cursor ] && return 0
+    done
+    return 1
+}
+
+# kit_file_is_script <file>: anything with a shebang is run on the host
+# (scripts/*.sh) or copied into an image (proxy/egress-entrypoint.sh).
+kit_file_is_script() {
+    head -c 2 "$1" 2>/dev/null | grep -q '^#!'
 }
 
 # install_containerized_kit <kit dir>
@@ -922,6 +955,13 @@ install_containerized_kit() {
     local rel src target dest pending_target
     echo ""
     echo "🐳 Installing the containerized agent-dev kit (arch-09)..."
+    CONTAINERIZED_SNAPSHOT_GLOBAL=false
+    if [ ! -f "$PROJECT_ROOT/.standards/templates/containerized-dev/network/global-whitelist.txt" ] \
+       && [ ! -f "$PROJECT_ROOT/coding_standards/templates/containerized-dev/network/global-whitelist.txt" ]; then
+        CONTAINERIZED_SNAPSHOT_GLOBAL=true
+        echo "   ℹ️  The standards checkout is outside this project: network/global-whitelist.txt is snapshotted to proxy/global-whitelist.txt"
+        echo "      (setup-proxy.sh falls back to it; re-run --containerized after updating the standards to stage a newer copy)"
+    fi
     # find | sort rather than globs: the kit nests two levels and has a dot-dir.
     while IFS= read -r rel; do
         [ -n "$rel" ] || continue
@@ -930,8 +970,8 @@ install_containerized_kit() {
         [ -n "$target" ] || continue
         case "$target" in
             .cursor/*)
-                if ! agent_requested cursor; then
-                    echo "   ℹ️  $rel skipped: cursor is not configured (pass --agents cursor to install it as $target)"
+                if ! containerized_cursor_configured; then
+                    echo "   ℹ️  $rel skipped: cursor is not configured (pass --agents cursor, or add a .cursorrules so detect finds it, to install it as $target)"
                     continue
                 fi
                 ;;
@@ -939,7 +979,18 @@ install_containerized_kit() {
         dest="$PROJECT_ROOT/$target"
         if [ -e "$dest" ] || [ -L "$dest" ]; then
             if cmp -s "$src" "$dest"; then
-                echo "   ✅ $target already installed"
+                # Identical contents but no execute bit (a plain `cp` of the 0644
+                # template): the documented ./scripts/*.sh invocations would fail.
+                if [ ! -x "$dest" ] && kit_file_is_script "$src"; then
+                    if [ "$DRY_RUN" = true ]; then
+                        echo "  [dry-run] Would chmod +x: $dest"
+                    else
+                        chmod +x "$dest"
+                    fi
+                    echo "   ✅ $target already installed (made executable)"
+                else
+                    echo "   ✅ $target already installed"
+                fi
                 continue
             fi
             pending_target="$PROJECT_ROOT/$PENDING_DIR/$target"
@@ -958,9 +1009,7 @@ install_containerized_kit() {
         [ -d "$(dirname "$dest")" ] || dry_run_mkdir "$(dirname "$dest")"
         dry_run_cp "$src" "$dest"
         if [ "$DRY_RUN" = false ]; then
-            # Anything with a shebang is run on the host (scripts/*.sh) or copied
-            # into an image (proxy/egress-entrypoint.sh): make it executable.
-            if head -c 2 "$dest" 2>/dev/null | grep -q '^#!'; then
+            if kit_file_is_script "$dest"; then
                 chmod +x "$dest"
             fi
             echo "   ✅ Installed $target"
@@ -974,12 +1023,23 @@ $CONTAINERIZED_NOTES"
     fi
 }
 
-# gitignore_lists <gitignore> <ERE>: true when some line, trailing whitespace
-# ignored, matches the expression as a whole. Exact-line matching on purpose:
-# `.env.secret` in .gitignore does not ignore `.env`.
+# gitignore_lists <gitignore> <ERE>: true when the file, read in order the way
+# git does, leaves a path matched by the expression ignored: a line matching the
+# ERE as a whole (trailing whitespace ignored) ignores it, a later `!<line>`
+# matching the same ERE un-ignores it, and the last matching rule wins. Exact-line
+# matching on purpose: `.env.secret` in .gitignore does not ignore `.env`.
+# Appending a rule therefore always makes the result true — that is the fix.
 gitignore_lists() {
     [ -f "$1" ] || return 1
-    sed -e 's/[[:space:]]*$//' "$1" | grep -qxE "$2"
+    local line listed=1
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%"${line##*[![:space:]]}"}"
+        case "$line" in
+            '!'*) printf '%s\n' "${line#!}" | grep -qxE "$2" && listed=1 ;;
+            *)    printf '%s\n' "$line"     | grep -qxE "$2" && listed=0 ;;
+        esac
+    done < "$1"
+    return "$listed"
 }
 
 echo "🔧 Setting up project standards..."
