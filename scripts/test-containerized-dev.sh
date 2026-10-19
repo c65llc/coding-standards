@@ -112,7 +112,9 @@ echo -n "Test 3c: setup-proxy — generated allow-list is mode 0644 even under u
 dir="$(make_project t3c)"
 printf 'api.github.com\n' > "$dir/proxy/project-whitelist.txt"
 (cd "$dir" && umask 077 && GLOBAL_WHITELIST="$GLOBAL_LIST" ./scripts/setup-proxy.sh >/dev/null 2>&1)
-mode="$(stat -f '%Lp' "$dir/proxy/allowlist.generated.txt" 2>/dev/null || stat -c '%a' "$dir/proxy/allowlist.generated.txt" 2>/dev/null)"
+# GNU stat first (-c); BSD/macOS stat rejects -c and takes -f. Not the other way
+# round: GNU `stat -f` is *filesystem* status and succeeds with the wrong output.
+mode="$(stat -c '%a' "$dir/proxy/allowlist.generated.txt" 2>/dev/null || stat -f '%Lp' "$dir/proxy/allowlist.generated.txt" 2>/dev/null)"
 if [ "$mode" = "644" ]; then
     pass
 else
