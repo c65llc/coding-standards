@@ -947,6 +947,38 @@ kit_file_is_script() {
     head -c 2 "$1" 2>/dev/null | grep -q '^#!'
 }
 
+# kit_path_has_symlink <project-relative path>: true when any component of the
+# path, the leaf included, is a symlink. Kit files are written only beneath the
+# project root: a `scripts -> /elsewhere` link must not receive executables.
+kit_path_has_symlink() {
+    local p="" c
+    local IFS='/'
+    for c in $1; do
+        [ -n "$c" ] || continue
+        p="${p:+$p/}$c"
+        [ -L "$PROJECT_ROOT/$p" ] && return 0
+    done
+    return 1
+}
+
+# abort_if_tracked_secrets: .env / .env.secret already in the git index (a
+# committed placeholder, or a force-added copy of an earlier init-workspace run)
+# cannot be made safe by ignoring them, and init-workspace.sh has no reliable
+# way to tell them apart from its own output. Runs on the host, before setup
+# writes anything, so a refusal leaves the project exactly as it was.
+abort_if_tracked_secrets() {
+    local tracked t
+    tracked=$(cd "$PROJECT_ROOT" && git ls-files -- .env .env.secret 2>/dev/null | tr '\n' ' ' || true)
+    tracked=$(trim_ws "$tracked")
+    [ -n "$tracked" ] || return 0
+    echo "🚨 P0 (arch-09 §5): ${tracked// / and } is tracked by git. Ignoring a tracked file does not untrack it, and"
+    echo "   scripts/init-workspace.sh would refresh live API keys into it, ready for the next commit."
+    echo "   --containerized refuses to continue. On the host:"
+    for t in $tracked; do echo "     git rm --cached $t && rm $t"; done
+    echo "   then commit the removal, rotate anything a committed copy ever held, and re-run setup."
+    exit 1
+}
+
 # install_containerized_kit <kit dir>
 # Appends every conflict to PENDING_LIST (the MERGE_PLAN "Pending files" list)
 # and describes it in CONTAINERIZED_NOTES.
@@ -996,6 +1028,10 @@ install_containerized_kit() {
                 fi
                 ;;
         esac
+        if kit_path_has_symlink "$target"; then
+            echo "   ⚠️  $target skipped: a path component is a symlink — kit files are written only beneath the project root (replace the link with a real directory and re-run)"
+            continue
+        fi
         dest="$PROJECT_ROOT/$target"
         if [ -e "$dest" ] || [ -L "$dest" ]; then
             if cmp -s "$src" "$dest"; then
@@ -1095,6 +1131,13 @@ else
     else
         echo "❌ Error: Could not find standards directory"
         exit 1
+    fi
+
+    # --- Containerized kit precondition (arch-09 §5, P0) --------------------
+    # Checked before anything is written: a tracked .env / .env.secret cannot be
+    # made safe by this run, so it stops here with the fix instead of installing.
+    if [ "$INSTALL_CONTAINERIZED" = true ]; then
+        abort_if_tracked_secrets
     fi
 
     # --- Pre-1.2 migration (#184) ------------------------------------------
@@ -1605,21 +1648,6 @@ elif [ "$SCRIPT_DIR" != "$PROJECT_ROOT" ]; then
         echo ""
         echo "# Note: .standards.yml should be committed — it is the project's declared config."
     } | dry_run_write "$PROJECT_ROOT/.gitignore"
-fi
-
-# Ignoring a file does not untrack one that is already committed (a placeholder
-# .env.secret): init-workspace.sh would fill it with API keys ready for the next
-# commit. It refuses to overwrite a file it did not write, and never runs git
-# itself; this is the host-side check that explains why and how to fix it.
-if [ "$INSTALL_CONTAINERIZED" = true ] && [ "$CONTAINERIZED_KIT_FOUND" = true ]; then
-    CONTAINERIZED_TRACKED=$(cd "$PROJECT_ROOT" && git ls-files -- .env .env.secret 2>/dev/null | tr '\n' ' ' || true)
-    CONTAINERIZED_TRACKED=$(trim_ws "$CONTAINERIZED_TRACKED")
-    if [ -n "$CONTAINERIZED_TRACKED" ]; then
-        echo "🚨 P0 (arch-09 §5): ${CONTAINERIZED_TRACKED// / and } is tracked by git — ignoring it does not untrack it, and"
-        echo "   scripts/init-workspace.sh refuses to write secrets into a file it did not create. Before running it:"
-        for _t in $CONTAINERIZED_TRACKED; do echo "     git rm --cached $_t && rm $_t"; done
-        echo "   then commit the removal (and rotate anything a committed copy ever held)."
-    fi
 fi
 
 echo ""

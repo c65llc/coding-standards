@@ -62,7 +62,9 @@ This copies the kit in with the `.example` suffix stripped — `Dockerfile.dev`,
 (made executable), `proxy/` (project whitelist, tinyproxy config, entrypoint),
 `.devcontainer/devcontainer.json` and, when Cursor is among the configured
 agents, `.cursor/rules/containerized-dev.mdc` — and adds `.env` and `.env.secret`
-to `.gitignore` (P0, arch-09 §5). It follows the safe-setup rules: an existing
+to `.gitignore` (P0, arch-09 §5); it refuses to run while either file is already
+tracked, since ignoring a tracked file does not untrack it (`git rm --cached`
+first). It follows the safe-setup rules: an existing
 file is never overwritten; one that differs from the kit is kept and the kit's
 version is staged to `.standards-pending/<path>` with a note in `MERGE_PLAN.md`
 (`/merge-standards` or `make merge-standards` walks you through it). Kit files
