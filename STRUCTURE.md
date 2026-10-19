@@ -94,8 +94,8 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │       │       └── copilot-instructions.md
 │       ├── aider/
 │       │   └── .aiderrc
-│       ├── codex/                 # Note: Codex now reads AGENTS.md at project root (.codexrc is deprecated)
-│       │   └── .codexrc
+│       ├── codex/                 # Note: Codex reads AGENTS.md at project root (.codexrc is deprecated)
+│       │   └── base-codex.md      # Assembled into AGENTS.md
 │       └── gemini/                # Note: Gemini CLI uses .gemini/ at root (Gemini CLI convention)
 │           ├── base-gemini.md
 │           └── antigravity.md     # Antigravity Mission Isolation appendix to proc-04

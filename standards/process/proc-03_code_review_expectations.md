@@ -5,7 +5,7 @@
 ### When to Request Review
 
 * **All Changes:** Every PR requires at least one review before merge
-* **Size:** Keep PRs focused (< 400 lines when possible). Split large changes into multiple PRs
+* **Size:** Keep PRs focused (< 400 lines when possible). Split large changes into a stack of focused PRs (see §9, Reviewing a Stack)
 * **Status:** Request review when code is complete, tested, and ready for feedback
 * **CI Passing:** All CI checks must pass before requesting review
 
@@ -28,13 +28,14 @@ loop below and merged green. Follow these steps **in order** for every PR:
    justified and waived by policy). Resolve merge conflicts (a conflicting PR may
    run **no** checks at all — see
    [proc-02_git_version_control_standards.md](./proc-02_git_version_control_standards.md)
-   §11).
+   §12).
 6. **Merge** (squash-and-merge + delete branch is the default) **and clean up**
    the branch/worktree.
 
 This loop is the single most important review convention: *open → automated review
 fires → address all feedback → all checks green → merge.* Never merge on a partial
-pass or before the automated review has run.
+pass or before the automated review has run. For a stack of PRs the loop runs
+once per layer, bottom-up (§9, Reviewing a Stack).
 
 ### Review Assignment
 
@@ -160,6 +161,9 @@ How was this tested?
 - [ ] Documentation updated
 - [ ] Code follows style guide
 - [ ] Self-review completed
+
+## Stack (stacked PRs only)
+Stack: 2 of 3 — #41 → #42 (this PR) → #43
 ```
 
 ### Responding to Feedback
@@ -299,11 +303,45 @@ change**, sequenced deliberately — not a hard line count. The `< 400 lines`
 guideline is a smell threshold, not a law.
 
 * Prefer a chain of small PRs that each merge green over one large PR. When work
-  must be staged, **stack** PRs deliberately and mind the base-branch deletion
-  trap (see [proc-02_git_version_control_standards.md](./proc-02_git_version_control_standards.md)
-  §11 Stacked & Dependent PRs).
+  must be staged, **stack** it with `gh stack` — one task = one stack of focused
+  PRs (see [proc-02_git_version_control_standards.md](./proc-02_git_version_control_standards.md)
+  §11 Stacked PRs, including the when-to-stack thresholds). Dependent PRs that
+  are not linked into a stack must mind the base-branch deletion trap (proc-02
+  §12).
 * Don't over-split into PRs so small they aren't independently meaningful; group
   trivially-coupled changes that must land together.
+
+### Reviewing a Stack
+
+A stacked PR shows only its own layer's diff, with the layers below it as its
+base. Review it as a PR in its own right, in stack order:
+
+* **Review bottom-up; approve and merge bottom-up.** Start at the lowest unmerged
+  layer. An upper layer is reviewed assuming the layers below it as approved
+  context — never approve an upper layer "conditionally on" an unreviewed lower
+  one, and never merge the top to pull unreviewed layers in with it.
+* **Each layer stands on its own.** It builds, its tests pass and coverage holds
+  on its own diff, and the bottom layer is production-safe when it lands alone
+  (behind a flag or dark if the feature is incomplete). "Will fix in the next
+  PR" is **Changes Requested** — unless the fix belongs to a *lower* layer, in
+  which case it goes there and cascades up.
+* **Layer-level vs stack-level comments.** Line comments go on the layer that
+  owns the code. Concerns about the stack's shape — wrong split order, a layer
+  that should be folded or split, a missing migration layer — go on the lowest
+  unmerged PR, prefixed `Stack:`, so the author sees them before anything merges.
+* **Expect cascade rebases.** A fix to a lower layer force-pushes every layer
+  above it (`gh stack rebase` + `gh stack push`). GitHub keeps your approval on a
+  layer whose diff did not change; re-review only the layer whose diff did.
+  Authors must not amend, squash or reorder a layer under review — see
+  [proc-04_agent_workflow_standards.md](./proc-04_agent_workflow_standards.md) §8.
+* **Gates apply per layer.** Required checks, required reviews, CODEOWNERS and
+  the automated reviewer (§7) run on every layer as if it targeted `main`; each
+  layer's findings are resolved before *that* layer merges. A layer's PR body
+  carries its own stack position and its own test evidence.
+* **Merge bottom-up.** The bottom layer, or a contiguous group from the bottom,
+  squash-merges as one commit per layer with each PR title as the commit subject;
+  GitHub retargets the next layer onto `main` automatically (proc-02 §11, Merge a
+  stack).
 
 ### Large PRs
 

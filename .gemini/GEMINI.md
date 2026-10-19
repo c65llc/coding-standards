@@ -15,7 +15,7 @@ The standards cover architecture patterns, language-specific conventions, proces
   - `.cursorrules` for Cursor AI
   - `.github/copilot-instructions.md` for GitHub Copilot
   - `.aiderrc` for Aider (Claude Code)
-  - `.codexrc` for OpenAI Codex
+  - `AGENTS.md` for OpenAI Codex (the legacy `.codexrc` is deprecated)
   - `.gemini/` for Gemini CLI and Antigravity
 - **Testing:** Standards validation via scripts
 - **Deployment:** Git submodule or direct clone distribution

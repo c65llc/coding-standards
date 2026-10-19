@@ -175,7 +175,8 @@ Fixes #456
 
 * **Title:** Follow conventional commit format
 * **Description:** Explain what, why, and how. Include screenshots for UI changes
-* **Size:** Keep PRs focused and reviewable (< 400 lines when possible)
+* **Size:** Keep PRs focused and reviewable (< 400 lines when possible). When a
+  task cannot fit, stack it (§ 11) instead of growing one PR
 * **Tests:** Include tests for new features and bug fixes
 * **Documentation:** Update documentation for user-facing changes
 * **CI:** All CI checks must pass before merge
@@ -552,14 +553,215 @@ As a guideline, a repository should have fewer than **10 active branches** at an
 * **Multiple Remotes:** Consider backup remote for critical projects
 * **Regular Pushes:** Push at least daily during active development
 
-## 11. Stacked & Dependent PRs and Platform Automation Traps
+## 11. Stacked PRs (gh-stack)
 
-When PRs depend on each other or are driven by automation, a handful of
-platform behaviors silently cause lost work or false signals. Encode them.
+The default unit of work is *one task = one branch = one PR*. When a task is too
+large to review as a single PR, the unit becomes **one task = one stack of
+focused PRs**: an ordered chain of branches in which each layer targets the one
+below it and the bottom targets the trunk (`main`). GitHub's stacked pull
+requests — driven locally by the official
+[`gh stack`](https://docs.github.com/en/pull-requests/how-tos/stacked-pull-requests)
+CLI extension — are the preferred way to do this. Each PR shows only its own
+layer's diff, the layers are linked as a stack in the PR UI, and GitHub rebases
+and retargets the remaining layers as the bottom merges.
 
-### Stacked PRs — the base-deletion trap
+### When to stack
 
-When PR **B** is based on PR **A**'s branch (B's base = A's feature branch):
+Stack when **any** of these holds — and split a single PR into a stack rather
+than growing it:
+
+* **Size.** The diff would exceed the PR-size smell threshold in § 4 (~400
+  changed lines, not counting generated files and lockfiles), or it touches more
+  than ~15 files a reviewer has to read rather than skim.
+* **Dependency depth.** The change is an ordered chain (schema → domain → API →
+  UI; standard → linter → docs → agent config) whose lower layers are reviewable
+  on their own.
+* **Separable review.** Different reviewers or CODEOWNERS own different parts, or
+  a risky part (a migration, a security-sensitive path) deserves its own scrutiny
+  instead of hiding inside a feature diff.
+* **Test governance.** One small part would pull disproportionate slow lanes from
+  the routing table ([proc-05 § 5](./proc-05_test_governance.md)); isolating it
+  in its own layer keeps the PR evidence (proc-05 § 8) attributable to the code it
+  covers.
+
+Do **not** stack when:
+
+* The change fits one focused PR under the threshold — a stack of one is a PR.
+* The layers would not be independently meaningful. A layer that only compiles
+  once the next one lands is not a layer.
+* The parts are trivially coupled and must land together to keep `main` green.
+  Stacks merge layer by layer, and every layer must leave `main` working.
+
+Decide to stack at planning time ([proc-01 § 11](./proc-01_documentation_standards.md#11-spec-plan-design-pass-and-verification-documents),
+[proc-04 § 8](./proc-04_agent_workflow_standards.md)), not after an oversized PR
+is open — though splitting an open oversized PR into a stack is allowed, and
+preferred over "review it in sections".
+
+### Layer rules
+
+Every layer is a complete PR in its own right:
+
+* **Stands alone.** With the layers below it as its base, the layer builds, its
+  tests pass and coverage holds (≥ 95 % in modified modules,
+  [proc-03 § 2](./proc-03_code_review_expectations.md)). No "will fix in the
+  next layer".
+* **One concern per layer.** A layer is one architectural slice or one logical
+  step, and its tests ride in the same layer as the code they cover. A refactor
+  that enables the feature is its own lower layer (proc-03 § 9, Refactoring PRs).
+* **Named for traceability.** `<type>/<task>/<NN>-<layer>`, e.g.
+  `feat/user-export/01-schema`, `feat/user-export/02-api`,
+  `feat/user-export/03-ui`. The shared `<task>` segment groups the stack in
+  `git branch` output and the two-digit prefix sorts layers in order. The
+  `type/description` rule from § 1 and § 10 still applies — no opaque IDs.
+* **Conventional title per layer.** Each PR title is its own
+  `<type>(<scope>): <subject>`: under squash-and-merge it becomes that layer's
+  commit subject on `main` (§ 2, "Pull Request Titles Are Commits"). Never keep
+  an auto-generated title (`gh stack submit --auto`) without rewriting it.
+* **Stack position in the body.** Every layer's PR body states its position and
+  the chain: `Stack: 2 of 3 — #41 → #42 (this PR) → #43`. The bottom layer
+  carries `Closes #N`; the layers above carry `Part of #N`, so the issue closes
+  once, when the bottom lands (see § 12, one close-keyword per line).
+
+### Install
+
+```bash
+gh extension install github/gh-stack   # needs gh >= 2.0 and git >= 2.36
+gh extension upgrade stack             # keep it current
+gh skill install github/gh-stack       # optional: the gh-stack agent skill
+```
+
+`gh stack` is the local workflow; the stack itself is a GitHub object.
+Contributors without the extension can still review, approve and merge layers
+in the web UI, and hand-chained PRs can be linked into a stack with
+`gh stack link <branch-or-pr>...` or from the GitHub website.
+
+### Create a stack
+
+Work from one worktree for the whole stack (proc-04 § 8):
+
+```bash
+git worktree add .claude/worktrees/feat-user-export -b feat/user-export/01-schema
+cd .claude/worktrees/feat-user-export
+gh stack init feat/user-export/01-schema   # trunk = default branch; --base <branch> overrides
+# ... commits for the schema layer ...
+gh stack add feat/user-export/02-api       # new branch on top of the current top
+# ... commits for the API layer ...
+gh stack add feat/user-export/03-ui
+# ... commits for the UI layer ...
+gh stack view                              # order, PR links, last commit per layer
+gh stack submit                            # push every branch, one PR per layer, linked as a stack
+```
+
+`submit` opens an editor for every title and body — write the Conventional
+Commit title and the stack-position line there. Each PR's base is the branch
+below it, so reviewers see only that layer. `gh stack push` pushes the branches
+without touching PRs; `gh stack sync` fetches, fast-forwards the trunk, cascades
+the rebase, pushes with `--force-with-lease` and refreshes PR state in one step.
+
+### Update a stack
+
+Fix a layer in the layer that owns the change, then cascade:
+
+```bash
+gh stack checkout feat/user-export/01-schema   # or: gh stack down / up / bottom / top
+# ... fix, commit ...
+gh stack rebase                                # fetch trunk, replay every layer above onto the fix
+gh stack push                                  # --force-with-lease per branch
+```
+
+* After `main` moves, `gh stack rebase` (or `gh stack sync`) rebases the bottom
+  onto the new trunk and cascades. GitHub shows a **Rebase stack** button when a
+  stack goes non-linear; either path works. GitHub keeps approvals on a layer
+  whose diff did not change across the rebase, even with "dismiss stale
+  approvals" on.
+* A conflict pauses the rebase in the conflicted layer: resolve, `git add`, then
+  `gh stack rebase --continue` (or `--abort` to restore every branch). `init`
+  enables `git rerere`, so a resolution replays on the next cascade.
+* Restructure — reorder, fold, insert, rename or drop layers — with
+  `gh stack modify`, then `gh stack submit` to re-sync the PRs. Do it before
+  review starts, not under a reviewer.
+* **Once a layer has a reviewer, append, don't rewrite** (proc-03 § 9,
+  proc-04 § 8): add commits; the cascade rebase is the only history rewrite the
+  reviewer should see.
+
+### Merge a stack
+
+Stacks merge **bottom-up**, and every layer must satisfy the trunk's protection
+rules — required checks, required reviews, CODEOWNERS — as if it targeted `main`
+directly:
+
+```bash
+gh stack merge --squash              # pick how far up to merge from the lowest unmerged layer
+gh stack merge --squash --yes 42     # non-interactive: every unmerged layer up to and including PR #42
+```
+
+* **Squash per layer.** Squash creates one commit per layer on `main`, titled
+  from that layer's PR title, so a stack of three lands as three Conventional
+  Commits in order. Merge commit and rebase are also supported; squash is the
+  default here (§ 4).
+* **Contiguous from the bottom.** Merge the bottom layer alone, or any contiguous
+  group up from the bottom, as one all-or-nothing operation. A mid-stack layer
+  cannot merge without the layers below it.
+* **GitHub retargets the rest.** After a merge the next unmerged layer is rebased
+  to target the trunk and becomes the new bottom — no manual
+  `gh pr edit --base`. The base-deletion trap in § 12 applies to dependent PRs
+  that are *not* linked into a stack.
+* **Merge queues** take the whole stack in order. **Auto-merge is not available
+  for stacked PRs** — merge explicitly once the bottom (or a contiguous group) is
+  green and reviewed.
+* When the whole stack has merged, `gh stack sync --prune` deletes the merged
+  local branches; then remove the worktree as in § 10.
+
+### Review and CI per layer
+
+* **Every layer runs the full PR gate.** Workflows on `pull_request` run for each
+  PR as if it targeted the stack base, so a three-layer stack runs the gate three
+  times, and required checks, reviews and CODEOWNERS are evaluated against the
+  trunk for every layer.
+* **Gate expensive lanes by stack position.** `github.event.pull_request.stack`
+  (present only on stacked PRs) exposes `number`, `size`, `position` (1 = bottom),
+  `base.ref` and `base.sha`. Keep the fast tier (proc-05 § 4) on every layer; run
+  slow lanes only on the top layer
+  (`stack.position == stack.size`, the full change) or the lowest unmerged layer
+  (`stack.base.ref == pull_request.base.ref`, the one about to land).
+* **Each layer's PR body carries its own evidence** (proc-05 § 8): the tested
+  commit and the lanes that ran for *that* layer.
+* **Review is per layer, bottom-up** — reviewer rules in
+  [proc-03 § 9](./proc-03_code_review_expectations.md), "Reviewing a Stack".
+
+### Worked example
+
+Adding a language standard to this repository is one task spanning four
+concerns. As a stack:
+
+| Layer | Branch | PR title | Stands alone because |
+|-------|--------|----------|----------------------|
+| 1 | `feat/lang-14-nim/01-standard` | `feat(standards): add lang-14 Nim standards` | A new document; nothing consumes it yet |
+| 2 | `feat/lang-14-nim/02-linter` | `feat(lint): add Nim checks to lint-standards` | The checks only fire when Nim files exist |
+| 3 | `feat/lang-14-nim/03-docs` | `docs(website): publish the lang-14 Nim page` | The site builds with or without layer 4 |
+| 4 | `feat/lang-14-nim/04-agent-configs` | `feat(agents): regenerate standards lists for lang-14` | Generated from layer 1; `make check-agent-configs` green |
+
+Each layer merges green in order, and a reviewer who only owns the linter reads
+layer 2.
+
+### Without the extension
+
+If `gh stack` is unavailable, chain the PRs by hand — each PR's base is the
+branch below it, the bottom on `main` — and link them into a stack from the
+GitHub website (or have a teammate run `gh stack link`). Dependent PRs that are
+never linked get none of GitHub's automatic retargeting: read § 12 before
+merging the bottom.
+
+## 12. Dependent PRs and Platform Automation Traps
+
+When PRs depend on each other without being linked into a stack, or are driven
+by automation, a handful of platform behaviors silently cause lost work or false
+signals. Encode them.
+
+### Hand-chained dependent PRs — the base-deletion trap
+
+When PR **B** is based on PR **A**'s branch (B's base = A's feature branch) and
+the two are **not** linked as a GitHub stack (§ 11):
 
 * Merging **A** with delete-branch (`gh pr merge A --squash --delete-branch`)
   **closes B** — the host does *not* auto-retarget B to mainline, and B cannot be
