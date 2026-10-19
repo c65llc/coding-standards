@@ -3261,6 +3261,22 @@ out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct5c" 2>/dev/null || true)
 if echo "$out" | grep -q '^WARN changelog-tags.*Cargo.toml version 0.1.4.*0.1.5' && ! echo "$out" | grep -q 'package.json version'; then pass; else
     fail "expected WARN naming only Cargo.toml, got: $out"; fi
 
+echo -n "Test 207c: changelog-tags reads a quoted outer key on an inline TOML table (\"package\" = { … } / 'project' = { … })... "
+ct5d=$(make_project "ct-manifest-inline-quoted")
+write_changelog "$ct5d/CHANGELOG.md" "## [2.0.0] - 2026-06-01"
+tag_all "$ct5d" v2.0.0
+printf '"package" = { name = "demo", "version" = "1.2.3", edition = "2021" }\n' > "$ct5d/Cargo.toml"       # basic-quoted outer key
+printf "'project' = { name = 'demo', 'version' = '1.2.4' }\n" > "$ct5d/pyproject.toml"                       # literal-quoted outer key
+out=$(bash "$CHECKS/common/changelog-tags.sh" "$ct5d" 2>/dev/null || true)
+ct5e=$(make_project "ct-manifest-inline-bare")
+write_changelog "$ct5e/CHANGELOG.md" "## [2.0.0] - 2026-06-01"
+tag_all "$ct5e" v2.0.0
+printf 'package = { name = "demo", version = "2.0.0" }\nrust-version = "1.85"\n' > "$ct5e/Cargo.toml"          # bare key still read; rust-version ignored
+out_ok=$(bash "$CHECKS/common/changelog-tags.sh" "$ct5e" 2>/dev/null || true)
+if echo "$out" | grep -q '^WARN changelog-tags.*Cargo.toml version 1.2.3.*2.0.0' && echo "$out" | grep -q 'pyproject.toml version 1.2.4' \
+   && echo "$out_ok" | grep -q '^PASS changelog-tags'; then pass; else
+    fail "quoted: $out | bare: $out_ok"; fi
+
 echo -n "Test 208: changelog-tags FAILs closed when .standards.yml declares a missing release.changelog... "
 ct6=$(make_project "ct-declared-missing")
 printf 'version: 1\nrelease:\n  changelog: docs/CHANGES.md\n' > "$ct6/.standards.yml"

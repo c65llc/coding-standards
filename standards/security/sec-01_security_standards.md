@@ -366,8 +366,9 @@ override path around it.
    and a stable marker `dep-age-follow-up-for-pr-<n>` so a rerun finds the
    existing issue instead of opening a duplicate. `Due:` (24 h) is the review:
    the approver — the author of the approval comment for the merged head,
-   recorded in the issue and immutable — comments that the advisory still
-   stands and the version shows no yank or new advisory so far. `Matures:` (72 h) is the close condition:
+   frozen at merge in the workflow's own comment on the PR — comments that
+   the advisory still stands and the version shows no yank or new advisory so
+   far. `Matures:` (72 h) is the close condition:
    the version has aged past the gate with no yank or advisory, or it was
    rolled back. Two dates because a one-hour-old emergency pin cannot be
    confirmed mature at the 24 h mark. The split is deliberate: the gate's
@@ -392,10 +393,13 @@ override path around it.
    closed at or after `Matures:` by anyone other than the approver, or one
    closed before `Matures:` without a `Rolled back:` comment from the
    approver posted by the close. Deadlines are recomputed from the PR's
-   `mergedAt` and the approver from the approval comment for the merged
-   head, so editing the issue body or reassigning it changes nothing; a
-   forgotten, late or prematurely closed follow-up surfaces on its own and
-   stays red until it is reopened or the approver records the rollback.
+   `mergedAt`, and the approver is read from the record the merge-time job
+   froze in its own comment on the PR, so editing the issue body or
+   reassigning it changes nothing. Roster membership is judged at the merge,
+   not nightly, so a lead who later rotates off `DEP_AGE_APPROVERS` does not
+   turn every follow-up they approved red. A forgotten, late or prematurely
+   closed follow-up surfaces on its own and stays red until it is reopened or
+   the approver records the rollback.
 
 ```yaml
 # .github/workflows/dep-age-gate.yml (excerpt) — the gate, on the PR.
@@ -571,20 +575,12 @@ jobs:
         run: |
           APPROVERS=$(printf '%s' "$APPROVERS" | tr -d '[:space:]')
           marker="dep-age-follow-up-for-pr-$PR"
-          # Idempotency: an existing follow-up is one THIS workflow created —
-          # author filter `app/github-actions`, marker in the body, any state,
-          # any label (a label removed in triage still counts). An issue a
-          # third party opened with a guessed marker does not suppress ours.
-          # Fail CLOSED if the lookup itself fails (auth, rate limit, outage):
-          # an empty result from an error must not read as "already exists".
-          existing=$(gh issue list --repo "$REPO" --state all \
-            --search "$marker in:body author:app/github-actions" --json number --jq 'length') \
-            || { echo "could not query existing follow-ups; refusing to guess — rerun this job"; exit 1; }
-          case "$existing" in ''|*[!0-9]*) echo "unexpected lookup result '$existing'"; exit 1 ;; esac
-          [ "$existing" -eq 0 ] || { echo "follow-up for #$PR already exists (marker $marker)"; exit 0; }
           # The approver of record is the author of the approval comment for
           # the MERGED head, posted before the merge — the same test the gate
           # applied, so a label or body change after the fact cannot alter it.
+          # Judged against the roster AS OF THE MERGE and frozen in this
+          # workflow's own PR comment (below); the nightly audit reads it from
+          # there and never re-judges a past approval against a later roster.
           approver=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --slurp \
             | jq -r --arg sha "$HEAD_SHA" --arg list ",$APPROVERS," --arg author "$AUTHOR" --arg merged "$MERGED_AT" \
                 '[.[][] | select((.body | test("^Dep-age approved: " + $sha + "([[:space:]]|$)"))
@@ -592,25 +588,56 @@ jobs:
                                  and .user.login != $author and .created_at <= $merged)] | last | .user.login // empty') \
             || { echo "could not read PR comments; refusing to guess"; exit 1; }
           [ -n "$approver" ] || { echo "no pre-merge 'Dep-age approved: $HEAD_SHA' comment by a listed approver on #$PR; refusing to open a follow-up without an approver"; exit 1; }
-          # Every override line goes into the issue: each bypassed version
-          # gets its own yank/advisory review, not just the first.
-          overrides=$(printf '%s\n' "$BODY" | sed -n 's/^Dep-age override:[[:space:]]*/- /p')
-          count=$(printf '%s\n' "$overrides" | grep -c .)
-          first=$(printf '%s\n' "$overrides" | head -1 | sed 's/^- //; s/[[:space:]].*//')
-          title="dep-age follow-up: $first"; [ "$count" -le 1 ] || title="$title (+$((count - 1)) more)"
-          due=$(date -u -d "$MERGED_AT + 24 hours" +%Y-%m-%dT%H:%M:%SZ)      # GNU date (ubuntu runner)
-          matures=$(date -u -d "$MERGED_AT + 72 hours" +%Y-%m-%dT%H:%M:%SZ)  # same format as the API's timestamps
-          # `gh issue create --label` only applies an existing label; --force makes this idempotent.
-          gh label create dep-age-follow-up --repo "$REPO" --color D93F0B --force \
-            --description "Dependency age-gate override awaiting its follow-up (sec-01 §5)"
-          issue_url=$(gh issue create --repo "$REPO" --label dep-age-follow-up --assignee "$approver" \
-            --title "$title" \
-            --body "$(printf '%s\nApprover: @%s\n\nOverrides honored (review each):\n%s\n\nDue: %s — 24 h review: the approver comments, starting with "Reviewed:", that for each override the advisory still stands and the version shows no yank or new advisory so far.\nMatures: %s — 72 h after merge at %s: confirm no yank or advisory and close, or roll back and close with an approver comment starting "Rolled back:".\nPR: %s\n(The audit recomputes Due/Matures from the PR merge time and takes the approver from the approval comment for the merged head; editing these lines changes nothing.)\n' "$marker" "$approver" "$overrides" "$due" "$matures" "$MERGED_AT" "$PR_URL")")
+          # Idempotency: an existing follow-up is one THIS workflow created —
+          # author filter `app/github-actions`, the marker as a whole line of
+          # the body (so pr-12 does not match pr-123), any state, any label (a
+          # label removed in triage still counts). An issue a third party
+          # opened with a guessed marker does not suppress ours. Fail CLOSED if
+          # the lookup itself fails (auth, rate limit, outage): an empty result
+          # from an error must not read as "already exists". A rerun does NOT
+          # stop here: the PR-side link below is re-asserted, so a run that
+          # created the issue but failed to post the link is repaired by
+          # rerunning it instead of leaving the audit red for good.
+          existing=$(gh issue list --repo "$REPO" --state all \
+              --search "$marker in:body author:app/github-actions" --json number,body \
+            | jq -r --arg marker "$marker" '[.[] | select(.body | split("\n") | index($marker)) | .number] | min // empty') \
+            || { echo "could not query existing follow-ups; refusing to guess — rerun this job"; exit 1; }
+          case "$existing" in *[!0-9]*) echo "unexpected lookup result '$existing'"; exit 1 ;; esac
+          if [ -n "$existing" ]; then
+            issue="$existing"
+            echo "follow-up for #$PR already exists: #$issue (marker $marker); checking its PR-side link"
+          else
+            # Every override line goes into the issue: each bypassed version
+            # gets its own yank/advisory review, not just the first.
+            overrides=$(printf '%s\n' "$BODY" | sed -n 's/^Dep-age override:[[:space:]]*/- /p')
+            count=$(printf '%s\n' "$overrides" | grep -c .)
+            first=$(printf '%s\n' "$overrides" | head -1 | sed 's/^- //; s/[[:space:]].*//')
+            title="dep-age follow-up: $first"; [ "$count" -le 1 ] || title="$title (+$((count - 1)) more)"
+            due=$(date -u -d "$MERGED_AT + 24 hours" +%Y-%m-%dT%H:%M:%SZ)      # GNU date (ubuntu runner)
+            matures=$(date -u -d "$MERGED_AT + 72 hours" +%Y-%m-%dT%H:%M:%SZ)  # same format as the API's timestamps
+            # `gh issue create --label` only applies an existing label; --force makes this idempotent.
+            gh label create dep-age-follow-up --repo "$REPO" --color D93F0B --force \
+              --description "Dependency age-gate override awaiting its follow-up (sec-01 §5)"
+            issue_url=$(gh issue create --repo "$REPO" --label dep-age-follow-up --assignee "$approver" \
+              --title "$title" \
+              --body "$(printf '%s\nApprover: @%s\n\nOverrides honored (review each):\n%s\n\nDue: %s — 24 h review: the approver comments, starting with "Reviewed:", that for each override the advisory still stands and the version shows no yank or new advisory so far.\nMatures: %s — 72 h after merge at %s: confirm no yank or advisory and close, or roll back and close with an approver comment starting "Rolled back:".\nPR: %s\n(The audit recomputes Due/Matures from the PR merge time and takes the approver from the record this workflow froze in its own comment on that PR; editing these lines changes nothing.)\n' "$marker" "$approver" "$overrides" "$due" "$matures" "$MERGED_AT" "$PR_URL")")
+            issue="${issue_url##*/}"
+          fi
           # Cross-reference from the PR side, authored by the workflow: the
           # audit accepts an issue as PR #N's follow-up only when PR #N carries
-          # this bot comment naming it. Triage access cannot edit others'
-          # comments, so re-pointing the issue's marker cannot forge the link.
-          gh pr comment "$PR" --repo "$REPO" --body "dep-age-follow-up: ${issue_url##*/}"
+          # this bot comment naming it, and takes the approver of record from
+          # it. Triage access cannot edit others' comments, so re-pointing the
+          # issue's marker cannot forge the link and editing the issue cannot
+          # change the approver. The audit matches this exact text —
+          # `dep-age-follow-up: #<issue> approved-by @<login>` — so the two
+          # workflows must agree on it. Posted once: a rerun that finds the
+          # comment already there leaves it alone.
+          link="dep-age-follow-up: #$issue approved-by @$approver"
+          linked=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --slurp \
+            | jq -r --arg n "$issue" '[.[][] | select(.user.login == "github-actions[bot]") | .body
+                                        | capture("^dep-age-follow-up: #" + $n + " approved-by @(?<a>[A-Za-z0-9-]+)$") | .a] | length') \
+            || { echo "could not read PR comments; rerun this job"; exit 1; }
+          [ "$linked" -gt 0 ] || gh pr comment "$PR" --repo "$REPO" --body "$link"
 ```
 
 ```yaml
@@ -632,14 +659,12 @@ jobs:
     permissions:
       contents: read
       issues: read
-      pull-requests: read   # mergedAt, head SHA and the approval comments of the originating PR
+      pull-requests: read   # mergedAt, head SHA, the follow-up job's own comment and the approval comment on the originating PR
     steps:
       - env:
           REPO: ${{ github.repository }}
-          APPROVERS: ${{ vars.DEP_AGE_APPROVERS }}  # the same list the gate checks
           GH_TOKEN: ${{ github.token }}
         run: |
-          APPROVERS=$(printf '%s' "$APPROVERS" | tr -d '[:space:]')
           now=$(date -u +%Y-%m-%dT%H:%M:%SZ); rc=0
           # Only follow-ups THIS workflow created (same author filter as the
           # creation step): a stranger's issue with a guessed marker is not audited.
@@ -660,34 +685,42 @@ jobs:
               --jq '{state, closedAt, body, cs: [.comments[] | {a: .author.login, t: .createdAt, b: .body}]}' > "issue.json"
             # Deadlines and approver come from IMMUTABLE data, not the editable
             # issue body: the PR number is in the marker; its mergedAt and head
-            # SHA are fixed; the approver is the author of the pre-merge
-            # `Dep-age approved: <head sha>` comment — the same test the gate
-            # and the follow-up job applied, re-run here against the current
-            # approver list in case it changed.
+            # SHA are fixed; the approver is the one the follow-up job froze in
+            # its own comment on the PR, judged against `DEP_AGE_APPROVERS` as
+            # it stood at the merge. The live roster is NOT consulted here: a
+            # lead who rotates off it does not turn every follow-up they
+            # approved red after the fact.
             pr=$(jq -r .body issue.json | sed -n 's/^dep-age-follow-up-for-pr-\([0-9]*\)$/\1/p' | head -1)
+            [ -n "$pr" ] || { echo "::error::#$number carries no dep-age-follow-up-for-pr-<n> marker line; restore it"; rc=1; continue; }
             # One checked call for all three facts: a failed lookup aborts this
             # issue's evaluation as an error instead of leaving fields empty.
             pr_meta=$(gh pr view "$pr" --repo "$REPO" --json mergedAt,author,headRefOid --jq '(.mergedAt // "") + " " + (.author.login // "") + " " + (.headRefOid // "")') \
               || { echo "::error::#$number: could not read PR #$pr (mergedAt/author/head)"; rc=1; continue; }
             read -r merged_at author head_sha <<< "$pr_meta"
-            approver=$(gh api "repos/$REPO/issues/$pr/comments" --paginate --slurp \
-              | jq -r --arg sha "$head_sha" --arg list ",$APPROVERS," --arg author "$author" --arg merged "$merged_at" \
-                  '[.[][] | select((.body | test("^Dep-age approved: " + $sha + "([[:space:]]|$)"))
-                                   and (.user.login as $u | ($list | index("," + $u + ",")) != null)
-                                   and .user.login != $author and .created_at <= $merged)] | last | .user.login // empty') \
-              || { echo "::error::#$number: could not read PR #$pr comments"; rc=1; continue; }
-            [ -n "$pr" ] && [ -n "$merged_at" ] && [ -n "$head_sha" ] && [ -n "$approver" ] \
-              || { echo "::error::#$number cannot be tied to a merged PR with a pre-merge approval comment by a listed approver (marker/mergedAt/head/approver missing)"; rc=1; continue; }
+            [ -n "$merged_at" ] && [ -n "$head_sha" ] \
+              || { echo "::error::#$number names PR #$pr, which is not a merged PR (mergedAt/head missing)"; rc=1; continue; }
             # The marker line is editable; the workflow's own comment on the PR
             # is not (triage access cannot edit others' comments). The issue is
             # PR #N's follow-up only if PR #N carries a github-actions comment
-            # `dep-age-follow-up: <this issue number>`. A re-pointed marker
-            # fails this and is flagged rather than audited against the wrong PR.
-            linked=$(gh api "repos/$REPO/issues/$pr/comments" --paginate --slurp \
-              | jq -r --arg n "$number" '[.[][] | select(.user.login == "github-actions[bot]" and (.body | test("^dep-age-follow-up: #" + $n + "$")))] | length') \
+            # `dep-age-follow-up: #<this issue number> approved-by @<login>` —
+            # the exact text the follow-up job posts — and that login is the
+            # approver of record. A re-pointed marker fails this and is flagged
+            # rather than audited against the wrong PR. One fetch serves both
+            # this lookup and the cross-check that follows.
+            gh api "repos/$REPO/issues/$pr/comments" --paginate --slurp > "pr-comments.json" \
               || { echo "::error::#$number: could not read PR #$pr comments"; rc=1; continue; }
-            if [ "$linked" -eq 0 ]; then
-              echo "::error::#$number claims PR #$pr but that PR carries no workflow comment naming #$number — the marker was edited; restore it"; rc=1; continue; fi
+            approver=$(jq -r --arg n "$number" '[.[][] | select(.user.login == "github-actions[bot]") | .body
+                                                   | capture("^dep-age-follow-up: #" + $n + " approved-by @(?<a>[A-Za-z0-9-]+)$") | .a] | first // empty' pr-comments.json)
+            [ -n "$approver" ] \
+              || { echo "::error::#$number claims PR #$pr but that PR carries no workflow comment naming #$number — the marker was edited; restore it"; rc=1; continue; }
+            # Cross-check the frozen record against the evidence it was made
+            # from: the approver posted `Dep-age approved: <merged head>` before
+            # the merge and is not the PR author. Roster membership was settled
+            # at the merge and is deliberately not re-tested.
+            jq -e --arg sha "$head_sha" --arg who "$approver" --arg author "$author" --arg merged "$merged_at" \
+                '[.[][] | select((.body | test("^Dep-age approved: " + $sha + "([[:space:]]|$)"))
+                                 and .user.login == $who and $who != $author and .created_at <= $merged)] | length > 0' pr-comments.json > /dev/null \
+              || { echo "::error::#$number: frozen approver @$approver has no pre-merge 'Dep-age approved: $head_sha' comment on PR #$pr"; rc=1; continue; }
             due=$(date -u -d "$merged_at + 24 hours" +%Y-%m-%dT%H:%M:%SZ)
             matures=$(date -u -d "$merged_at + 72 hours" +%Y-%m-%dT%H:%M:%SZ)
             state=$(jq -r .state issue.json); closed_at=$(jq -r '.closedAt // ""' issue.json)
