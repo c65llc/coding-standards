@@ -129,11 +129,17 @@ egress and allow only what the project needs.
     `*`, any other glob, `*.com`, a URL) stops it from starting. The dev container
     waits for it to be healthy, so a broken allow-list halts the environment
     rather than opening it;
-  * everything the **host executes or builds from** — setup scripts the IDE runs
-    on the host, the compose file and Dockerfiles, the proxy directory — is
-    mounted **read-only** into the dev container. An agent that could edit those
-    would gain host code execution or a wider proxy on the next start; the
-    whitelists are therefore changed on the host, by a human;
+  * **container writes, host executes:** everything the host executes, builds
+    from or interpolates — setup scripts the IDE runs on the host, the compose
+    file and Dockerfiles, `.env` (a value there can become a bind-mount source),
+    the proxy directory, and the git configuration every host-side `git` command
+    reads (`.git/config`, `.git/hooks`, `.git/modules`, `.gitmodules`) — is
+    mounted **read-only** into the dev container, and no host-side setup script
+    runs `git` or any other tool that reads container-writable configuration. An
+    agent that could edit those would gain host code execution or a wider proxy
+    on the next start; whitelists, git config and submodules are therefore
+    changed on the host, by a human, while the agent keeps committing, fetching
+    and pushing with the config it was given;
   * the engine must not forward external DNS from the internal network (Moby
     CVE-2024-29018 did, with a loopback host resolver): a forwarded lookup leaks
     data in the name without any connection. Require a patched engine and prove
@@ -176,7 +182,7 @@ baked into an image layer or committed.
   is a P0 incident. Prefer values passed at runtime over any value in a build arg —
   build args are visible in image history.
 * Keep the setup idempotent: re-running `init-workspace.sh` refreshes identity and
-  submodules without clobbering local edits, and skips cleanly when a variable is
+  secrets without clobbering local edits, and skips cleanly when a variable is
   absent rather than writing an empty secret.
 
 ## 6. YOLO Permissions Are Earned by the Sandbox, Not Assumed

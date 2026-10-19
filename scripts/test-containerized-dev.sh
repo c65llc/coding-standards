@@ -397,18 +397,72 @@ else
     fail "egress allow-list mount is not a long-syntax read-only bind with create_host_path: false"
 fi
 
-# Test 17c: everything the host executes or builds from is read-only inside dev
-echo -n "Test 17c: compose — scripts/, proxy/, .devcontainer/, Dockerfiles and compose file are :ro in dev... "
+# Test 17c: everything the host executes, builds from or interpolates is read-only inside dev
+echo -n "Test 17c: compose — host-consumed paths (scripts, proxy, infra files, .env*, git config) are :ro in dev... "
 missing=""
 for m in './scripts:/workspace/scripts:ro' './proxy:/workspace/proxy:ro' './.devcontainer:/workspace/.devcontainer:ro' \
          './docker-compose.dev.yml:/workspace/docker-compose.dev.yml:ro' './Dockerfile.dev:/workspace/Dockerfile.dev:ro' \
          './Dockerfile.egress:/workspace/Dockerfile.egress:ro'; do
     grep -qF -- "- $m" "$COMPOSE" || missing="$missing $m"
 done
+# Paths that may legitimately be absent use the long syntax so a missing source
+# fails `compose up` rather than mounting an empty directory.
+for p in '.env' '.env.secret' '.git/config' '.git/hooks' '.git/modules' '.gitmodules'; do
+    grep -qF -- "{ type: bind, source: ./$p, target: /workspace/$p, read_only: true, bind: { create_host_path: false } }" "$COMPOSE" \
+        || missing="$missing $p"
+done
 if [ -z "$missing" ] && grep -q '^      - .:/workspace:cached$' "$COMPOSE"; then
     pass
 else
     fail "dev service is missing read-only mounts:$missing"
+fi
+
+# ---------- init-workspace.sh (runs on the host — must not trust the workspace) ----------
+
+INIT_WORKSPACE="$KIT/scripts/init-workspace.sh.example"
+
+# Test 21: the host-side script never invokes git (container-writable .git/config would run code on the host)
+echo -n "Test 21: init-workspace — runs no git command (host-side script, container-writable .git)... "
+# git in command position only: line start (optionally after if/!/then/do), or after
+# && || ; | or $( — not inside a quoted message that merely mentions it.
+GIT_CMD_RE='^[[:space:]]*((if|then|do|else|!)[[:space:]]+)*git([[:space:]]|$)|(\$\(|&&|\|\||;|\|)[[:space:]]*git([[:space:]]|$)'
+if ! grep -v '^[[:space:]]*#' "$INIT_WORKSPACE" | grep -E "$GIT_CMD_RE" >/dev/null; then
+    pass
+else
+    fail "init-workspace.sh invokes git: $(grep -v '^[[:space:]]*#' "$INIT_WORKSPACE" | grep -nE "$GIT_CMD_RE")"
+fi
+
+# run_init <dir> → runs init-workspace.sh in a fixture with no .git directory and no secrets in env
+run_init() {
+    (cd "$1" && env -u SSH_AUTH_SOCK -u ANTHROPIC_API_KEY -u GOOGLE_API_KEY -u GEMINI_API_KEY -u GH_TOKEN \
+        ./scripts/init-workspace.sh 2>&1)
+}
+
+# Test 22: refuses to write .env.secret unless .gitignore lists it — judged from .gitignore, not from git
+echo -n "Test 22: init-workspace — refuses when .gitignore lacks .env.secret, without consulting git... "
+d="$TMP_BASE/iw22"; mkdir -p "$d/scripts"
+cp "$INIT_WORKSPACE" "$d/scripts/init-workspace.sh"; chmod +x "$d/scripts/init-workspace.sh"
+printf 'node_modules/\n' > "$d/.gitignore"
+out="$(run_init "$d")"; rc=$?
+if [ "$rc" -ne 0 ] && echo "$out" | grep -q 'Refusing to write .env.secret' && [ ! -f "$d/.env.secret" ]; then
+    pass
+else
+    fail "rc=$rc; output: $out"
+fi
+
+# Test 23: with the README's .gitignore lines it writes .env (identity) and .env.secret, and touches no submodule
+echo -n "Test 23: init-workspace — with .env.secret ignored, writes .env + 0600 .env.secret and leaves submodules alone... "
+d="$TMP_BASE/iw23"; mkdir -p "$d/scripts"
+cp "$INIT_WORKSPACE" "$d/scripts/init-workspace.sh"; chmod +x "$d/scripts/init-workspace.sh"
+printf '\n.env\n.env.secret\nproxy/allowlist.generated.txt\n' > "$d/.gitignore"
+printf '[submodule "coding_standards"]\n\tpath = coding_standards\n\turl = https://example.invalid/x.git\n' > "$d/.gitmodules"
+out="$(run_init "$d")"; rc=$?
+mode="$(stat -c '%a' "$d/.env.secret" 2>/dev/null || stat -f '%Lp' "$d/.env.secret" 2>/dev/null)"
+if [ "$rc" -eq 0 ] && grep -q "^HOST_UID=$(id -u)$" "$d/.env" && [ "$mode" = "600" ] \
+    && echo "$out" | grep -q 'git submodule update --init --recursive' && [ ! -d "$d/coding_standards" ]; then
+    pass
+else
+    fail "rc=$rc; mode=$mode; output: $out; env: $(cat "$d/.env" 2>/dev/null)"
 fi
 
 # Test 18: compose sets both cases of the proxy variables and tunnels SSH

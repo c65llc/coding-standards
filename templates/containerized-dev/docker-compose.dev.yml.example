@@ -22,10 +22,12 @@
 #     run on the Docker host network, outside devnet. Only running containers
 #     are contained. Keep build steps to pinned, reviewed sources (§3).
 #   * It does NOT mount the host Docker socket. See the opt-in block below.
-#   * Files the host executes or builds from (scripts/, proxy/, .devcontainer/,
-#     the Dockerfiles, this file) are mounted READ-ONLY into dev, so an agent
-#     inside cannot plant host code or widen the proxy for the next start.
-#     The whitelists are therefore edited on the host, by a human.
+#   * Files the host executes, builds from or interpolates (scripts/, proxy/,
+#     .devcontainer/, the Dockerfiles, this file, .env, .env.secret, .git/config,
+#     .git/hooks, .git/modules, .gitmodules) are mounted READ-ONLY into dev, so
+#     an agent inside cannot plant host code, redirect a bind mount or widen the
+#     proxy for the next start. Whitelists, git config and submodules are
+#     therefore edited on the host, by a human. See the dev volumes block.
 
 services:
   # --- Egress proxy sidecar — the enforcing layer (arch-09 §4) ---------------
@@ -100,20 +102,43 @@ services:
     volumes:
       # The codebase — the single source of truth both humans and agents edit.
       - .:/workspace:cached
-      # Everything the HOST executes or builds from is read-only inside the
-      # sandbox. devcontainer.json's initializeCommand runs scripts/*.sh on the
-      # host, `compose up --build` reads the Dockerfiles and this file, and the
-      # egress sidecar enforces proxy/. If the agent could edit any of these from
-      # inside, it would gain host code execution (or an open proxy) on the next
-      # start — defeating the kit. Nested read-only binds override the writable
-      # workspace mount for just these paths; a container without CAP_SYS_ADMIN
-      # cannot remount them, sudo or not. Edit infrastructure on the host.
+      # CONTAINER WRITES, HOST EXECUTES. Everything the host executes, builds
+      # from, or interpolates is read-only inside the sandbox; if the agent could
+      # edit any of it, it would gain host code execution (or an open proxy) on
+      # the next start — defeating the kit. Complete list of host-consumed paths:
+      #   scripts/              run on the host by devcontainer.json initializeCommand
+      #   .devcontainer/        read by VS Code on the host
+      #   docker-compose.dev.yml, Dockerfile.dev, Dockerfile.egress
+      #                         read by `compose up --build` on the host
+      #   .env                  interpolated by compose: SSH_AUTH_SOCK becomes a
+      #                         bind-mount SOURCE below (pointing it at the Docker
+      #                         socket would mount it), HOST_UID/GID are build args
+      #   .env.secret           env_file — written by init-workspace.sh on the host
+      #   proxy/                enforced by the egress sidecar
+      #   .git/config, .git/hooks, .git/modules, .gitmodules
+      #                         read by EVERY git command you run on the host:
+      #                         core.hooksPath/fsmonitor/sshCommand, aliases,
+      #                         includes, filters, submodule URLs. No kit script
+      #                         runs git on the host, but you do.
+      # Nested read-only binds override the writable workspace mount for just
+      # these paths; a container without CAP_SYS_ADMIN cannot remount them, sudo
+      # or not. Edit infrastructure, git config and submodules on the host. The
+      # agent can still commit, branch, fetch and push with the existing config.
+      # Long syntax + create_host_path: false so a missing path fails `up`
+      # instead of silently becoming an empty directory.
       - ./scripts:/workspace/scripts:ro
       - ./proxy:/workspace/proxy:ro
       - ./.devcontainer:/workspace/.devcontainer:ro
       - ./docker-compose.dev.yml:/workspace/docker-compose.dev.yml:ro
       - ./Dockerfile.dev:/workspace/Dockerfile.dev:ro
       - ./Dockerfile.egress:/workspace/Dockerfile.egress:ro
+      - { type: bind, source: ./.env, target: /workspace/.env, read_only: true, bind: { create_host_path: false } }
+      - { type: bind, source: ./.env.secret, target: /workspace/.env.secret, read_only: true, bind: { create_host_path: false } }
+      - { type: bind, source: ./.git/config, target: /workspace/.git/config, read_only: true, bind: { create_host_path: false } }
+      - { type: bind, source: ./.git/hooks, target: /workspace/.git/hooks, read_only: true, bind: { create_host_path: false } }
+      # Remove the next two lines if the standards are not vendored as a submodule.
+      - { type: bind, source: ./.git/modules, target: /workspace/.git/modules, read_only: true, bind: { create_host_path: false } }
+      - { type: bind, source: ./.gitmodules, target: /workspace/.gitmodules, read_only: true, bind: { create_host_path: false } }
       # Git identity, read-only (arch-09 §5).
       - ${HOME}/.gitconfig:/home/developer/.gitconfig:ro
       # SSH agent forwarding for git push (arch-09 §5). On macOS/Linux the host

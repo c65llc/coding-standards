@@ -10,8 +10,9 @@
   // compose starts: the egress sidecar refuses to start without the allow-list,
   // and the dev service waits for the sidecar to be healthy (arch-09 §4).
   // This runs ON THE HOST. It is safe only because docker-compose.dev.yml mounts
-  // scripts/ (and this directory) read-only into the dev container, so nothing
-  // the agent can write is ever executed here. Keep both facts in step.
+  // scripts/ (and this directory) read-only into the dev container, and because
+  // neither script runs git or anything else that reads container-writable
+  // configuration (.git/config, .gitmodules). Keep all three facts in step.
   "initializeCommand": "./scripts/init-workspace.sh && ./scripts/setup-proxy.sh",
   "customizations": {
     "vscode": {
