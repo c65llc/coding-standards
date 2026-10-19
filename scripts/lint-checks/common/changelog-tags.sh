@@ -200,10 +200,11 @@ manifest_version_cargo_toml() {
     # Bare or quoted key (`version = …` / `"version" = …`); strval strips to the `=`.
     (sect == "[package]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
     (sect == "" && /^[[:space:]]*"?package"?\."?version"?[[:space:]]*=/) { if (pkg == "") pkg = strval($0); next }
-    # Inline table: `package = { name = "app", version = "1.2.3" }`. The key
-    # must start at a table boundary (`{` or `,`) so `rust-version = "1.85"`
-    # is not mistaken for it.
-    sect == "" && /^[[:space:]]*package[[:space:]]*=[[:space:]]*\{/ {
+    # Inline table: `package = { name = "app", version = "1.2.3" }`; the
+    # outer key may be quoted too (`"package" = { … }`, or literal-quoted
+    # before normalisation). The version key must start at a table boundary
+    # (`{` or `,`) so `rust-version = "1.85"` is not mistaken for it.
+    sect == "" && /^[[:space:]]*"?package"?[[:space:]]*=[[:space:]]*\{/ {
         line = $0
         if (match(line, /[{,][[:space:]]*"?version"?[[:space:]]*=[[:space:]]*("[^"]*"|'"'"'[^'"'"']*'"'"')/)) {
             if (pkg == "") pkg = strval(substr(line, RSTART, RLENGTH))
@@ -238,8 +239,9 @@ manifest_version_pyproject() {
     /^[[:space:]]*\[/ { sect = $0; sub(/#.*$/, "", sect); gsub(/[[:space:]"]/, "", sect); next }
     (sect == "[project]" && /^[[:space:]]*"?version"?[[:space:]]*=/) ||
     (sect == "" && /^[[:space:]]*"?project"?\."?version"?[[:space:]]*=/) { if (proj == "") proj = strval($0); next }
-    # Inline table: `project = { name = "demo", version = "1.2.3" }`.
-    sect == "" && /^[[:space:]]*project[[:space:]]*=[[:space:]]*\{/ {
+    # Inline table: `project = { name = "demo", version = "1.2.3" }`; the
+    # outer key may be quoted too (`"project" = { … }`).
+    sect == "" && /^[[:space:]]*"?project"?[[:space:]]*=[[:space:]]*\{/ {
         line = $0
         if (match(line, /[{,][[:space:]]*"?version"?[[:space:]]*=[[:space:]]*("[^"]*"|'"'"'[^'"'"']*'"'"')/)) {
             if (proj == "") proj = strval(substr(line, RSTART, RLENGTH))
