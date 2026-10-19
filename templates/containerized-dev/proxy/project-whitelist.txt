@@ -4,8 +4,11 @@
 # global baseline in coding_standards/templates/containerized-dev/network/global-whitelist.txt.
 #
 # Keep this MINIMAL. Every host added here widens the exfiltration surface.
-# One host per line. '#' comments and blank lines are ignored.
+# One host per line. '#' comments and blank lines are ignored. A leading "*."
+# allows every subdomain; prefer exact hosts. Re-run scripts/setup-proxy.sh and
+# `docker compose -f docker-compose.dev.yml restart egress` after editing.
 
 # Examples — delete these and add your own:
 # my-private-registry.internal.example.com
 # api.internal.example.com
+# *.storage.example.com

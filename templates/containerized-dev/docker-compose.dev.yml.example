@@ -3,23 +3,48 @@
 # Usage:
 #   ./scripts/init-workspace.sh      # writes .env + .env.secret, forwards identity
 #   ./scripts/setup-proxy.sh         # generates proxy/allowlist.generated.txt
-#   docker compose -f docker-compose.dev.yml up -d
+#   docker compose -f docker-compose.dev.yml up -d --build
 #   docker compose -f docker-compose.dev.yml exec dev bash
 #
 # The image is disposable; only the mounted workspace and named caches persist.
 #
-# WHAT THIS FILE DOES NOT DO (read before trusting the sandbox):
-#   * It does NOT block outbound traffic. The *_PROXY variables below only tell
-#     well-behaved tools which proxy to use; a process that ignores them (or
-#     unsets them) reaches the internet directly. Deny-by-default egress
-#     (arch-09 §4) requires an enforcing layer this template does not ship yet:
-#     an egress-proxy sidecar on an `internal: true` network, or host firewall
-#     rules. Tracked in c65llc/coding-standards#157. Until you add one, the
-#     Definition of Done deny-path check in the README will FAIL (the unlisted
-#     host will be reachable) and the environment is not arch-09 compliant.
+# WHAT THIS FILE ENFORCES — and what it does not (read before trusting it):
+#   * Deny-by-default egress (arch-09 §4). `devnet` is `internal: true`, so the
+#     dev container has NO route to the internet. Its only way out is the
+#     `egress` sidecar (tinyproxy), which sits on both networks and refuses
+#     every destination that is not in proxy/allowlist.generated.txt. The
+#     *_PROXY variables tell tools where the proxy is; a process that ignores
+#     or unsets them does not "go direct" — it gets no connection at all.
+#     Verify it anyway: the README's deny-path check is the only evidence.
+#   * The allow-list is matched by destination HOST. TLS is not inspected, so
+#     an allowed host is allowed for every path on it.
+#   * It does NOT filter traffic during `docker compose build`: image builds
+#     run on the Docker host network, outside devnet. Only running containers
+#     are contained. Keep build steps to pinned, reviewed sources (§3).
 #   * It does NOT mount the host Docker socket. See the opt-in block below.
 
 services:
+  # --- Egress proxy sidecar — the enforcing layer (arch-09 §4) ---------------
+  # The ONLY member of devnet that also has internet access. Fails closed: it
+  # refuses to start without a readable, non-empty allow-list, and `dev` waits
+  # for it to be healthy, so a broken allow-list stops the environment instead
+  # of silently opening it.
+  egress:
+    build:
+      context: .
+      dockerfile: Dockerfile.egress
+    volumes:
+      # Static proxy config (deny by default, whole-host globs, CONNECT 443/22).
+      - ./proxy/tinyproxy.conf:/etc/tinyproxy/tinyproxy.conf:ro
+      # GENERATED allow-list from scripts/setup-proxy.sh, read once at start-up.
+      # After regenerating: docker compose -f docker-compose.dev.yml restart egress
+      - ./proxy/allowlist.generated.txt:/etc/tinyproxy/filter:ro
+    # NO `ports:` here, ever. Publishing 3128 would make this an open proxy for
+    # anything that can reach your host; only devnet members may use it.
+    networks:
+      - devnet
+      - egressnet
+
   dev:
     build:
       context: .
@@ -29,22 +54,34 @@ services:
         USER_UID: ${HOST_UID:-1000}
         USER_GID: ${HOST_GID:-1000}
     working_dir: /workspace
+    # Nothing starts until the proxy is up and has loaded a valid allow-list.
+    depends_on:
+      egress:
+        condition: service_healthy
     # Runtime secrets injected from a git-ignored file (arch-09 §5).
     # init-workspace.sh generates .env.secret; never commit it.
     env_file:
       - .env.secret
     environment:
-      # Egress proxy pointer (arch-09 §4). setup-proxy.sh writes EGRESS_PROXY and
-      # NO_PROXY into .env. Both cases are set because tools disagree on which
-      # they honour (curl/wget/pip read lowercase; many Go/Java tools read
-      # uppercase). NO_PROXY is a proxy *bypass* list for loopback/internal
-      # addresses, not an allow-list — see setup-proxy.sh.
-      HTTP_PROXY: ${EGRESS_PROXY:-}
-      HTTPS_PROXY: ${EGRESS_PROXY:-}
-      NO_PROXY: ${NO_PROXY:-}
-      http_proxy: ${EGRESS_PROXY:-}
-      https_proxy: ${EGRESS_PROXY:-}
-      no_proxy: ${NO_PROXY:-}
+      # Egress proxy pointer (arch-09 §4). setup-proxy.sh writes EGRESS_PROXY,
+      # EGRESS_PROXY_HOST/PORT and NO_PROXY into .env. Both cases are set because
+      # tools disagree on which they honour (curl/wget/pip/git read lowercase;
+      # many Go/Java tools, including gh, read uppercase).
+      HTTP_PROXY: ${EGRESS_PROXY:-http://egress:3128}
+      HTTPS_PROXY: ${EGRESS_PROXY:-http://egress:3128}
+      http_proxy: ${EGRESS_PROXY:-http://egress:3128}
+      https_proxy: ${EGRESS_PROXY:-http://egress:3128}
+      # NO_PROXY is a *bypass* list, not an allow-list: hosts tools talk to
+      # directly on devnet instead of via the proxy — loopback and in-compose
+      # service names (e.g. "db,redis"). Listing a public host here does not
+      # bypass containment (devnet has no route to it); it just breaks that host.
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1}
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1,::1}
+      # SSH has no proxy variables. Tunnel git-over-SSH through the proxy with a
+      # CONNECT ProxyCommand (netcat-openbsd in Dockerfile.dev; ConnectPort 22 in
+      # proxy/tinyproxy.conf). The git host still has to be on the allow-list.
+      GIT_SSH_COMMAND: >-
+        ssh -o ProxyCommand='nc -X connect -x ${EGRESS_PROXY_HOST:-egress}:${EGRESS_PROXY_PORT:-3128} %h %p'
       # SSH agent forwarding for git push (arch-09 §5).
       SSH_AUTH_SOCK: /ssh-agent
     volumes:
@@ -63,11 +100,12 @@ services:
       # Mounting /var/run/docker.sock hands the container root-equivalent control
       # of the host Docker daemon: anything running inside (including an agent
       # with --dangerously-skip-permissions) can start a privileged container,
-      # mount the host filesystem and escape the sandbox. This defeats the
-      # "cannot contaminate the host" guarantee in arch-09 and should be enabled
-      # only when you have explicitly accepted that trade-off (for example, a
-      # project whose task IS building images). Prefer a rootless Docker-in-
-      # Docker sidecar or a remote builder if you need `docker` inside.
+      # mount the host filesystem and escape the sandbox — and, since the daemon
+      # is outside devnet, reach the internet without the proxy. This defeats
+      # the "cannot contaminate the host" guarantee in arch-09 and should be
+      # enabled only when you have explicitly accepted that trade-off (for
+      # example, a project whose task IS building images). Prefer a rootless
+      # Docker-in-Docker sidecar or a remote builder if you need `docker` inside.
       # - /var/run/docker.sock:/var/run/docker.sock
     # Keep the container alive so agents/IDEs can exec into it.
     command: sleep infinity
@@ -81,13 +119,15 @@ services:
       - devnet
 
 networks:
-  # A plain bridge network has unrestricted internet access. To enforce
-  # deny-by-default egress, change this to `internal: true` and add an
-  # egress-proxy sidecar attached to BOTH devnet and a second, non-internal
-  # network; the proxy consumes proxy/allowlist.generated.txt and refuses every
-  # other destination (#157). Only then does the *_PROXY pointer above become an
-  # actual control instead of a hint.
+  # Internal: members can talk to each other but have NO route outside the
+  # network — not to the internet, not to the host LAN. This, not the *_PROXY
+  # variables, is what makes egress deny-by-default. Add other project services
+  # (database, cache) here and list them in NO_PROXY so tools reach them directly.
   devnet:
+    driver: bridge
+    internal: true
+  # The only network with internet access. Only the egress sidecar is on it.
+  egressnet:
     driver: bridge
 
 volumes:

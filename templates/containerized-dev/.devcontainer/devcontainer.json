@@ -6,8 +6,10 @@
   "service": "dev",
   "workspaceFolder": "/workspace",
   "remoteUser": "developer",
-  // Run identity + secret injection before the container is used.
-  "initializeCommand": "./scripts/init-workspace.sh",
+  // Run identity + secret injection, then generate the egress allow-list, before
+  // compose starts: the egress sidecar refuses to start without the allow-list,
+  // and the dev service waits for the sidecar to be healthy (arch-09 §4).
+  "initializeCommand": "./scripts/init-workspace.sh && ./scripts/setup-proxy.sh",
   "customizations": {
     "vscode": {
       "extensions": [

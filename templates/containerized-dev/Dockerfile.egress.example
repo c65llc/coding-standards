@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1
+#
+# Egress-proxy sidecar for the containerized agent-dev environment (arch-09 §4).
+#
+# A minimal tinyproxy image. It is the ONLY route from the dev container to the
+# internet: `devnet` is an `internal: true` network, this container sits on both
+# devnet and the outside network, and tinyproxy refuses every destination that
+# is not in the generated allow-list (FilterDefaultDeny). Config and allow-list
+# are bind-mounted read-only from proxy/ — see docker-compose.dev.yml.
+#
+# Pin the base image by digest and the package by version in real use (§3).
+FROM alpine:3.21
+
+RUN apk add --no-cache tinyproxy
+
+# Fail-closed entrypoint: refuses to start without a readable, non-empty
+# allow-list, and doubles as the HEALTHCHECK command.
+COPY proxy/egress-entrypoint.sh /usr/local/bin/egress-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/egress-entrypoint.sh
+
+# Run unprivileged from the start (the package creates this account). Port 3128
+# is unprivileged, so tinyproxy never needs root.
+USER tinyproxy
+
+EXPOSE 3128
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/usr/local/bin/egress-entrypoint.sh", "healthcheck"]
+
+ENTRYPOINT ["/usr/local/bin/egress-entrypoint.sh"]

@@ -2,19 +2,21 @@
 # setup-proxy.sh — generate the dual-layer egress allow-list (arch-09 §4).
 #
 # Combines a GLOBAL allow-list (shipped with the standards) and a LOCAL project
-# allow-list into one de-duplicated artifact that an ENFORCING egress proxy
-# consumes, and records the proxy pointer (EGRESS_PROXY) plus a loopback-only
-# NO_PROXY bypass in .env for docker compose.
+# allow-list into one validated, de-duplicated artifact that the ENFORCING
+# egress-proxy sidecar consumes directly, and records the proxy pointer plus a
+# loopback-only NO_PROXY bypass in .env for docker compose.
 #
-# WHAT THIS SCRIPT DOES NOT DO: it does not block any traffic. Writing a proxy
-# URL into HTTP(S)_PROXY only tells cooperative tools where to send requests;
-# a process that ignores or unsets the variable still reaches the internet
-# directly. Deny-by-default egress exists only once an enforcing proxy or
-# firewall consumes the generated allow-list and the container network is
-# `internal: true` (see docker-compose.dev.yml). That sidecar is tracked in
-# c65llc/coding-standards#157. Always verify the deny path with a real request.
+# How enforcement works (see docker-compose.dev.yml):
+#   * the dev container lives on an `internal: true` network with NO route to the
+#     internet; its only way out is the `egress` sidecar (tinyproxy);
+#   * the sidecar mounts the file this script writes as its filter and refuses
+#     every destination that is not on it (deny by default);
+#   * HTTP(S)_PROXY only tell cooperative tools where the proxy is. A process that
+#     ignores or unsets them does not "go direct" — it gets no connection at all.
 #
 # The generated output is an artifact — edit the source lists, never the output.
+# tinyproxy reads the filter once at start-up, so after re-running this script:
+#   docker compose -f docker-compose.dev.yml restart egress
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,19 +25,25 @@ cd "$ROOT_DIR"
 # Global layer ships with the standards submodule; local layer is project-owned.
 GLOBAL_LIST="${GLOBAL_WHITELIST:-coding_standards/templates/containerized-dev/network/global-whitelist.txt}"
 LOCAL_LIST="${LOCAL_WHITELIST:-proxy/project-whitelist.txt}"
-# The combined allow-list the enforcing proxy reads. Git-ignore it or commit it;
-# either way, regenerate rather than edit.
+# The combined allow-list. docker-compose.dev.yml bind-mounts it into the egress
+# sidecar at /etc/tinyproxy/filter, where tinyproxy applies it as whole-host
+# glob patterns (FilterType fnmatch). Git-ignore it or commit it; either way,
+# regenerate rather than edit.
 OUTPUT_LIST="${ALLOWLIST_OUTPUT:-proxy/allowlist.generated.txt}"
 ENV_FILE="$ROOT_DIR/.env"
-# Address the container reaches the egress proxy on. Default assumes a sidecar
-# proxy service named "egress" on port 3128.
+# Address the container reaches the egress proxy on. Default is the sidecar
+# service named "egress" on port 3128. Point this at a different proxy only if
+# that proxy is reachable from the internal network AND enforces an allow-list.
 EGRESS_PROXY="${EGRESS_PROXY:-http://egress:3128}"
 # NO_PROXY is a proxy *bypass* list: destinations tools talk to directly instead
-# of via the proxy. It is NOT an allow-list. Keep it to loopback and in-compose
-# service names so nothing on the public internet bypasses the proxy.
+# of via the proxy. It is NOT an allow-list and it is NOT enforcement. Keep it
+# to loopback plus in-compose service names (e.g. "db,redis") that the dev
+# container must reach directly on devnet. A public host listed here does not
+# bypass containment — the internal network has no route to it — it just fails.
 NO_PROXY_VALUE="${NO_PROXY_BYPASS:-localhost,127.0.0.1,::1}"
 
 warn() { printf '\033[1;33m%s\033[0m\n' "$1" >&2; }
+err()  { printf '\033[0;31m%s\033[0m\n' "$1" >&2; }
 green() { printf '\033[0;32m%s\033[0m\n' "$1"; }
 
 # Read a whitelist file, dropping comments and blank lines (arch-09 §4).
@@ -51,9 +59,22 @@ combined="$(
 )"
 
 if [ -z "$combined" ]; then
-    warn "Combined allow-list is EMPTY. Refusing to generate an open egress config."
-    warn "Populate $GLOBAL_LIST and/or $LOCAL_LIST first."
+    err "Combined allow-list is EMPTY. Refusing to generate an egress config."
+    err "Populate $GLOBAL_LIST and/or $LOCAL_LIST first."
     exit 1
+fi
+
+# --- 0. Validate every entry before it becomes a proxy rule -------------------
+# The sidecar matches entries as whole-host globs, so anything other than a
+# hostname (optionally prefixed with "*." for all subdomains) is rejected here
+# rather than becoming an accidental catch-all. In particular a bare "*", a URL,
+# or a path would widen the allow-list far beyond one host.
+invalid="$(echo "$combined" | grep -v -E '^(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$' || true)"
+if [ -n "$invalid" ]; then
+    err "Invalid allow-list entries (one host per line, optional leading '*.'):"
+    while IFS= read -r line; do printf '  %s\n' "$line" >&2; done <<< "$invalid"
+    err "Fix the source list(s); nothing was written."
+    exit 2
 fi
 
 # --- 1. Allow-list artifact for the enforcing proxy ---------------------------
@@ -62,25 +83,39 @@ mkdir -p "$(dirname "$OUTPUT_LIST")"
     echo "# GENERATED by scripts/setup-proxy.sh — do not edit. Sources:"
     echo "#   $GLOBAL_LIST"
     echo "#   $LOCAL_LIST"
+    echo "# Consumed verbatim by the egress sidecar (tinyproxy FilterType fnmatch,"
+    echo "# FilterDefaultDeny): one whole-host glob per line, everything else denied."
     echo "$combined"
 } > "$OUTPUT_LIST"
 
 # --- 2. Managed keys in .env (idempotent, preserves every other line) ---------
+# EGRESS_PROXY_HOST/PORT are derived from EGRESS_PROXY for tools that cannot take
+# a URL (the SSH ProxyCommand in GIT_SSH_COMMAND, docker-compose.dev.yml).
+proxy_hostport="${EGRESS_PROXY#*://}"
+proxy_hostport="${proxy_hostport%%/*}"
+proxy_host="${proxy_hostport%%:*}"
+proxy_port="${proxy_hostport##*:}"
+[ "$proxy_port" != "$proxy_hostport" ] || proxy_port=3128
+
 touch "$ENV_FILE"
 tmp="$(mktemp)"
-grep -v -E '^(NO_PROXY|EGRESS_PROXY)=' "$ENV_FILE" > "$tmp" || true
+grep -v -E '^(NO_PROXY|EGRESS_PROXY|EGRESS_PROXY_HOST|EGRESS_PROXY_PORT)=' "$ENV_FILE" > "$tmp" || true
 {
     echo "EGRESS_PROXY=${EGRESS_PROXY}"
+    echo "EGRESS_PROXY_HOST=${proxy_host}"
+    echo "EGRESS_PROXY_PORT=${proxy_port}"
     echo "NO_PROXY=${NO_PROXY_VALUE}"
 } >> "$tmp"
 mv "$tmp" "$ENV_FILE"
 
 count="$(echo "$combined" | wc -l | tr -d ' ')"
 green "Allow-list: ${count} host(s) written to ${OUTPUT_LIST}."
-echo "Wrote EGRESS_PROXY=${EGRESS_PROXY} and NO_PROXY=${NO_PROXY_VALUE} to .env."
+echo "Wrote EGRESS_PROXY=${EGRESS_PROXY} (host ${proxy_host}, port ${proxy_port}) and NO_PROXY=${NO_PROXY_VALUE} to .env."
 echo
-warn "This script does not enforce anything by itself."
-warn "Point an enforcing egress proxy (or firewall) at ${OUTPUT_LIST}, make the"
-warn "container network internal, then verify the deny path (arch-09 §4):"
-echo "  docker compose -f docker-compose.dev.yml exec dev curl -sS --max-time 5 https://malicious-site.com"
-echo "  (MUST fail; if it succeeds, egress is NOT contained — see #157)"
+echo "Apply and verify (arch-09 §4 — the deny path is the evidence, not this file):"
+echo "  docker compose -f docker-compose.dev.yml up -d --build        # first run"
+echo "  docker compose -f docker-compose.dev.yml restart egress       # after re-running this script"
+echo "  docker compose -f docker-compose.dev.yml exec dev curl -sS --max-time 10 https://malicious-site.com"
+echo "  (MUST fail with a 403 from the proxy; if it succeeds, egress is NOT contained)"
+printf '%s\n' "  docker compose -f docker-compose.dev.yml exec dev curl -sS --max-time 10 -o /dev/null -w '%{http_code}\n' https://api.github.com"
+echo "  (MUST print 200)"

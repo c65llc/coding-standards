@@ -4,7 +4,11 @@
 # standards. Projects add their own entries in proxy/project-whitelist.txt — do
 # not edit this file per-project.
 #
-# One host per line. '#' comments and blank lines are ignored.
+# One host per line. '#' comments and blank lines are ignored. A leading "*."
+# allows every subdomain (e.g. "*.example.com"); nothing else is a wildcard.
+# setup-proxy.sh rejects anything that is not a hostname, so a stray "*" or a
+# URL can never widen the list, and the egress sidecar matches entries as
+# whole-host globs: "github.com" does not match "github.com.evil.example".
 
 # --- AI provider APIs -----------------------------------------------------
 api.anthropic.com
@@ -30,3 +34,5 @@ cli.github.com
 download.docker.com
 archive.ubuntu.com
 security.ubuntu.com
+# arm64 hosts (Apple Silicon, Graviton) pull Ubuntu packages from ports.*
+ports.ubuntu.com
