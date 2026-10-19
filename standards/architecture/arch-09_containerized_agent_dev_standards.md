@@ -193,9 +193,13 @@ Zero-friction autonomy is configured **inside the container image only**, and is
 paired with a rollback mechanism.
 
 * Pre-configure the agents for unattended execution in the dev image: e.g. a
-  `claude` shim that passes `--dangerously-skip-permissions`, and Gemini's
-  `terminalPolicy: "auto"` in `.gemini/settings.json`. These settings MUST live in
-  the container, never in a developer's host dotfiles.
+  `claude` shim that passes `--dangerously-skip-permissions` and a `gemini` shim
+  that passes `--yolo` (Gemini CLI's "auto-approve all tools" mode, also
+  `--approval-mode yolo`), plus an auto terminal policy for IDE agents such as
+  Antigravity. Use shims on `PATH`, not shell aliases: an alias only expands in an
+  interactive shell, so `docker compose exec dev claude -p …`, an IDE task or a
+  script would still prompt. These settings MUST live in the container, never in
+  a developer's host dotfiles.
 * **Checkpoint before autonomy.** Agents MUST be instructed (via the assembled
   agent config) to create a git checkpoint — a commit or a `git stash` /
   `wip/` branch — before running a batch of unattended, destructive-capable

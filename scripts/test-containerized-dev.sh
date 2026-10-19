@@ -369,6 +369,25 @@ else
     fail "Dockerfile.egress no longer bakes the config in, or the compose file mounts it"
 fi
 
+# Test 16c: the dev image pins what the validation run proved (arch-09 §3) and ships
+# YOLO shims on PATH rather than a bash alias (arch-09 §6, #158)
+echo -n "Test 16c: Dockerfile.dev — base pinned by digest, Node 24, CLIs pinned by version, claude/gemini shims in /usr/local/bin, no alias... "
+DOCKERFILE_DEV="$KIT/Dockerfile.dev.example"
+errs=""
+grep -qE '^FROM ubuntu:24\.04@sha256:[0-9a-f]{64}$' "$DOCKERFILE_DEV" || errs="$errs base-not-pinned"
+grep -qE '^FROM alpine:3\.21@sha256:[0-9a-f]{64}$' "$KIT/Dockerfile.egress.example" || errs="$errs egress-base-not-pinned"
+grep -q '^ARG NODE_MAJOR=24$' "$DOCKERFILE_DEV" || errs="$errs node-major"
+grep -qE '^ARG CLAUDE_CODE_VERSION=[0-9]+\.[0-9]+\.[0-9]+$' "$DOCKERFILE_DEV" || errs="$errs claude-version-arg"
+grep -qE '^ARG GEMINI_CLI_VERSION=[0-9]+\.[0-9]+\.[0-9]+$' "$DOCKERFILE_DEV" || errs="$errs gemini-version-arg"
+grep -qF '"@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"' "$DOCKERFILE_DEV" || errs="$errs claude-not-pinned"
+grep -qF '"@google/gemini-cli@${GEMINI_CLI_VERSION}"' "$DOCKERFILE_DEV" || errs="$errs gemini-not-pinned"
+grep -qF -- '--dangerously-skip-permissions "$@"' "$DOCKERFILE_DEV" || errs="$errs claude-shim"
+grep -qF -- '--yolo "$@"' "$DOCKERFILE_DEV" || errs="$errs gemini-shim"
+grep -qF '> /usr/local/bin/claude' "$DOCKERFILE_DEV" || errs="$errs claude-shim-path"
+grep -qF '> /usr/local/bin/gemini' "$DOCKERFILE_DEV" || errs="$errs gemini-shim-path"
+grep -q 'alias claude=' "$DOCKERFILE_DEV" && errs="$errs alias-still-present"
+if [ -z "$errs" ]; then pass; else fail "Dockerfile contract lost:$errs"; fi
+
 # Test 17: compose puts dev on an internal network and only egress on the outside one
 echo -n "Test 17: compose — devnet is internal, egress bridges both networks, dev depends on it... "
 if grep -q '^  egress:$' "$COMPOSE" \
@@ -502,17 +521,49 @@ else
     fail "rc=$rc; mode=$mode; output: $out; env: $(cat "$d/.env" 2>/dev/null)"
 fi
 
+# Test 24: on macOS the host socket path does not exist inside the Docker VM, so the
+# VM-side forwarded path is written instead; Linux keeps the host path (#158)
+echo -n "Test 24: init-workspace — SSH_AGENT_SOURCE: Darwin writes the VM-side path (overridable), Linux keeps the host socket; stale SSH_AUTH_SOCK key retired... "
+d="$TMP_BASE/iw24"; mkdir -p "$d/scripts" "$d/bin"
+cp "$INIT_WORKSPACE" "$d/scripts/init-workspace.sh"; chmod +x "$d/scripts/init-workspace.sh"
+printf '.env\n.env.secret\n' > "$d/.gitignore"
+# A real unix socket for the -S test; uname is stubbed through PATH to pick the platform branch.
+sock="$d/agent.sock"
+if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1])' "$sock" 2>/dev/null
+fi
+if [ ! -S "$sock" ]; then
+    echo "skipped (python3 unavailable to create a unix socket)"
+else
+    errs=""
+    printf '#!/bin/sh\necho Darwin\n' > "$d/bin/uname"; chmod +x "$d/bin/uname"
+    out="$(cd "$d" && PATH="$d/bin:$PATH" SSH_AUTH_SOCK="$sock" env -u ANTHROPIC_API_KEY -u GOOGLE_API_KEY -u GEMINI_API_KEY -u GH_TOKEN ./scripts/init-workspace.sh 2>&1)"
+    grep -q '^SSH_AGENT_SOURCE=/run/host-services/ssh-auth.sock$' "$d/.env" || errs="$errs darwin-default(env: $(grep SSH_A "$d/.env"))"
+    echo "$out" | grep -q 'colima start --ssh-agent' || errs="$errs darwin-hint-missing"
+    (cd "$d" && PATH="$d/bin:$PATH" SSH_AUTH_SOCK="$sock" CONTAINER_SSH_AUTH_SOCK=/custom/agent.sock \
+        env -u ANTHROPIC_API_KEY -u GOOGLE_API_KEY -u GEMINI_API_KEY -u GH_TOKEN ./scripts/init-workspace.sh >/dev/null 2>&1)
+    grep -q '^SSH_AGENT_SOURCE=/custom/agent.sock$' "$d/.env" || errs="$errs darwin-override"
+    [ "$(grep -c '^SSH_AGENT_SOURCE=' "$d/.env")" -eq 1 ] || errs="$errs duplicate-key"; grep -q '^SSH_AUTH_SOCK=' "$d/.env" && errs="$errs stale-key-kept"
+    printf '#!/bin/sh\necho Linux\n' > "$d/bin/uname"
+    (cd "$d" && PATH="$d/bin:$PATH" SSH_AUTH_SOCK="$sock" env -u ANTHROPIC_API_KEY -u GOOGLE_API_KEY -u GEMINI_API_KEY -u GH_TOKEN ./scripts/init-workspace.sh >/dev/null 2>&1)
+    grep -qF "SSH_AGENT_SOURCE=$sock" "$d/.env" || errs="$errs linux-host-path(env: $(grep SSH_A "$d/.env"))"
+    if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+fi
+
 # Test 18: compose sets both cases of the proxy variables and tunnels SSH
-echo -n "Test 18: compose — upper+lower-case proxy vars, NO_PROXY bypass only, SSH tunnelled... "
+echo -n "Test 18: compose — upper+lower-case proxy vars, NODE_USE_ENV_PROXY, NO_PROXY bypass only, SSH tunnelled... "
 # shellcheck disable=SC2016  # the ${...} below are literal compose interpolations to match
 if grep -q '^      HTTP_PROXY: ' "$COMPOSE" && grep -q '^      HTTPS_PROXY: ' "$COMPOSE" \
     && grep -q '^      http_proxy: ' "$COMPOSE" && grep -q '^      https_proxy: ' "$COMPOSE" \
+    && grep -q '^      NODE_USE_ENV_PROXY: "1"$' "$COMPOSE" \
     && grep -q '^      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1}$' "$COMPOSE" \
     && grep -q '^      no_proxy: ${NO_PROXY:-localhost,127.0.0.1,::1}$' "$COMPOSE" \
-    && grep -q "nc -X connect -x \${EGRESS_PROXY_HOST:-egress}:\${EGRESS_PROXY_PORT:-3128} %h %p" "$COMPOSE"; then
+    && grep -q "nc -X connect -x \${EGRESS_PROXY_HOST:-egress}:\${EGRESS_PROXY_PORT:-3128} %h %p" "$COMPOSE" \
+    && grep -q '^      - ${SSH_AGENT_SOURCE:-/dev/null}:/ssh-agent$' "$COMPOSE" \
+    && ! grep -qE '\$\{SSH_AUTH_SOCK[^}]*\}:/ssh-agent' "$COMPOSE"; then
     pass
 else
-    fail "compose template lost a proxy variable or the SSH ProxyCommand"
+    fail "compose template lost a proxy variable, NODE_USE_ENV_PROXY, the SSH ProxyCommand, or mounts the agent from the overridable SSH_AUTH_SOCK"
 fi
 
 # Test 19: the egress service never publishes a port

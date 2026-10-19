@@ -3,20 +3,35 @@
 # Development image for containerized AI-agent work (arch-09).
 # Full toolchain + AI CLIs + a non-root sudo user. NEVER deployed to production.
 #
-# Pin the base to a specific patch tag in real use; the LTS/major floats here are
-# for readability. See arch-09 §3 (reproducibility).
-FROM ubuntu:24.04
+# Pinned (arch-09 §3) to the combination validated end to end on 2026-10-19 —
+# see docs/guides/containerized-dev-validation.md in the standards repo. The
+# digest is the multi-arch manifest list for ubuntu:24.04 (24.04.5 LTS at the
+# time), so amd64 and arm64 hosts build the same release. Move the pins
+# deliberately: bump, rebuild, re-run the Definition of Done, record the result.
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 
 # --- Build-time arguments -------------------------------------------------
 # Match the container user's UID/GID to the host user so bind-mounted files are
 # not root-owned on Linux hosts (arch-09 §2). Override at build time:
 #   docker compose build --build-arg USER_UID=$(id -u) --build-arg USER_GID=$(id -g)
+# On macOS the Docker VM maps bind-mount ownership to the host user anyway; the
+# host GID there (20, "staff") lands on Ubuntu's existing `dialout` group, which
+# is cosmetic — `id` shows gid=20(dialout) and files on the host are still yours.
 ARG USERNAME=developer
 ARG USER_UID=1000
 ARG USER_GID=1000
-ARG NODE_MAJOR=20
+# Node.js 24 is the Active LTS line (Node 20 reached end-of-life in April 2026).
+# It is also the first LTS whose fetch()/undici honour HTTP(S)_PROXY, via the
+# NODE_USE_ENV_PROXY=1 that docker-compose.dev.yml sets — on older majors a
+# plain `node -e 'fetch(...)'` inside devnet fails with EAI_AGAIN.
+ARG NODE_MAJOR=24
 # Must be a version the base image's apt repos carry: Ubuntu 24.04 ships 3.12.
 ARG PYTHON_VERSION=3.12
+# AI CLIs, pinned to the versions validated with the rest of this file. The npm
+# registry keeps every release, so an exact pin is reproducible; bump both
+# together and re-run the Definition of Done.
+ARG CLAUDE_CODE_VERSION=2.1.303
+ARG GEMINI_CLI_VERSION=0.64.0
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
@@ -42,6 +57,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Node.js (LTS) via NodeSource ----------------------------------------
+# Installs the latest release of the NODE_MAJOR line (the NodeSource repo keeps
+# only the current patch); the exact version observed is recorded in the
+# validation guide. Pin `nodejs=<version>-1nodesource1` here if you need the
+# patch level fixed too.
 RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
@@ -70,11 +89,12 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
-# --- AI CLIs (installed globally via npm) ---------------------------------
-# Pin to exact versions in real use.
+# --- AI CLIs (installed globally via npm, exact versions) ------------------
+# Both CLIs implement their own proxy support and read HTTPS_PROXY, so they work
+# from inside devnet; the provider API hosts are on the global whitelist.
 RUN npm install -g \
-        @anthropic-ai/claude-code \
-        @google/gemini-cli
+        "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+        "@google/gemini-cli@${GEMINI_CLI_VERSION}"
 
 # --- Non-root developer user with passwordless sudo (dev sandbox only) ----
 # ubuntu:24.04 ships a stock `ubuntu` account at UID/GID 1000. When it collides
@@ -98,11 +118,22 @@ RUN existing="$(getent passwd "${USER_UID}" | cut -d: -f1)" \
 # --- YOLO agent config, baked into the image ONLY (arch-09 §6) ------------
 # The sandbox is what makes broad permissions safe. These must never live on a
 # developer's host.
-RUN printf '%s\n' \
-        "# Zero-friction agent permissions — safe only inside the sandbox." \
-        "alias claude='claude --dangerously-skip-permissions'" \
-        >> "/home/${USERNAME}/.bashrc" \
-    && chown "${USER_UID}:${USER_GID}" "/home/${USERNAME}/.bashrc"
+#
+# Shims on PATH, not shell aliases: an alias only expands in an interactive
+# bash, so `docker compose exec dev claude -p ...`, an IDE task or a script
+# would still prompt for permissions. /usr/local/bin precedes the npm global
+# bin (/usr/bin) on PATH; each shim execs the real binary, resolved at build
+# time, with the unattended-mode flag prepended. `claude --version` and
+# `gemini --version` still work through the shims.
+RUN set -eu; \
+    real_claude="$(command -v claude)"; real_gemini="$(command -v gemini)"; \
+    # Sanity: a shim must never exec itself (a re-run of this step would).
+    case "$real_claude$real_gemini" in */usr/local/bin/*) echo "shim target is the shim itself" >&2; exit 1 ;; esac; \
+    printf '#!/bin/sh\n# YOLO shim — safe only inside the sandbox (arch-09 §6).\nexec %s --dangerously-skip-permissions "$@"\n' "$real_claude" \
+        > /usr/local/bin/claude; \
+    printf '#!/bin/sh\n# YOLO shim — safe only inside the sandbox (arch-09 §6).\nexec %s --yolo "$@"\n' "$real_gemini" \
+        > /usr/local/bin/gemini; \
+    chmod 0755 /usr/local/bin/claude /usr/local/bin/gemini
 
 # --- OPT-IN: SSH server for Zed headless remote (arch-09 §7) ---------------
 # OFF by default. scripts/bootstrap-zed.sh needs sshd in the container and the
