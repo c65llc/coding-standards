@@ -7,10 +7,11 @@ Gemini CLI, Cursor, Antigravity) broad execution permissions inside a container,
 with the scaffolding needed to bound that container's blast radius — including a
 working deny-by-default egress proxy.
 
-> These are **templates**, not a turnkey product. Copy them into a consumer
-> project, pin tool versions, adapt the language toolchain, and populate the
-> whitelists. Then validate against the Definition of Done in arch-09 §8 —
-> the kit is not arch-09 compliant until that checklist passes on your host.
+> These are **templates**, not a turnkey product. Install them into a consumer
+> project (`.standards/scripts/setup.sh --containerized`), pin tool versions,
+> adapt the language toolchain, and populate the whitelists. Then validate
+> against the Definition of Done in arch-09 §8 — the kit is not arch-09
+> compliant until that checklist passes on your host.
 
 ## What the kit enforces — and what it does not
 
@@ -44,13 +45,37 @@ Be precise about the security posture before trusting it:
 | `proxy/tinyproxy.conf` | Sidecar config, baked into the image: deny by default, whole-host glob matching, CONNECT to 443/22 only, logs to stdout | §4 |
 | `proxy/egress-entrypoint.sh` | Sidecar entrypoint + health check: asserts the deny-by-default config and refuses to start on a missing, empty or malformed allow-list (any glob other than a leading `*.`, single-label wildcards, URLs, upper case) | §4 |
 | `.devcontainer/devcontainer.json` | VS Code Dev Containers integration (runs both setup scripts on the host first; they are read-only in the sandbox) | §7 |
-| `cursorrules.example` | Cursor "run in container" rules | §7 |
+| `cursorrules.example` | Cursor "run in container" rules; installed as `.cursor/rules/containerized-dev.mdc` when Cursor is a configured agent | §7 |
 | `env.secret.example` | Shape of the git-ignored runtime secret file | §5 |
 
 ## Install
 
+From the consumer project root, with the standards installed at `.standards/`
+(the layout `install.sh` and `setup.sh` produce):
+
 ```bash
-# From the consumer project root, with these standards vendored at coding_standards/
+.standards/scripts/setup.sh --containerized            # add --dry-run to preview every write
+```
+
+This copies the kit in with the `.example` suffix stripped — `Dockerfile.dev`,
+`Dockerfile.prod`, `Dockerfile.egress`, `docker-compose.dev.yml`, `scripts/*.sh`
+(made executable), `proxy/` (project whitelist, tinyproxy config, entrypoint),
+`.devcontainer/devcontainer.json` and, when Cursor is among the configured
+agents, `.cursor/rules/containerized-dev.mdc` — and adds `.env` and `.env.secret`
+to `.gitignore` (P0, arch-09 §5). It follows the safe-setup rules: an existing
+file is never overwritten; one that differs from the kit is kept and the kit's
+version is staged to `.standards-pending/<path>` with a note in `MERGE_PLAN.md`
+(`/merge-standards` or `make merge-standards` walks you through it). Kit files
+are yours to adapt, so they are not checksum-tracked and `sync-standards` never
+touches them. The global whitelist (`network/global-whitelist.txt`) stays in the
+standards checkout, where `setup-proxy.sh` reads it: `.standards/` first, then
+`coding_standards/`, or `GLOBAL_WHITELIST=<path>`. Without the flag, `setup.sh`
+only prints how to install the kit.
+
+Installing by hand, with the standards vendored at `coding_standards/`:
+
+```bash
+# From the consumer project root
 cp coding_standards/templates/containerized-dev/Dockerfile.dev.example        Dockerfile.dev
 cp coding_standards/templates/containerized-dev/Dockerfile.prod.example       Dockerfile.prod
 cp coding_standards/templates/containerized-dev/Dockerfile.egress.example     Dockerfile.egress
@@ -193,8 +218,9 @@ directory; the kit assumes a standard clone with the standards as a submodule
   update` fail inside the container with "Read-only file system"; do those on
   the host. `git checkout`/`git pull` inside the container fails the same way if
   the incoming change touches a protected path — pull such changes on the host.
-* The global whitelist lives in the standards submodule (`coding_standards/`),
-  which is *writable* in the container; the entrypoint's validation means an
+* The global whitelist lives in the standards submodule (`.standards/`, or
+  `coding_standards/` when vendored by hand), which is *writable* in the
+  container; the entrypoint's validation means an
   agent editing it can add hostnames but never a catch-all, and the change only
   takes effect after a human re-runs `setup-proxy.sh` on the host and restarts
   the sidecar — review `git diff coding_standards/` before doing so, or mount

@@ -22,8 +22,18 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-# Global layer ships with the standards submodule; local layer is project-owned.
-GLOBAL_LIST="${GLOBAL_WHITELIST:-coding_standards/templates/containerized-dev/network/global-whitelist.txt}"
+# Global layer ships with the standards checkout: .standards/ when the kit was
+# installed by `setup.sh --containerized`, coding_standards/ for a hand-vendored
+# copy; GLOBAL_WHITELIST overrides either. The local layer is project-owned.
+if [ -z "${GLOBAL_WHITELIST:-}" ]; then
+    for _std_dir in .standards coding_standards; do
+        if [ -f "$_std_dir/templates/containerized-dev/network/global-whitelist.txt" ]; then
+            GLOBAL_WHITELIST="$_std_dir/templates/containerized-dev/network/global-whitelist.txt"
+            break
+        fi
+    done
+fi
+GLOBAL_LIST="${GLOBAL_WHITELIST:-.standards/templates/containerized-dev/network/global-whitelist.txt}"
 LOCAL_LIST="${LOCAL_WHITELIST:-proxy/project-whitelist.txt}"
 # The combined allow-list. docker-compose.dev.yml bind-mounts it into the egress
 # sidecar at /etc/tinyproxy/filter, where tinyproxy applies it as whole-host

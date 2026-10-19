@@ -85,7 +85,10 @@ done
 [ "$wrote_any" = true ] || warn "No provider API keys found in the host environment."
 
 # --- 3. Submodules are NOT touched here (see the header) ----------------------
-if [ -f "$ROOT_DIR/.gitmodules" ] && [ ! -e "$ROOT_DIR/coding_standards/templates" ]; then
+# The standards live at .standards/ (setup.sh --containerized) or coding_standards/
+# (hand-vendored); setup-proxy.sh looks in the same two places.
+if [ -f "$ROOT_DIR/.gitmodules" ] && [ ! -e "$ROOT_DIR/.standards/templates" ] \
+   && [ ! -e "$ROOT_DIR/coding_standards/templates" ]; then
     warn "Standards submodule looks uninitialised. On the host, after reviewing .gitmodules:"
     warn "  git submodule update --init --recursive"
 fi

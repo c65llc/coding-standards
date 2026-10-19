@@ -1,5 +1,13 @@
-# Containerized execution rules for Cursor (arch-09 §7).
-# Copy the relevant lines into the project root .cursorrules.
+---
+description: Run every project command inside the Docker dev container (arch-09 §7)
+alwaysApply: true
+---
+
+# Containerized execution rules for Cursor (arch-09 §7)
+
+Installed by `setup.sh --containerized` as `.cursor/rules/containerized-dev.mdc`
+when Cursor is among the configured agents. The bullets can also be pasted into
+the project root `.cursorrules`.
 
 - Always execute terminal commands inside the Docker dev container, e.g.
   `docker compose -f docker-compose.dev.yml exec dev <command>`. Never run

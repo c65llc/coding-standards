@@ -5,23 +5,29 @@
 # by assemble-skills.sh) and surfaced via `make merge-standards`.
 
 # Usage:
-#   write_merge_plan <project_root> <pending_list> <detected_agents> <requested_agents> [migration_notes]
+#   write_merge_plan <project_root> <pending_list> <detected_agents> <requested_agents> [migration_notes] [containerized_notes]
 #
-# pending_list: space-separated basenames staged in .standards-pending/
+# pending_list: space-separated project-relative paths staged in .standards-pending/
+#   (basenames for the root agent configs, nested paths such as
+#   scripts/init-workspace.sh for files the containerized kit ships)
 # detected_agents: space-separated agent names (as emitted by detect_installed_agents)
 # requested_agents: space- or comma-separated (ASSEMBLED_AGENTS_LIST uses commas)
 # migration_notes: newline-separated Markdown bullets from setup.sh --migrate
 #   (#184): what was rewritten or converted, and the removed-standard
 #   references left for a manual decision. Rendered as a Migration section.
+# containerized_notes: newline-separated Markdown bullets from setup.sh
+#   --containerized (#159): the kit files that already existed and differ, kept
+#   in place with the kit's version staged. Rendered as its own section.
 write_merge_plan() {
     local root="$1"
     local pending_list="$2"
     local detected="$3"
     local requested="$4"
     local migration_notes="${5:-}"
+    local containerized_notes="${6:-}"
     local pending_dir="$root/.standards-pending"
 
-    [ -n "$pending_list" ] || [ -n "$migration_notes" ] || return 0
+    [ -n "$pending_list" ] || [ -n "$migration_notes" ] || [ -n "$containerized_notes" ] || return 0
     mkdir -p "$pending_dir"
 
     local plan="$pending_dir/MERGE_PLAN.md"
@@ -30,9 +36,9 @@ write_merge_plan() {
         echo ""
         echo "Generated: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
         echo ""
-        echo "setup.sh detected existing agent configs that differ from the assembled"
-        echo "versions. They have NOT been overwritten. Each pending file is staged here"
-        echo "alongside this plan."
+        echo "setup.sh found existing files (agent configs, or files the containerized"
+        echo "agent-dev kit ships) that differ from the versions it would write. They have"
+        echo "NOT been overwritten. Each pending file is staged here alongside this plan."
         echo ""
         echo "## How to finish"
         echo ""
@@ -64,6 +70,12 @@ write_merge_plan() {
             echo "## Migration (pre-1.2 install, setup.sh --migrate)"
             echo ""
             printf '%s\n' "$migration_notes"
+            echo ""
+        fi
+        if [ -n "$containerized_notes" ]; then
+            echo "## Containerized agent-dev kit (setup.sh --containerized)"
+            echo ""
+            printf '%s\n' "$containerized_notes"
             echo ""
         fi
         echo "## Open questions for your LLM"

@@ -44,6 +44,18 @@ To install for a specific agent only, pass `--agents`. An explicit list installs
 
 Unknown flags are rejected with exit code 2 before anything is written. See the [scripts reference](../reference/scripts.md) for every flag.
 
+#### Optional: containerized agent-dev environment
+
+The starter kit for [arch-09](../../standards/architecture/arch-09_containerized_agent_dev_standards.md) (a disposable Docker dev container with a deny-by-default egress proxy, where AI agents run with broad permissions) is opt-in, like `--workflow`:
+
+```bash
+.standards/scripts/setup.sh --containerized             # add --dry-run to preview
+```
+
+This installs `Dockerfile.dev`, `Dockerfile.prod`, `Dockerfile.egress`, `docker-compose.dev.yml`, `scripts/init-workspace.sh`, `scripts/setup-proxy.sh`, the `bootstrap-*.sh` IDE scripts, `proxy/` and `.devcontainer/devcontainer.json`, with the `.example` suffix stripped and the scripts made executable; when Cursor is among the configured agents it also installs `.cursor/rules/containerized-dev.mdc`. `.env` and `.env.secret` are added to `.gitignore` (the P0 guard from arch-09 §5; `init-workspace.sh` refuses to write secrets until they are). Existing files are never overwritten: one that differs from the kit is kept and the kit's version is staged to `.standards-pending/<path>` with a note in `MERGE_PLAN.md`. Without the flag, setup only prints how to install the kit.
+
+Then, on the host: adapt `Dockerfile.dev` and `proxy/project-whitelist.txt`, run `./scripts/init-workspace.sh` and `./scripts/setup-proxy.sh`, bring the stack up with `docker compose -f docker-compose.dev.yml up -d --build`, and run the Definition of Done checks in the [kit README](../../templates/containerized-dev/README.md) — the observed deny-path failure on your host is the only evidence of compliance.
+
 #### Commit the changes
 
 ```bash
