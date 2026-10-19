@@ -952,9 +952,20 @@ kit_file_is_script() {
 # and describes it in CONTAINERIZED_NOTES.
 install_containerized_kit() {
     local kit="$1"
-    local rel src target dest pending_target
+    local rel src src_label target dest pending_target compose_tmp=""
     echo ""
     echo "🐳 Installing the containerized agent-dev kit (arch-09)..."
+    # docker-compose.dev.yml bind-mounts ./.git/modules and ./.gitmodules with
+    # create_host_path: false (a missing source fails `compose up` instead of
+    # mounting an empty directory). A project without a submodule gets the file
+    # without those two mounts; the comparison below uses the same trimmed
+    # content, so a re-run still reports it as installed.
+    CONTAINERIZED_OMIT_SUBMODULE_MOUNTS=false
+    if [ ! -f "$PROJECT_ROOT/.gitmodules" ] || [ ! -d "$PROJECT_ROOT/.git/modules" ]; then
+        CONTAINERIZED_OMIT_SUBMODULE_MOUNTS=true
+        echo "   ℹ️  No git submodule in this project: docker-compose.dev.yml is installed without the ./.git/modules and ./.gitmodules"
+        echo "      bind mounts (create_host_path: false would fail \`compose up\`). Vendor the standards as a submodule and re-run to restore them."
+    fi
     CONTAINERIZED_SNAPSHOT_GLOBAL=false
     if [ ! -f "$PROJECT_ROOT/.standards/templates/containerized-dev/network/global-whitelist.txt" ] \
        && [ ! -f "$PROJECT_ROOT/coding_standards/templates/containerized-dev/network/global-whitelist.txt" ]; then
@@ -966,6 +977,15 @@ install_containerized_kit() {
     while IFS= read -r rel; do
         [ -n "$rel" ] || continue
         src="$kit/$rel"
+        src_label="$src"
+        if [ "$rel" = "docker-compose.dev.yml.example" ] && [ "$CONTAINERIZED_OMIT_SUBMODULE_MOUNTS" = true ]; then
+            compose_tmp=$(mktemp "${TMPDIR:-/tmp}/compose-dev.XXXXXX")
+            grep -v -e 'source: \./\.git/modules,' -e 'source: \./\.gitmodules,' \
+                    -e 'Remove the next two lines if the standards are not vendored as a submodule' \
+                    "$src" > "$compose_tmp"
+            src="$compose_tmp"
+            src_label="$kit/$rel (without the submodule mounts)"
+        fi
         target=$(containerized_kit_target "$rel")
         [ -n "$target" ] || continue
         case "$target" in
@@ -995,7 +1015,7 @@ install_containerized_kit() {
             fi
             pending_target="$PROJECT_ROOT/$PENDING_DIR/$target"
             if [ "$DRY_RUN" = true ]; then
-                echo "  [dry-run] Would stage: $src → $pending_target ($target exists and differs)"
+                echo "  [dry-run] Would stage: $src_label → $pending_target ($target exists and differs)"
             else
                 mkdir -p "$(dirname "$pending_target")"
                 cp "$src" "$pending_target"
@@ -1007,8 +1027,10 @@ install_containerized_kit() {
             continue
         fi
         [ -d "$(dirname "$dest")" ] || dry_run_mkdir "$(dirname "$dest")"
-        dry_run_cp "$src" "$dest"
-        if [ "$DRY_RUN" = false ]; then
+        if [ "$DRY_RUN" = true ]; then
+            echo "  [dry-run] Would copy: $src_label → $dest"
+        else
+            cp "$src" "$dest"
             if kit_file_is_script "$dest"; then
                 chmod +x "$dest"
             fi
@@ -1017,26 +1039,39 @@ install_containerized_kit() {
     done <<EOF
 $(cd "$kit" && find . -type f | sed 's|^\./||' | sort)
 EOF
+    if [ -n "$compose_tmp" ]; then
+        rm -f "$compose_tmp"
+    fi
     if [ -n "$CONTAINERIZED_NOTES" ]; then
         CONTAINERIZED_NOTES="- Kit files are templates to adapt (toolchain, pinned versions, whitelists): setup never overwrites one and does not record them in \`.standards-checksums\`, so \`sync-standards\` leaves them alone and re-running \`--containerized\` stages a differing kit version again until you adopt it or delete the staged copy.
 $CONTAINERIZED_NOTES"
     fi
 }
 
-# gitignore_lists <gitignore> <ERE>: true when the file, read in order the way
-# git does, leaves a path matched by the expression ignored: a line matching the
-# ERE as a whole (trailing whitespace ignored) ignores it, a later `!<line>`
-# matching the same ERE un-ignores it, and the last matching rule wins. Exact-line
-# matching on purpose: `.env.secret` in .gitignore does not ignore `.env`.
-# Appending a rule therefore always makes the result true — that is the fix.
-gitignore_lists() {
+# gitignore_ignores <gitignore> <top-level file name>: true when the file, read
+# in order the way git does, leaves that top-level path ignored. Every rule is
+# matched as a glob against the name (`.env*`, `*.secret`, `.env.[a-z]*` all
+# count), a `!rule` that matches un-ignores it, and the last matching rule wins.
+# A rule containing a slash (nested path, `dir/` pattern) never matches a
+# top-level file; a leading `/` or `**/` anchors to the root and is dropped.
+# Appending a plain `<name>` rule therefore always makes the result true.
+gitignore_ignores() {
     [ -f "$1" ] || return 1
-    local line listed=1
+    local line pat neg listed=1
     while IFS= read -r line || [ -n "$line" ]; do
         line="${line%"${line##*[![:space:]]}"}"
-        case "$line" in
-            '!'*) printf '%s\n' "${line#!}" | grep -qxE "$2" && listed=1 ;;
-            *)    printf '%s\n' "$line"     | grep -qxE "$2" && listed=0 ;;
+        case "$line" in ''|'#'*) continue ;; esac
+        neg=0; pat="$line"
+        case "$pat" in
+            '!'*)        neg=1; pat="${pat#!}" ;;
+            '\!'*|'\#'*) pat="${pat#\\}" ;;
+        esac
+        pat="${pat#\*\*/}"
+        pat="${pat#/}"
+        case "$pat" in */*) continue ;; esac
+        # shellcheck disable=SC2254  # $pat is a glob on purpose
+        case "$2" in
+            $pat) if [ "$neg" = 1 ]; then listed=1; else listed=0; fi ;;
         esac
     done < "$1"
     return "$listed"
@@ -1531,8 +1566,8 @@ if [ -f "$PROJECT_ROOT/.gitignore" ]; then
     # committed. init-workspace.sh refuses to run until .env.secret is ignored.
     if [ "$INSTALL_CONTAINERIZED" = true ] && [ "$CONTAINERIZED_KIT_FOUND" = true ]; then
         CONTAINERIZED_IGNORE=""
-        gitignore_lists "$PROJECT_ROOT/.gitignore" '/?\.env|/?\.env\*' || CONTAINERIZED_IGNORE=".env"
-        gitignore_lists "$PROJECT_ROOT/.gitignore" '/?\.env\.secret|/?\*\.secret|/?\.env\*|/?\.env\.\*' \
+        gitignore_ignores "$PROJECT_ROOT/.gitignore" .env || CONTAINERIZED_IGNORE=".env"
+        gitignore_ignores "$PROJECT_ROOT/.gitignore" .env.secret \
             || CONTAINERIZED_IGNORE="${CONTAINERIZED_IGNORE:+$CONTAINERIZED_IGNORE }.env.secret"
         if [ -n "$CONTAINERIZED_IGNORE" ]; then
             {
@@ -1570,6 +1605,21 @@ elif [ "$SCRIPT_DIR" != "$PROJECT_ROOT" ]; then
         echo ""
         echo "# Note: .standards.yml should be committed — it is the project's declared config."
     } | dry_run_write "$PROJECT_ROOT/.gitignore"
+fi
+
+# Ignoring a file does not untrack one that is already committed (a placeholder
+# .env.secret): init-workspace.sh would fill it with API keys ready for the next
+# commit. It refuses to overwrite a file it did not write, and never runs git
+# itself; this is the host-side check that explains why and how to fix it.
+if [ "$INSTALL_CONTAINERIZED" = true ] && [ "$CONTAINERIZED_KIT_FOUND" = true ]; then
+    CONTAINERIZED_TRACKED=$(cd "$PROJECT_ROOT" && git ls-files -- .env .env.secret 2>/dev/null | tr '\n' ' ' || true)
+    CONTAINERIZED_TRACKED=$(trim_ws "$CONTAINERIZED_TRACKED")
+    if [ -n "$CONTAINERIZED_TRACKED" ]; then
+        echo "🚨 P0 (arch-09 §5): ${CONTAINERIZED_TRACKED// / and } is tracked by git — ignoring it does not untrack it, and"
+        echo "   scripts/init-workspace.sh refuses to write secrets into a file it did not create. Before running it:"
+        for _t in $CONTAINERIZED_TRACKED; do echo "     git rm --cached $_t && rm $_t"; done
+        echo "   then commit the removal (and rotate anything a committed copy ever held)."
+    fi
 fi
 
 echo ""

@@ -1603,6 +1603,8 @@ if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
 echo -n "Test 104: --containerized installs every kit file with the .example suffix stripped and scripts executable, adds .env + .env.secret to .gitignore, and copies nothing else (README, env.secret shape, global whitelist)... "
 proj=$(make_project "kit-install")
 fake_standards "$proj"
+# A submodule layout, so docker-compose.dev.yml is installed verbatim (Test 111 covers the no-submodule trim).
+mkdir -p "$proj/.git/modules"; printf '[submodule ".standards"]\n\tpath = .standards\n\turl = https://example.invalid/standards.git\n' > "$proj/.gitmodules"
 out=$(cd "$proj" && "$SETUP" --agents cursor --languages typescript --containerized 2>&1) || true
 errs=""
 for f in .cursor/rules/containerized-dev.mdc .devcontainer/devcontainer.json docker-compose.dev.yml Dockerfile.dev Dockerfile.egress Dockerfile.prod \
@@ -1755,6 +1757,18 @@ printf '.env*\n!.env.secret\n.env.secret\n' > "$proj2/.gitignore"
 (cd "$proj2" && "$SETUP" --agents codex --languages typescript --containerized >/dev/null 2>&1) || true
 [ "$(grep -cxF '.env.secret' "$proj2/.gitignore")" = "1" ] || errs="$errs reignored:duplicated"
 grep -q 'Containerized agent-dev environment' "$proj2/.gitignore" && errs="$errs reignored:block-appended"
+# Rules are globs, not spellings: a wildcard negation un-ignores too, and a class/glob rule ignores.
+proj3=$(make_project "kit-gitignore-wildcard-negation")
+fake_standards "$proj3"
+printf '.env*\n!.env.secr*\n' > "$proj3/.gitignore"
+(cd "$proj3" && "$SETUP" --agents codex --languages typescript --containerized >/dev/null 2>&1) || true
+[ "$(grep -cxF '.env.secret' "$proj3/.gitignore")" = "1" ] || errs="$errs wildcard-negation:secret-not-appended"
+[ "$(grep -cxF '.env' "$proj3/.gitignore")" = "0" ] || errs="$errs wildcard-negation:env-appended"
+proj4=$(make_project "kit-gitignore-glob-rules")
+fake_standards "$proj4"
+printf '/.env\n.env.[a-z]*\n' > "$proj4/.gitignore"
+(cd "$proj4" && "$SETUP" --agents codex --languages typescript --containerized >/dev/null 2>&1) || true
+grep -q 'Containerized agent-dev environment' "$proj4/.gitignore" && errs="$errs glob-rules:block-appended"
 if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; gitignore: $(cat "$proj/.gitignore")"; fi
 
 echo -n "Test 111: setup run from a clone outside the project (standards from script location) snapshots the global whitelist to proxy/global-whitelist.txt and the installed setup-proxy.sh falls back to it... "
@@ -1766,6 +1780,14 @@ echo "$out" | grep -q 'Using standards from script location' || errs="$errs not-
 cmp -s "$REPO_ROOT/templates/containerized-dev/network/global-whitelist.txt" "$proj/proxy/global-whitelist.txt" || errs="$errs snapshot-differs"
 [ -d "$proj/network" ] && errs="$errs network-dir-copied"
 echo "$out" | grep -q 'snapshotted to proxy/global-whitelist.txt' || errs="$errs snapshot-not-reported"
+# No submodule here either: the compose file is installed without the two submodule mounts, everything else kept.
+echo "$out" | grep -q 'installed without the ./.git/modules and ./.gitmodules' || errs="$errs compose:trim-not-reported"
+grep -q 'source: ./.gitmodules,' "$proj/docker-compose.dev.yml" && errs="$errs compose:gitmodules-mount-kept"
+grep -q 'source: ./.git/modules,' "$proj/docker-compose.dev.yml" && errs="$errs compose:git-modules-mount-kept"
+grep -q 'source: ./.git/config,' "$proj/docker-compose.dev.yml" || errs="$errs compose:git-config-mount-lost"
+grep -q 'source: ./.env.secret,' "$proj/docker-compose.dev.yml" || errs="$errs compose:env-secret-mount-lost"
+rerun=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || true
+echo "$rerun" | grep -q 'docker-compose.dev.yml already installed' || errs="$errs compose:rerun-not-idempotent"
 pout=$(cd "$proj" && ./scripts/setup-proxy.sh 2>&1) || errs="$errs setup-proxy-failed"
 grep -q '^#   proxy/global-whitelist.txt$' "$proj/proxy/allowlist.generated.txt" 2>/dev/null || errs="$errs global-source-not-snapshot"
 grep -qx 'registry.npmjs.org' "$proj/proxy/allowlist.generated.txt" 2>/dev/null || errs="$errs global-entry-missing"
@@ -1775,6 +1797,22 @@ fake_standards "$proj2"
 (cd "$proj2" && "$SETUP" --agents codex --languages typescript --containerized >/dev/null 2>&1) || true
 [ -e "$proj2/proxy/global-whitelist.txt" ] && errs="$errs snapshot-despite-submodule"
 if [ -z "$errs" ]; then pass; else fail "$errs; output: $out; proxy: $pout"; fi
+
+echo -n "Test 112: a tracked .env.secret (committed placeholder) is reported as a P0 with git rm --cached instructions — ignoring it does not untrack it — and .env.secret is still added to .gitignore; no false positive when untracked... "
+proj=$(make_project "kit-tracked-secret")
+fake_standards "$proj"
+printf 'ANTHROPIC_API_KEY=\n' > "$proj/.env.secret"
+(cd "$proj" && git add -f .env.secret && git -c user.email="test@test.local" -c user.name="Test" commit -q -m "placeholder")
+out=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || true
+errs=""
+echo "$out" | grep -q '🚨 P0 (arch-09 §5): .env.secret is tracked by git' || errs="$errs p0-not-reported"
+echo "$out" | grep -q 'git rm --cached .env.secret && rm .env.secret' || errs="$errs no-instructions"
+grep -qxF '.env.secret' "$proj/.gitignore" || errs="$errs secret-not-ignored"
+proj2=$(make_project "kit-untracked-secret")
+fake_standards "$proj2"
+out2=$(cd "$proj2" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || true
+echo "$out2" | grep -q 'is tracked by git' && errs="$errs false-positive"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
 
 echo ""
 if [ "$FAIL" -gt 0 ]; then

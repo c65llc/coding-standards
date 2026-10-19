@@ -211,7 +211,9 @@ cannot remount them — `sudo` inside the container does not help. The mounts us
 `create_host_path: false`, so a missing path (for example a worktree checkout,
 where `.git` is a file) fails `compose up` loudly rather than mounting an empty
 directory; the kit assumes a standard clone with the standards as a submodule
-(drop the `.git/modules` and `.gitmodules` lines otherwise). Consequences:
+(`setup.sh --containerized` installs the compose file without the `.git/modules`
+and `.gitmodules` lines when the project has no submodule; drop them by hand
+otherwise). Consequences:
 
 * **Infrastructure is edited on the host, by a human.** Including the whitelists:
   widening egress is a reviewed, host-side change followed by `setup-proxy.sh`
