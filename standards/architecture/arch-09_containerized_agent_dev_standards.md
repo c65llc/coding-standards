@@ -17,9 +17,16 @@ agent running with `--dangerously-skip-permissions` **directly on a developer's
 host** is a P0 violation; the same agent inside a properly-scoped container is the
 intended workflow.
 
-A ready-to-install starter kit implementing these rules lives at
-[`templates/containerized-dev/`](../../templates/containerized-dev/). Copy it into a
-consumer project and adapt the language toolchain and whitelists.
+A starter kit scaffolding these rules lives at
+[`templates/containerized-dev/`](../../templates/containerized-dev/). It wires the
+workflow — images, workspace volume, identity and secret injection, proxy
+variables, IDE bootstraps — but it does **not** make a project compliant on its
+own: the enforcing egress layer required by §4 (a deny-by-default proxy sidecar or
+firewall) is left to the consumer until it ships as a follow-on, and the Docker
+socket mount is an explicit, documented opt-in. Copy the kit into a consumer
+project, adapt the toolchain and whitelists, and treat §8 — in particular the
+observed deny-path failure — as the only evidence of compliance. The kit's README
+lists exactly which controls it enforces and which it only scaffolds.
 
 ## 1. Two Images, Two Purposes — Never One
 
@@ -45,6 +52,13 @@ consumer project and adapt the language toolchain and whitelists.
 * Passwordless `sudo` inside the **dev** container is acceptable — it is a
   throwaway sandbox and agents need to install packages mid-task. Passwordless sudo
   in a **prod** image is a P0 violation.
+* **Never mount the host Docker socket by default** `[P1]`. `/var/run/docker.sock`
+  gives whatever runs inside — including an agent with permissions skipped —
+  root-equivalent control of the host daemon and a trivial escape path, which
+  voids the containment this standard relies on. If a project genuinely needs
+  `docker` inside the sandbox, make the mount an explicit, commented opt-in with
+  the trade-off documented beside it, and prefer a rootless Docker-in-Docker
+  sidecar or a remote builder.
 * Match the container UID to the host user's UID where the platform makes host
   ownership matter (Linux bind mounts), so files the agent writes are not
   root-owned on the host. Document the UID assumption next to the Dockerfile.
@@ -78,9 +92,17 @@ egress and allow only what the project needs.
   * a **project** allow-list (`proxy/project-whitelist.txt`) for
     project-specific destinations (a private registry, an internal API).
 * `setup-proxy.sh` reads both, concatenates and de-duplicates them, and generates
-  the runtime enforcement — an egress proxy allow-list, a `NO_PROXY`/`no_proxy`
-  set, or firewall rules — that the container runtime applies. The combined list is
-  a generated artifact; edit the source lists, never the generated output.
+  the combined allow-list artifact that the **enforcing** layer consumes — an
+  egress proxy's allow rules or firewall rules. The combined list is a generated
+  artifact; edit the source lists, never the generated output.
+* **Environment variables are not enforcement.** `HTTP_PROXY`/`HTTPS_PROXY` (set in
+  both upper and lower case, because tools disagree on which they read) only tell
+  cooperative processes where to send traffic; anything that ignores or unsets them
+  goes direct. `NO_PROXY`/`no_proxy` is a proxy *bypass* list for loopback and
+  internal addresses — it is never the allow-list. Deny-by-default exists only when
+  the container network cannot reach the internet except through a proxy that
+  refuses unlisted destinations (`internal: true` network + sidecar), or host
+  firewall rules achieve the same.
 * **Verify the deny path, not just the allow path.** A whitelist that lets every
   listed host through but silently also lets *unlisted* hosts through is worse than
   none — it looks safe. The Definition of Done for any egress change is: a request
@@ -139,6 +161,9 @@ manual setup docs, and make each opt-in.
   commands inside the container and treat `/workspace` as the absolute root.
 * **Zed (headless remote):** a bootstrap script that adds an SSH `Host` entry for
   the container's forwarded port and installs the Zed remote server inside it.
+  Zed connects over SSH, so this path needs `sshd` in the dev image and a
+  loopback-bound published port — both opt-in; the script MUST check for them and
+  refuse to write a `Host` entry that cannot connect.
 * **Google Antigravity:** a bootstrap script that registers the container shell in
   the Agent Manager and pre-loads project MCP configs.
 * Keep IDE bootstrap scripts **non-destructive** — append an SSH `Host` block or

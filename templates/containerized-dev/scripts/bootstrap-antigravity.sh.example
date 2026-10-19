@@ -2,7 +2,11 @@
 # bootstrap-antigravity.sh — register the dev container with Google Antigravity's
 # Agent Manager and pre-load project MCP configs (arch-09 §7).
 #
-# Non-destructive: merges into the Antigravity config instead of overwriting it.
+# Non-destructive. The environment registration is skipped when one already
+# exists. The MCP pre-load never overwrites: a missing destination is created, an
+# identical one is left alone, and a differing one is deep-merged with `jq`
+# (existing keys win, new keys are added) — or skipped with a warning when jq is
+# unavailable, so a hand-tuned Antigravity MCP setup is never destroyed.
 # Antigravity's exact config path/schema evolves — treat the paths here as the
 # integration points to adapt, and keep the merge-not-clobber behavior.
 set -euo pipefail
@@ -20,7 +24,7 @@ green() { printf '\033[0;32m%s\033[0m\n' "$1"; }
 mkdir -p "$AG_HOME/environments"
 ENV_FILE="$AG_HOME/environments/${SERVICE}.json"
 
-# Register the container shell as an execution environment (idempotent).
+# --- Register the container shell as an execution environment (idempotent) ----
 if [ -f "$ENV_FILE" ]; then
     warn "Environment '${SERVICE}' already registered at ${ENV_FILE} — leaving it untouched."
 else
@@ -34,10 +38,27 @@ JSON
     green "Registered container shell '${SERVICE}' with Antigravity Agent Manager."
 fi
 
-# Pre-load project MCP config if present.
-if [ -f "$MCP_CONFIG" ]; then
-    cp "$MCP_CONFIG" "$AG_HOME/mcp-${SERVICE}.json"
-    green "Pre-loaded MCP config from ${MCP_CONFIG}."
-else
+# --- Pre-load project MCP config without clobbering an existing one ----------
+MCP_DEST="$AG_HOME/mcp-${SERVICE}.json"
+
+if [ ! -f "$MCP_CONFIG" ]; then
     warn "No MCP config at ${MCP_CONFIG}; skipping MCP pre-load."
+elif [ ! -f "$MCP_DEST" ]; then
+    cp "$MCP_CONFIG" "$MCP_DEST"
+    green "Pre-loaded MCP config from ${MCP_CONFIG} -> ${MCP_DEST}."
+elif cmp -s "$MCP_CONFIG" "$MCP_DEST"; then
+    green "MCP config at ${MCP_DEST} already matches ${MCP_CONFIG}; nothing to do."
+elif command -v jq >/dev/null 2>&1; then
+    # Deep-merge: existing destination values win, new project keys are added.
+    tmp="$(mktemp)"
+    if jq -s '.[0] * .[1]' "$MCP_CONFIG" "$MCP_DEST" > "$tmp" 2>/dev/null; then
+        mv "$tmp" "$MCP_DEST"
+        green "Merged ${MCP_CONFIG} into existing ${MCP_DEST} (existing entries preserved)."
+    else
+        rm -f "$tmp"
+        warn "Could not parse ${MCP_CONFIG} or ${MCP_DEST} as JSON; left ${MCP_DEST} untouched."
+    fi
+else
+    warn "${MCP_DEST} already exists and differs from ${MCP_CONFIG}."
+    warn "Install jq for an automatic merge, or reconcile by hand. Left untouched."
 fi

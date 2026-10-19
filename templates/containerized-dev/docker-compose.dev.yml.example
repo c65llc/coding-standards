@@ -1,11 +1,23 @@
 # Development compose file for containerized AI-agent work (arch-09).
 #
 # Usage:
-#   ./scripts/init-workspace.sh      # writes .env.secret, forwards identity
+#   ./scripts/init-workspace.sh      # writes .env + .env.secret, forwards identity
+#   ./scripts/setup-proxy.sh         # generates proxy/allowlist.generated.txt
 #   docker compose -f docker-compose.dev.yml up -d
 #   docker compose -f docker-compose.dev.yml exec dev bash
 #
 # The image is disposable; only the mounted workspace and named caches persist.
+#
+# WHAT THIS FILE DOES NOT DO (read before trusting the sandbox):
+#   * It does NOT block outbound traffic. The *_PROXY variables below only tell
+#     well-behaved tools which proxy to use; a process that ignores them (or
+#     unsets them) reaches the internet directly. Deny-by-default egress
+#     (arch-09 §4) requires an enforcing layer this template does not ship yet:
+#     an egress-proxy sidecar on an `internal: true` network, or host firewall
+#     rules. Tracked in c65llc/coding-standards#157. Until you add one, the
+#     Definition of Done deny-path check in the README will FAIL (the unlisted
+#     host will be reachable) and the environment is not arch-09 compliant.
+#   * It does NOT mount the host Docker socket. See the opt-in block below.
 
 services:
   dev:
@@ -22,11 +34,17 @@ services:
     env_file:
       - .env.secret
     environment:
-      # Egress control: setup-proxy.sh generates these values (arch-09 §4).
-      # Point the container at the egress proxy and deny everything else.
+      # Egress proxy pointer (arch-09 §4). setup-proxy.sh writes EGRESS_PROXY and
+      # NO_PROXY into .env. Both cases are set because tools disagree on which
+      # they honour (curl/wget/pip read lowercase; many Go/Java tools read
+      # uppercase). NO_PROXY is a proxy *bypass* list for loopback/internal
+      # addresses, not an allow-list — see setup-proxy.sh.
       HTTP_PROXY: ${EGRESS_PROXY:-}
       HTTPS_PROXY: ${EGRESS_PROXY:-}
       NO_PROXY: ${NO_PROXY:-}
+      http_proxy: ${EGRESS_PROXY:-}
+      https_proxy: ${EGRESS_PROXY:-}
+      no_proxy: ${NO_PROXY:-}
       # SSH agent forwarding for git push (arch-09 §5).
       SSH_AUTH_SOCK: /ssh-agent
     volumes:
@@ -37,19 +55,38 @@ services:
       # SSH agent forwarding for git push (arch-09 §5). On macOS/Linux the host
       # socket path comes from init-workspace.sh via SSH_AUTH_SOCK.
       - ${SSH_AUTH_SOCK:-/dev/null}:/ssh-agent
-      # Docker client talks to the host daemon (dev convenience only).
-      - /var/run/docker.sock:/var/run/docker.sock
       # Named caches survive image rebuilds (arch-09 §3).
       - node-modules-cache:/workspace/node_modules
       - dev-cache:/home/developer/.cache
+      #
+      # OPT-IN — host Docker socket. OFF by default and NOT recommended.
+      # Mounting /var/run/docker.sock hands the container root-equivalent control
+      # of the host Docker daemon: anything running inside (including an agent
+      # with --dangerously-skip-permissions) can start a privileged container,
+      # mount the host filesystem and escape the sandbox. This defeats the
+      # "cannot contaminate the host" guarantee in arch-09 and should be enabled
+      # only when you have explicitly accepted that trade-off (for example, a
+      # project whose task IS building images). Prefer a rootless Docker-in-
+      # Docker sidecar or a remote builder if you need `docker` inside.
+      # - /var/run/docker.sock:/var/run/docker.sock
     # Keep the container alive so agents/IDEs can exec into it.
     command: sleep infinity
-    # Deny-by-default egress is enforced by the proxy + this internal network.
-    # Attach an explicit egress network only where the proxy lives.
+    #
+    # OPT-IN — SSH for Zed headless remote (scripts/bootstrap-zed.sh). Requires
+    # the openssh-server block in Dockerfile.dev to be enabled as well. Bind to
+    # loopback only so the sandbox is not exposed on your LAN.
+    # ports:
+    #   - "127.0.0.1:2222:22"
     networks:
       - devnet
 
 networks:
+  # A plain bridge network has unrestricted internet access. To enforce
+  # deny-by-default egress, change this to `internal: true` and add an
+  # egress-proxy sidecar attached to BOTH devnet and a second, non-internal
+  # network; the proxy consumes proxy/allowlist.generated.txt and refuses every
+  # other destination (#157). Only then does the *_PROXY pointer above become an
+  # actual control instead of a hint.
   devnet:
     driver: bridge
 

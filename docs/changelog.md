@@ -25,7 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with git checkpointing, and scripted IDE integration. Ships an installable
   starter kit at `templates/containerized-dev/` (Dockerfiles, compose,
   `init-workspace.sh`/`setup-proxy.sh`, IDE bootstrap scripts, whitelists,
-  devcontainer) with a Definition-of-Done validation checklist.
+  devcontainer) with a Definition-of-Done validation checklist. The kit scaffolds
+  the controls; the enforcing egress-proxy sidecar is tracked in #157 and the
+  host Docker socket mount is a documented opt-in, off by default.
 
 ## [1.5.0] - 2026-07-05
 

@@ -1,7 +1,7 @@
 # Project egress allow-list (arch-09 §4, Local Layer).
 #
 # Project-specific destinations the agent is allowed to reach, on top of the
-# global baseline in coding_standards/network/global-whitelist.txt.
+# global baseline in coding_standards/templates/containerized-dev/network/global-whitelist.txt.
 #
 # Keep this MINIMAL. Every host added here widens the exfiltration surface.
 # One host per line. '#' comments and blank lines are ignored.

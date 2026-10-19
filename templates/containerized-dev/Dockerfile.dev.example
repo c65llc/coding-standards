@@ -41,7 +41,11 @@ RUN curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# --- Docker client only (talks to the host daemon via mounted socket) -----
+# --- Docker client only ---------------------------------------------------
+# The CLI alone is harmless; it only does something if you ALSO opt in to the
+# host-socket mount in docker-compose.dev.yml, which is off by default because
+# it grants the container root-equivalent control of the host (see the warning
+# there). Delete this block if your project never needs `docker` inside.
 RUN install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
     && chmod a+r /etc/apt/keyrings/docker.asc \
@@ -81,6 +85,19 @@ RUN printf '%s\n' \
         "alias claude='claude --dangerously-skip-permissions'" \
         >> "/home/${USERNAME}/.bashrc" \
     && chown "${USER_UID}:${USER_GID}" "/home/${USERNAME}/.bashrc"
+
+# --- OPT-IN: SSH server for Zed headless remote (arch-09 §7) ---------------
+# OFF by default. scripts/bootstrap-zed.sh needs sshd in the container and the
+# matching `ports:` opt-in in docker-compose.dev.yml. Uncomment both to enable.
+# Authenticate with the forwarded agent's key, never a password: copy your
+# public key into /home/developer/.ssh/authorized_keys at build or run time.
+# RUN apt-get update && apt-get install -y --no-install-recommends openssh-server \
+#     && rm -rf /var/lib/apt/lists/* \
+#     && mkdir -p /run/sshd \
+#     && sed -i 's/^#\?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config \
+#     && sed -i 's/^#\?PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config
+# When enabled, replace the CMD below with:
+#   CMD ["sudo", "/usr/sbin/sshd", "-D", "-e"]
 
 USER ${USERNAME}
 WORKDIR /workspace
