@@ -730,9 +730,19 @@ check_gh_stack() {
         check_info "gh-stack" "GitHub CLI (gh) not found; stacked-PR tooling unavailable (install gh, then: gh extension install github/gh-stack)"
         return
     fi
-    local line version
+    local listing rc line version
     # `gh extension list` prints NAME, REPO and VERSION as tab-separated columns.
-    line=$(gh extension list 2>/dev/null | grep -i 'github/gh-stack' | head -1)
+    # It exits 4 (authentication required) with no output when gh is not logged
+    # in, which must not read as "not installed".
+    rc=0
+    listing=$(gh extension list 2>/dev/null) || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        local hint=""
+        [ "$rc" -eq 4 ] && hint="; 4 = authentication required"
+        check_info "gh-stack" "could not list gh extensions (gh exit $rc$hint) — run: gh auth status"
+        return
+    fi
+    line=$(printf '%s\n' "$listing" | grep -i 'github/gh-stack' | head -1)
     if [ -z "$line" ]; then
         check_info "gh-stack" "gh-stack extension not installed (optional; stacked PRs per proc-02 §11): gh extension install github/gh-stack"
         return

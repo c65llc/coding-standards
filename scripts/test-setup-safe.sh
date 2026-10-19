@@ -1844,14 +1844,15 @@ if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
 # does not depend on the host's extensions.
 # ---------------------------------------------------------------------------
 
-# fake_gh <dir> <extension-list-output> → prints a PATH prefix with a gh shim.
+# fake_gh <dir> <extension-list-output> [exit-code] → prints a PATH prefix with a
+# gh shim whose `extension list` prints the output and exits with the code (0).
 fake_gh() {
-    local dir="$1" listing="$2"
+    local dir="$1" listing="$2" rc="${3:-0}"
     mkdir -p "$dir/bin"
     printf '%s\n' "$listing" > "$dir/ext-list.txt"
     cat > "$dir/bin/gh" <<EOF
 #!/bin/bash
-if [ "\$1" = "extension" ] && [ "\$2" = "list" ]; then cat "$dir/ext-list.txt"; exit 0; fi
+if [ "\$1" = "extension" ] && [ "\$2" = "list" ]; then [ "$rc" -eq 0 ] && cat "$dir/ext-list.txt"; exit $rc; fi
 exit 0
 EOF
     chmod +x "$dir/bin/gh"
@@ -1865,7 +1866,7 @@ write_standards_yml "$proj" claude
 shim=$(fake_gh "$TMPDIR_BASE/gh-with-stack" $'gh stack\tgithub/gh-stack\tv0.2.1')
 errs=""
 out=$(cd "$proj" && PATH="$shim:$PATH" bash "$DOCTOR" 2>&1) || true
-line=$(echo "$out" | grep 'gh-stack')
+line=$(echo "$out" | grep 'gh-stack' || true)
 echo "$line" | grep -q 'INFO.*gh-stack extension installed (v0.2.1)'    || errs="$errs no-installed-info"
 echo "$line" | grep -qE 'PASS|WARN|FAIL'                                 && errs="$errs scored"
 echo "$out" | grep -q 'gh extension install github/gh-stack'            && errs="$errs install-hint-when-installed"
@@ -1878,10 +1879,23 @@ write_standards_yml "$proj" claude
 shim=$(fake_gh "$TMPDIR_BASE/gh-without-stack" $'gh task\towner/gh-task\tv1.0.0')
 errs=""
 out=$(cd "$proj" && PATH="$shim:$PATH" bash "$DOCTOR" 2>&1) || true
-line=$(echo "$out" | grep 'gh-stack')
+line=$(echo "$out" | grep 'gh-stack' || true)
 echo "$line" | grep -q 'INFO.*not installed.*gh extension install github/gh-stack' || errs="$errs no-missing-info"
 echo "$line" | grep -qE 'PASS|WARN|FAIL'                                           && errs="$errs scored"
 echo "$out" | sed -n '/Fixes needed/,$p' | grep -q 'gh-stack'                     && errs="$errs in-fixes-list"
+if [ -z "$errs" ]; then pass; else fail "$errs; line: $line"; fi
+
+echo -n "Test 116: doctor reports an unauthenticated gh (extension list exits 4, no output) as indeterminate INFO, not as 'not installed'... "
+proj=$(make_project "doctor-ghstack-noauth")
+fake_standards "$proj"
+write_standards_yml "$proj" claude
+shim=$(fake_gh "$TMPDIR_BASE/gh-noauth" '' 4)
+errs=""
+out=$(cd "$proj" && PATH="$shim:$PATH" bash "$DOCTOR" 2>&1) || true
+line=$(echo "$out" | grep 'gh-stack' || true)
+echo "$line" | grep -q 'INFO.*could not list gh extensions.*gh exit 4.*gh auth status' || errs="$errs no-indeterminate-info"
+echo "$line" | grep -q 'not installed'                                             && errs="$errs claims-not-installed"
+echo "$line" | grep -qE 'PASS|WARN|FAIL'                                           && errs="$errs scored"
 if [ -z "$errs" ]; then pass; else fail "$errs; line: $line"; fi
 
 echo ""

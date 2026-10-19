@@ -745,9 +745,12 @@ gh stack sync                        # then: re-base local branches on the serve
   to target the trunk and becomes the new bottom — no manual
   `gh pr edit --base`. The base-deletion trap in § 12 applies to dependent PRs
   that are *not* linked into a stack.
-* **Merge queues** take the whole stack in order. **Auto-merge is not available
-  for stacked PRs** — merge explicitly once the bottom (or a contiguous group) is
-  green and reviewed.
+* **Merge queues** take the whole stack in order — and the **queue chooses the
+  merge method**: `gh stack merge` ignores `--squash` when the base has a queue.
+  Configure the queue for squash, or the one-commit-per-layer and title-as-subject
+  guarantees above do not hold. **Auto-merge is not available for stacked PRs**
+  — merge explicitly once the bottom (or a contiguous group) is green and
+  reviewed.
 * **Sync after every partial merge.** The server rebases and retargets the
   remaining layers; the branches and stack metadata in your worktree do not
   follow on their own. Run `gh stack sync` in the stack's worktree before
@@ -803,8 +806,14 @@ tooling changes. Hand-chain the PRs:
    (`templates/stacked-pr-description.md.example`).
 3. Propagate a lower-layer fix by rebasing each upper branch onto its parent in
    order (`git rebase <parent>`), re-gate, then `git push --force-with-lease`.
-4. Merge bottom-up. After each merge, rebase the next layer onto the trunk,
-   **retarget its PR to the trunk** (`gh pr edit <n> --base main`, or the
+4. Merge bottom-up. After each squash merge the merged layer's commits are not
+   ancestors of the trunk, so transplant only the next layer's own commits:
+   save the merged branch's tip before merging, fetch the updated trunk with
+   `git fetch origin`, then run
+   `git rebase --onto origin/main <merged-layer-tip>` on the next layer (a plain
+   `git rebase origin/main` would replay the merged commits and conflict).
+   Re-run the full local gate and push with `--force-with-lease`.
+   Then **retarget its PR to the trunk** (`gh pr edit <n> --base main`, or the
    host's equivalent) and only then delete the merged branch — § 12 explains
    why the order matters.
 
