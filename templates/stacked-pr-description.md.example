@@ -27,8 +27,8 @@ folded or reordered (`gh stack modify` + `gh stack submit`).
 What THIS layer changes and why — not the whole feature. Readers see only this
 layer's diff, with the layers below it as context.
 
-Issue link: `Closes #N` on the bottom layer only; `Part of #N` on every layer
-above it, so the issue closes once, when the bottom lands.
+Issue link: `Closes #N` on the TOP layer only — it lands last, so the issue
+closes when the whole stack has merged; `Part of #N` on every layer below it.
 -->
 
 Part of #N

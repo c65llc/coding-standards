@@ -446,10 +446,16 @@ behaves inside that workflow.
   stack inside it:
 
   ```bash
-  git worktree add {{WORKTREE_DIR}}/<task> -b <type>/<task>/01-<layer>
+  git fetch origin
+  git worktree add {{WORKTREE_DIR}}/<task> -b <type>/<task>/01-<layer> origin/main
   cd {{WORKTREE_DIR}}/<task>
   gh stack init <type>/<task>/01-<layer>
   ```
+
+  Name the trunk (`origin/main`) explicitly: without it, `-b` branches from the
+  main checkout's current `HEAD` — which may be the human's active feature
+  branch — and `gh stack init` adopts that branch, commits and all, as the
+  bottom of the stack.
 
 * Move between layers with `gh stack up` / `down` / `bottom` / `top` /
   `checkout <branch>`; add layers with `gh stack add <type>/<task>/<NN>-<layer>`.
@@ -470,15 +476,24 @@ behaves inside that workflow.
   it is pushed — run the gate on every layer you touched, not only the top.
 * **A change belongs to the layer that owns the code.** A bug found while writing
   layer 3 that lives in layer 1's code is fixed on layer 1
-  (`gh stack checkout`), then cascaded (`gh stack rebase` + `gh stack push`).
-  Never patch a lower layer's defect in an upper layer, and never let a lower
-  layer reference code that only exists higher up.
+  (`gh stack checkout`), then cascaded: `gh stack rebase`, **re-run `make ci` on
+  every rebased layer** (at minimum the top, which carries the whole tree — a
+  lower-layer change can break an upper layer whose own diff did not move),
+  then `gh stack push`. Never patch a lower layer's defect in an upper layer,
+  and never let a lower layer reference code that only exists higher up.
 * **The bottom must be safe alone.** It merges to `main` first; if the feature is
   incomplete until the top lands, the bottom ships dark or behind a flag.
 * **Every layer's PR body** carries the stack-position line
-  (`Stack: n of m — #a → #b (this PR) → #c`), `Closes #N` only on the bottom
-  layer and `Part of #N` above it, and the `🤖 Generated with [Agent Name]`
+  (`Stack: n of m — #a → #b (this PR) → #c`), `Closes #N` on the **top** layer
+  only (it lands last, so the issue closes with the whole stack) and
+  `Part of #N` on every layer below it, and the `🤖 Generated with [Agent Name]`
   line (§6).
+* **Submit deterministically.** An agent session has no editor, so
+  `gh stack submit` falls back to generated titles and **draft** PRs, which
+  never enter the review loop. Run `gh stack submit --auto`, then for every
+  layer `gh pr edit <n> --title "<type>(<scope>): <subject>" --body-file
+  <layer-body>.md` and `gh pr ready <n>` (proc-02 §11, "Create a stack"). A
+  layer is not submitted until its title, body and ready state are correct.
 
 ### Never rewrite a layer someone else is reviewing
 
@@ -502,14 +517,21 @@ behaves inside that workflow.
 * Run the merge loop of [proc-03 §1](./proc-03_code_review_expectations.md) **per
   layer**: every layer waits for its own automated review, resolves its own
   findings and goes green on its own checks.
-* Merge with `gh stack merge --squash` from the bottom — the bottom layer alone,
-  or a contiguous group from the bottom once each of those layers is reviewed and
-  green. Never merge the top to sweep unreviewed layers in with it, and never
-  bypass a protection rule to land a layer. GitHub rebases the next layer onto
-  `main` automatically; auto-merge is not available for stacked PRs.
-* If `gh stack` is unavailable, open the layers as hand-chained PRs and link them
-  into a stack from the GitHub website (proc-02 §11, "Without the extension"),
-  and say so in the bottom PR. Do not fall back to a single oversized PR.
+* Merge with `gh stack merge --squash --yes <pr>`, **naming the highest layer
+  that has completed its review loop** — the bottom alone, or a contiguous group
+  from the bottom. Without a target a non-interactive merge takes the whole
+  stack, sweeping unreviewed layers in or failing the all-or-nothing operation on
+  one unmergeable upper layer. Never bypass a protection rule to land a layer.
+  Auto-merge is not available for stacked PRs.
+* **`gh stack sync` after every partial merge**, before touching the next layer:
+  GitHub rebases and retargets the remaining layers on the server, and the
+  worktree's branches and stack metadata only follow when you sync.
+* If `gh stack` is unavailable or the host has no stacks (GitLab, a GitHub
+  Enterprise Server without the feature, a fork), hand-chain the layers with
+  the same rules (proc-02 §11, "Without the extension, or without GitHub
+  stacks"): PRs based on the layer below, bottom-up merge, retarget before
+  deleting a merged base — and say so in the bottom PR. Do not fall back to a
+  single oversized PR.
 
 ## Context Handling Across Layers
 

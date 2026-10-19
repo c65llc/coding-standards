@@ -199,9 +199,10 @@ gh skill install github/gh-stack       # optional: agent skill for the gh stack 
 
 gh stack init <type>/<task>/01-<layer> # start a stack in the task's worktree
 gh stack add  <type>/<task>/02-<layer> # next layer on top
-gh stack submit                        # one PR per layer, linked as a stack
-gh stack rebase && gh stack push       # cascade a fix made in a lower layer
-gh stack merge --squash                # merge bottom-up, one squashed commit per layer
+gh stack submit                        # one PR per layer, linked as a stack (--auto + gh pr edit/ready when non-interactive)
+gh stack rebase && make ci && gh stack push   # cascade a fix made in a lower layer, re-gate, push
+gh stack merge --squash --yes <pr>     # merge bottom-up through the highest reviewed layer
+gh stack sync                          # after each partial merge, before the next layer
 ```
 
 `make doctor` prints an informational line saying whether the extension is
