@@ -105,6 +105,12 @@ $3"
     fi
 }
 
+# Informational line: reported, never scored. For optional tooling whose
+# absence is not a defect (nothing to fix, so no entry in the fixes list).
+check_info() {
+    printf "  ${BOLD}ℹ️  INFO${NC}  %-22s %s\n" "$1" "$2"
+}
+
 # ---------------------------------------------------------------------------
 # Lookup helpers (bash 3 compatible — no associative arrays)
 # ---------------------------------------------------------------------------
@@ -711,6 +717,41 @@ check_git_hooks() {
 }
 
 # ---------------------------------------------------------------------------
+# Info: gh-stack extension (stacked PRs, proc-02 §11)
+#
+# Stacked PRs are the preferred shape for a change too large for one review,
+# and `gh stack` is the local workflow for them. Not every contributor needs
+# it (layers can be reviewed and merged in the web UI), so this is reported,
+# not scored: an INFO line either way, with the install command when absent.
+# ---------------------------------------------------------------------------
+
+check_gh_stack() {
+    if ! command -v gh >/dev/null 2>&1; then
+        check_info "gh-stack" "GitHub CLI (gh) not found; stacked-PR tooling unavailable (install gh, then: gh extension install github/gh-stack)"
+        return
+    fi
+    local listing rc line version
+    # `gh extension list` prints NAME, REPO and VERSION as tab-separated columns.
+    # It exits 4 (authentication required) with no output when gh is not logged
+    # in, which must not read as "not installed".
+    rc=0
+    listing=$(gh extension list 2>/dev/null) || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        local hint=""
+        [ "$rc" -eq 4 ] && hint="; 4 = authentication required"
+        check_info "gh-stack" "could not list gh extensions (gh exit $rc$hint) — run: gh auth status"
+        return
+    fi
+    line=$(printf '%s\n' "$listing" | grep -i 'github/gh-stack' | head -1)
+    if [ -z "$line" ]; then
+        check_info "gh-stack" "gh-stack extension not installed (optional; stacked PRs per proc-02 §11): gh extension install github/gh-stack"
+        return
+    fi
+    version=$(printf '%s\n' "$line" | awk -F'\t' '{print $NF}' | tr -d '[:space:]')
+    check_info "gh-stack" "gh-stack extension installed${version:+ ($version)} — gh stack init/add/submit/rebase/merge available"
+}
+
+# ---------------------------------------------------------------------------
 # Check 7: .aiderrc matches canonical aiderrc.template
 # ---------------------------------------------------------------------------
 
@@ -968,6 +1009,7 @@ check_checksums
 check_languages
 check_submodule
 check_git_hooks
+check_gh_stack
 check_aiderrc_template_sync
 check_postgres_mcp
 check_gitignore

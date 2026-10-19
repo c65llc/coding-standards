@@ -94,8 +94,8 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │       │       └── copilot-instructions.md
 │       ├── aider/
 │       │   └── .aiderrc
-│       ├── codex/                 # Note: Codex now reads AGENTS.md at project root (.codexrc is deprecated)
-│       │   └── .codexrc
+│       ├── codex/                 # Note: Codex reads AGENTS.md at project root (.codexrc is deprecated)
+│       │   └── base-codex.md      # Assembled into AGENTS.md
 │       └── gemini/                # Note: Gemini CLI uses .gemini/ at root (Gemini CLI convention)
 │           ├── base-gemini.md
 │           └── antigravity.md     # Antigravity Mission Isolation appendix to proc-04
@@ -171,6 +171,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 | Config | Root | .cursorrules |
 | Document templates | `templates/docs/` | adr.md, spec.md, plan.md, design-pass.md, verification.md |
 | C++ tooling templates | `templates/cpp/` | .clang-format, .clang-tidy, CMakePresets.json, ProjectWarnings.cmake |
+| PR body templates | `templates/` | pull_request_template.md.example, stacked-pr-description.md.example (one layer of a stack) |
 
 ### Documentation
 

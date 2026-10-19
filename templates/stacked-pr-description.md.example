@@ -1,0 +1,79 @@
+<!--
+PR body for one layer of a stacked PR (proc-02 § 11, proc-03 § 9, proc-04 § 8).
+Paste it into each layer's PR when `gh stack submit` opens the editor, or
+`gh pr edit <n> --body-file` afterwards. One copy per layer; only the Stack
+line, the Summary and the evidence differ between layers.
+-->
+
+## Stack
+
+Stack: 2 of 3 — #41 → #42 (this PR) → #43
+
+<!--
+Position is 1-based from the bottom (the layer that targets main). List every
+layer in order; mark this one. Keep the line current when layers are added,
+folded or reordered (`gh stack modify` + `gh stack submit`).
+-->
+
+| Layer | PR | Branch | Scope |
+|-------|----|--------|-------|
+| 1 | #41 | `feat/user-export/01-schema` | Export table + migration |
+| 2 | **#42 (this PR)** | `feat/user-export/02-api` | `/exports` endpoint + service |
+| 3 | #43 | `feat/user-export/03-ui` | Export button + download view |
+
+## Summary
+
+<!--
+What THIS layer changes and why — not the whole feature. Readers see only this
+layer's diff, with the layers below it as context.
+
+Issue link: `Closes #N` on the TOP layer only — it lands last, so the issue
+closes when the whole stack has merged; `Part of #N` on every layer below it.
+-->
+
+Part of #N
+
+## Stands alone because
+
+<!--
+One or two sentences: why main is correct and releasable with this layer and
+the ones below it merged, and nothing above. If the feature is dark or behind a
+flag until the top lands, say which flag.
+-->
+
+## Depends on / enables
+
+- Depends on: #41 (schema) — <!-- what this layer uses from below -->
+- Enables: #43 (UI) — <!-- what the layer above builds on -->
+
+## Tested commit SHA
+
+`<sha>`
+
+<!--
+Evidence is per layer (proc-05 § 8): the gate ran on this layer's branch, with
+the layers below it as base. Fast CI passing does not satisfy this section.
+-->
+
+| Surface | Command | Result | Evidence |
+|---------|---------|--------|----------|
+| <!-- e.g. unit --> | `make ci` | pass (n/n) / fail / not run — reason | run link or log excerpt |
+
+## Review notes
+
+<!--
+Anything a reviewer of this layer needs: what was deliberately left to a higher
+layer (and which), cascade rebases since the last review ("rebased after the
+#41 fix; this layer's diff is unchanged"), stack-shape questions (prefix
+`Stack:`, and raise them on the lowest unmerged PR).
+-->
+
+## Checklist
+
+- [ ] Conventional Commit PR title (it becomes this layer's squash commit subject)
+- [ ] Stack line above is current
+- [ ] This layer's tests ride in this layer; coverage holds on its own diff
+- [ ] No "will fix in the next layer" — fixes to lower layers went to those layers and were cascaded
+- [ ] No amend / squash / reorder of this layer since review started (append only)
+
+🤖 Generated with [Agent Name]

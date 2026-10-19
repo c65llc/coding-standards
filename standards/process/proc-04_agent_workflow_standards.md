@@ -1,6 +1,6 @@
 # Agent Workflow Standards
 
-**Governing principle: One task = one branch = one worktree = one PR.**
+**Governing principle: One task = one branch = one worktree = one PR** — or, when the change is too large for one review, **one task = one stack of focused PRs** in one worktree (§8).
 
 Every discrete piece of agent work follows the same end-to-end lifecycle: isolate, implement, verify, deliver via pull request. Work is not considered done until a PR exists.
 
@@ -417,6 +417,121 @@ When design intent changes (designer ships a new mock, accessibility audit chang
 1. Update the reference in the same PR as the UI change.
 2. Note the intentional reference change in the PR body so reviewers know the diff is expected.
 3. Update `assets/designs/NOTES.md` if the change requires explanation (e.g., "Reduced primary CTA size to meet WCAG 2.5.5 target-size requirements").
+
+## 8. Stacked PRs
+
+When a task is too large to review as one PR, deliver it as a **stack of focused
+PRs** with `gh stack` (the GitHub CLI extension; `gh extension install github/gh-stack`).
+The workflow, thresholds and commands live in
+[proc-02 §11](./proc-02_git_version_control_standards.md); reviewer expectations in
+[proc-03 §9](./proc-03_code_review_expectations.md). This section is how an agent
+behaves inside that workflow.
+
+### When to propose a stack
+
+* Decide at planning time. If the implementation plan
+  ([proc-01 §11](./proc-01_documentation_standards.md#11-spec-plan-design-pass-and-verification-documents))
+  estimates a diff past the proc-02 §11 thresholds (~400 changed lines or ~15
+  files a reviewer must read) or has two or more dependent layers (schema → API →
+  UI, standard → linter → docs), the plan proposes a stack: one row per layer with
+  its branch, Conventional Commit PR title, and why it stands alone.
+* State the decision where the human will see it — the plan and the bottom PR
+  body — so it can be vetoed before layers exist. Do not open a mega-PR and offer
+  to split it later, and do not quietly open an unlinked chain of PRs.
+* A task that fits one PR stays one PR. A stack of one is a PR.
+
+### One worktree per stack
+
+* Create **one** worktree for the stack, named for the task, and initialise the
+  stack inside it:
+
+  ```bash
+  git fetch origin
+  git worktree add {{WORKTREE_DIR}}/<task> -b <type>/<task>/01-<layer> origin/main
+  cd {{WORKTREE_DIR}}/<task>
+  gh stack init <type>/<task>/01-<layer>
+  ```
+
+  Name the trunk (`origin/main`) explicitly: without it, `-b` branches from the
+  main checkout's current `HEAD` — which may be the human's active feature
+  branch — and `gh stack init` adopts that branch, commits and all, as the
+  bottom of the stack.
+
+* Move between layers with `gh stack up` / `down` / `bottom` / `top` /
+  `checkout <branch>`; add layers with `gh stack add <type>/<task>/<NN>-<layer>`.
+  Do **not** create a worktree per layer: `gh stack` tracks the stack in the
+  repository's common git directory and needs the worktree that owns each branch
+  clean and idle during a cascade rebase, and N worktrees per task multiply the
+  sprawl §1 exists to prevent. `gh stack` never creates, removes or switches
+  worktrees itself.
+* The worktree lives as long as the stack: remove it (§1 step 7) after the
+  **last** layer merges, after `gh stack sync --prune` has deleted the merged
+  branches.
+
+### Layer boundaries
+
+* **One concern per layer, tests included.** A layer is one architectural slice
+  or one logical step; the tests that cover its code are in the same layer, and
+  each layer passes the project's full local gate (`make ci`) on its own before
+  it is pushed — run the gate on every layer you touched, not only the top.
+* **A change belongs to the layer that owns the code.** A bug found while writing
+  layer 3 that lives in layer 1's code is fixed on layer 1
+  (`gh stack checkout`), then cascaded: `gh stack rebase`, **re-run `make ci` on
+  every rebased layer** (at minimum the top, which carries the whole tree — a
+  lower-layer change can break an upper layer whose own diff did not move),
+  then `gh stack push`. Never patch a lower layer's defect in an upper layer,
+  and never let a lower layer reference code that only exists higher up.
+* **The bottom must be safe alone.** It merges to `main` first; if the feature is
+  incomplete until the top lands, the bottom ships dark or behind a flag.
+* **Every layer's PR body** carries the stack-position line
+  (`Stack: n of m — #a → #b (this PR) → #c`), `Closes #N` on the **top** layer
+  only (it lands last, so the issue closes with the whole stack) and
+  `Part of #N` on every layer below it, and the `🤖 Generated with [Agent Name]`
+  line (§6).
+* **Submit deterministically.** An agent session has no editor, so
+  `gh stack submit` falls back to generated titles and **draft** PRs, which
+  never enter the review loop. Run `gh stack submit --auto`, then for every
+  layer `gh pr edit <n> --title "<type>(<scope>): <subject>" --body-file
+  <layer-body>.md` and `gh pr ready <n>` (proc-02 §11, "Create a stack"). A
+  layer is not submitted until its title, body and ready state are correct.
+
+### Never rewrite a layer someone else is reviewing
+
+* Once a layer has a reviewer — a human review requested or in progress, or the
+  automated reviewer's findings still open — **append commits; never amend,
+  squash, reorder, drop or `gh stack modify` that layer.** Rewriting the history
+  under a reviewer invalidates their line comments and their mental diff.
+* The one exception is the **cascade rebase** forced by a fix to a lower layer or
+  by `main` moving: run it, and say so in each affected PR ("cascade rebase after
+  the #41 fix; this layer's diff is unchanged"). GitHub keeps approvals on layers
+  whose diff did not change.
+* Before `gh stack rebase`, `gh stack sync` or `gh stack modify`, check the
+  review state of every layer the operation will rewrite
+  (`gh pr view <n> --json reviewDecision,reviewRequests`). If a reviewer is
+  mid-review on one of them and the rebase is not forced, wait or coordinate.
+* `gh stack push`, `gh stack sync` and `gh stack submit` force-push with lease.
+  They sit in the same "Git push — requires confirmation" tier as any push (§3).
+
+### Merge the stack bottom-up
+
+* Run the merge loop of [proc-03 §1](./proc-03_code_review_expectations.md) **per
+  layer**: every layer waits for its own automated review, resolves its own
+  findings and goes green on its own checks.
+* Merge with `gh stack merge --squash --yes <pr>`, **naming the highest layer
+  that has completed its review loop** — the bottom alone, or a contiguous group
+  from the bottom. Without a target a non-interactive merge takes the whole
+  stack, sweeping unreviewed layers in or failing the all-or-nothing operation on
+  one unmergeable upper layer. Never bypass a protection rule to land a layer.
+  Auto-merge is not available for stacked PRs.
+* **`gh stack sync` after every partial merge**, before touching the next layer:
+  GitHub rebases and retargets the remaining layers on the server, and the
+  worktree's branches and stack metadata only follow when you sync.
+* If `gh stack` is unavailable or the host has no stacks (GitLab, a GitHub
+  Enterprise Server without the feature, a fork), hand-chain the layers with
+  the same rules (proc-02 §11, "Without the extension, or without GitHub
+  stacks"): PRs based on the layer below, bottom-up merge, retarget before
+  deleting a merged base — and say so in the bottom PR. Do not fall back to a
+  single oversized PR.
 
 ## Context Handling Across Layers
 
