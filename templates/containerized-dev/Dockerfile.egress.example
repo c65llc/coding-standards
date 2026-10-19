@@ -5,21 +5,29 @@
 # A minimal tinyproxy image. It is the ONLY route from the dev container to the
 # internet: `devnet` is an `internal: true` network, this container sits on both
 # devnet and the outside network, and tinyproxy refuses every destination that
-# is not in the generated allow-list (FilterDefaultDeny). Config and allow-list
-# are bind-mounted read-only from proxy/ — see docker-compose.dev.yml.
+# is not in the generated allow-list (FilterDefaultDeny). The config is baked in
+# below and asserted by the entrypoint; the allow-list is bind-mounted read-only
+# from proxy/ — see docker-compose.dev.yml.
 #
 # Pin the base image by digest and the package by version in real use (§3).
 FROM alpine:3.21
 
 RUN apk add --no-cache tinyproxy
 
-# Fail-closed entrypoint: refuses to start without a readable, non-empty
-# allow-list, and doubles as the HEALTHCHECK command.
+# Deny-by-default config, part of the image rather than a mount: the entrypoint
+# refuses to start unless its enforcement directives are present verbatim, so an
+# edited or missing config can never run an open proxy.
+COPY proxy/tinyproxy.conf /etc/tinyproxy/tinyproxy.conf
+
+# Fail-closed entrypoint: validates the config and every allow-list entry before
+# starting tinyproxy, and doubles as the HEALTHCHECK command.
 COPY proxy/egress-entrypoint.sh /usr/local/bin/egress-entrypoint.sh
-RUN chmod 0755 /usr/local/bin/egress-entrypoint.sh
+RUN chmod 0644 /etc/tinyproxy/tinyproxy.conf \
+    && chmod 0755 /usr/local/bin/egress-entrypoint.sh
 
 # Run unprivileged from the start (the package creates this account). Port 3128
-# is unprivileged, so tinyproxy never needs root.
+# is unprivileged, so tinyproxy never needs root. The mounted allow-list must be
+# world-readable for this UID — setup-proxy.sh writes it mode 0644.
 USER tinyproxy
 
 EXPOSE 3128

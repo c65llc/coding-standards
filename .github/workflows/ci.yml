@@ -108,6 +108,9 @@ jobs:
       - name: website CSP post-build functional tests
         run: ./website/scripts/test-csp-postbuild.sh
 
+      - name: containerized-dev egress layer functional tests
+        run: make test-containerized-dev
+
   # The generator's functional tests run in check-agent-configs (agent_configs
   # lane), which the routing table also selects for generator script changes.
 

@@ -9,6 +9,9 @@
   // Run identity + secret injection, then generate the egress allow-list, before
   // compose starts: the egress sidecar refuses to start without the allow-list,
   // and the dev service waits for the sidecar to be healthy (arch-09 §4).
+  // This runs ON THE HOST. It is safe only because docker-compose.dev.yml mounts
+  // scripts/ (and this directory) read-only into the dev container, so nothing
+  // the agent can write is ever executed here. Keep both facts in step.
   "initializeCommand": "./scripts/init-workspace.sh && ./scripts/setup-proxy.sh",
   "customizations": {
     "vscode": {

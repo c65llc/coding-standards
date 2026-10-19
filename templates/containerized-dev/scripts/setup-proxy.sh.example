@@ -50,8 +50,10 @@ green() { printf '\033[0;32m%s\033[0m\n' "$1"; }
 read_list() {
     local file="$1"
     [ -f "$file" ] || { warn "Whitelist not found: $file (skipping)"; return 0; }
-    # Strip comments/blanks/whitespace.
-    sed -e 's/#.*//' -e 's/[[:space:]]//g' "$file" | grep -v '^$' || true
+    # Strip comments/blanks/whitespace and normalise to lowercase: hostnames are
+    # case-insensitive but tinyproxy's fnmatch filter is not, so `API.GitHub.com`
+    # must become the same rule as `api.github.com`.
+    sed -e 's/#.*//' -e 's/[[:space:]]//g' "$file" | tr '[:upper:]' '[:lower:]' | grep -v '^$' || true
 }
 
 combined="$(
@@ -66,12 +68,16 @@ fi
 
 # --- 0. Validate every entry before it becomes a proxy rule -------------------
 # The sidecar matches entries as whole-host globs, so anything other than a
-# hostname (optionally prefixed with "*." for all subdomains) is rejected here
-# rather than becoming an accidental catch-all. In particular a bare "*", a URL,
-# or a path would widen the allow-list far beyond one host.
-invalid="$(echo "$combined" | grep -v -E '^(\*\.)?[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$' || true)"
+# hostname of at least two labels (optionally prefixed with "*." for all
+# subdomains) is rejected here rather than becoming an accidental catch-all. In
+# particular a bare "*", any other glob, a single-label wildcard such as "*.com",
+# a URL or a path would widen the allow-list far beyond one host. The egress
+# entrypoint re-checks every entry against the SAME grammar before starting, so
+# keep the two expressions identical.
+ENTRY_RE='^(\*\.)?[a-z0-9-]+(\.[a-z0-9-]+)+$'
+invalid="$(echo "$combined" | grep -v -E "$ENTRY_RE" || true)"
 if [ -n "$invalid" ]; then
-    err "Invalid allow-list entries (one host per line, optional leading '*.'):"
+    err "Invalid allow-list entries (one host per line, two or more labels, optional leading '*.'):"
     while IFS= read -r line; do printf '  %s\n' "$line" >&2; done <<< "$invalid"
     err "Fix the source list(s); nothing was written."
     exit 2
@@ -87,6 +93,11 @@ mkdir -p "$(dirname "$OUTPUT_LIST")"
     echo "# FilterDefaultDeny): one whole-host glob per line, everything else denied."
     echo "$combined"
 } > "$OUTPUT_LIST"
+# Not a secret, and the sidecar reads it as the unprivileged `tinyproxy` user
+# through a bind mount that preserves host permissions — so set the mode
+# explicitly instead of inheriting a restrictive umask (077 would yield 0600 and
+# the sidecar would refuse to start).
+chmod 0644 "$OUTPUT_LIST"
 
 # --- 2. Managed keys in .env (idempotent, preserves every other line) ---------
 # EGRESS_PROXY_HOST/PORT are derived from EGRESS_PROXY for tools that cannot take
@@ -115,7 +126,7 @@ echo
 echo "Apply and verify (arch-09 §4 — the deny path is the evidence, not this file):"
 echo "  docker compose -f docker-compose.dev.yml up -d --build        # first run"
 echo "  docker compose -f docker-compose.dev.yml restart egress       # after re-running this script"
-echo "  docker compose -f docker-compose.dev.yml exec dev curl -sS --max-time 10 https://malicious-site.com"
+echo "  docker compose -f docker-compose.dev.yml exec dev curl -sS --fail --max-time 10 https://malicious-site.com"
 echo "  (MUST fail with a 403 from the proxy; if it succeeds, egress is NOT contained)"
 printf '%s\n' "  docker compose -f docker-compose.dev.yml exec dev curl -sS --max-time 10 -o /dev/null -w '%{http_code}\n' https://api.github.com"
 echo "  (MUST print 200)"

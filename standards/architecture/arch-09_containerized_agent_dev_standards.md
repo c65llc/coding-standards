@@ -111,7 +111,8 @@ egress and allow only what the project needs.
   to an unlisted domain is **blocked**, proven by an actual failed request, not by
   reading the config. Prove the second half too: a request that *bypasses* the
   proxy variables (`curl --noproxy '*'`) MUST also fail, or the network — not the
-  environment — is not the control.
+  environment — is not the control. Make the check honest: `curl --fail`, since
+  a plain-HTTP 403 otherwise exits 0 and the check passes on an open proxy.
 * **Reference enforcement topology** (what the starter kit ships):
   * the dev container is attached only to an `internal: true` network, which has
     no route to the internet or the host LAN;
@@ -120,13 +121,29 @@ egress and allow only what the project needs.
     generated allow-list and refuses everything else before dialling out
     (deny by default), matching entries as **whole hosts** — `github.com` MUST NOT
     match `github.com.evil.example` — with an optional `*.` prefix for subdomains;
-  * the sidecar **fails closed**: a missing, empty or catch-all (`*`) allow-list
-    stops it from starting, and the dev container waits for it to be healthy, so
-    a broken allow-list halts the environment rather than opening it;
+  * the sidecar **fails closed** and trusts nothing it is handed: it asserts its
+    own deny-by-default config at start (the config is baked into the image, not
+    mounted) and validates **every** allow-list entry against the same grammar
+    the generator uses — lowercase hostnames of two or more labels, optionally
+    `*.`-prefixed — so a missing, empty, hand-edited or stale allow-list (a bare
+    `*`, any other glob, `*.com`, a URL) stops it from starting. The dev container
+    waits for it to be healthy, so a broken allow-list halts the environment
+    rather than opening it;
+  * everything the **host executes or builds from** — setup scripts the IDE runs
+    on the host, the compose file and Dockerfiles, the proxy directory — is
+    mounted **read-only** into the dev container. An agent that could edit those
+    would gain host code execution or a wider proxy on the next start; the
+    whitelists are therefore changed on the host, by a human;
+  * the engine must not forward external DNS from the internal network (Moby
+    CVE-2024-29018 did, with a loopback host resolver): a forwarded lookup leaks
+    data in the name without any connection. Require a patched engine and prove
+    it with a failed lookup, not just a failed request;
   * the sidecar publishes **no host port** — a reachable proxy with no client
     restriction is an open proxy for anything on the LAN;
-  * `setup-proxy.sh` rejects any entry that is not a hostname, so a URL, path or
-    bare `*` in a source list can never widen the generated rules;
+  * `setup-proxy.sh` lowercases every entry and rejects any that is not a
+    hostname of two or more labels, so a URL, path, bare `*` or `*.com` in a
+    source list can never widen the generated rules, and mixed case cannot
+    silently fail to match a case-sensitive filter;
   * protocols without proxy variables are tunnelled, not exempted: git over SSH
     uses a CONNECT `ProxyCommand` through the sidecar, and the sidecar permits
     CONNECT only to the ports that need it (443, 22);
