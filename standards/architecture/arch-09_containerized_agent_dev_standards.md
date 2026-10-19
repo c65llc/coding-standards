@@ -17,16 +17,18 @@ agent running with `--dangerously-skip-permissions` **directly on a developer's
 host** is a P0 violation; the same agent inside a properly-scoped container is the
 intended workflow.
 
-A starter kit scaffolding these rules lives at
+A starter kit implementing these rules lives at
 [`templates/containerized-dev/`](../../templates/containerized-dev/). It wires the
-workflow — images, workspace volume, identity and secret injection, proxy
-variables, IDE bootstraps — but it does **not** make a project compliant on its
-own: the enforcing egress layer required by §4 (a deny-by-default proxy sidecar or
-firewall) is left to the consumer until it ships as a follow-on, and the Docker
-socket mount is an explicit, documented opt-in. Copy the kit into a consumer
-project, adapt the toolchain and whitelists, and treat §8 — in particular the
-observed deny-path failure — as the only evidence of compliance. The kit's README
-lists exactly which controls it enforces and which it only scaffolds.
+workflow — images, workspace volume, identity and secret injection, IDE
+bootstraps — and ships the enforcing egress layer §4 requires: an `internal: true`
+container network whose only way out is a deny-by-default proxy sidecar fed by the
+generated allow-list. It still does **not** make a project compliant on its own:
+the Docker socket mount is an explicit, documented opt-in, image builds run
+outside the contained network, and the whitelists have to be adapted. Copy the kit
+into a consumer project, adapt the toolchain and whitelists, and treat §8 — in
+particular the observed deny-path failure on *your* host — as the only evidence of
+compliance. The kit's README lists exactly which controls it enforces, how, and
+what remains outside their reach.
 
 ## 1. Two Images, Two Purposes — Never One
 
@@ -107,7 +109,59 @@ egress and allow only what the project needs.
   listed host through but silently also lets *unlisted* hosts through is worse than
   none — it looks safe. The Definition of Done for any egress change is: a request
   to an unlisted domain is **blocked**, proven by an actual failed request, not by
-  reading the config.
+  reading the config. Prove the second half too: a request that *bypasses* the
+  proxy variables (`curl --noproxy '*'`) MUST also fail, or the network — not the
+  environment — is not the control. Make the check honest: `curl --fail`, since
+  a plain-HTTP 403 otherwise exits 0 and the check passes on an open proxy.
+* **Reference enforcement topology** (what the starter kit ships):
+  * the dev container is attached only to an `internal: true` network, which has
+    no route to the internet or the host LAN;
+  * a proxy sidecar is attached to that network *and* to a second, non-internal
+    network, and is the only member with an internet route. It consumes the
+    generated allow-list and refuses everything else before dialling out
+    (deny by default), matching entries as **whole hosts** — `github.com` MUST NOT
+    match `github.com.evil.example` — with an optional `*.` prefix for subdomains;
+  * the sidecar **fails closed** and trusts nothing it is handed: it asserts its
+    own deny-by-default config at start (the config is baked into the image, not
+    mounted) and validates **every** allow-list entry against the same grammar
+    the generator uses — lowercase hostnames of two or more labels, optionally
+    `*.`-prefixed — so a missing, empty, hand-edited or stale allow-list (a bare
+    `*`, any other glob, `*.com`, a URL) stops it from starting. The dev container
+    waits for it to be healthy, so a broken allow-list halts the environment
+    rather than opening it;
+  * **container writes, host executes:** everything the host executes, builds
+    from or interpolates — setup scripts the IDE runs on the host, the compose
+    file and Dockerfiles, `.env` (a value there can become a bind-mount source),
+    the proxy directory, and the git configuration every host-side `git` command
+    reads (`.git/config`, `.git/hooks`, `.git/modules`, `.gitmodules`) — is
+    mounted **read-only** into the dev container, and no host-side setup script
+    runs `git` or any other tool that reads container-writable configuration. An
+    agent that could edit those would gain host code execution or a wider proxy
+    on the next start; whitelists, git config and submodules are therefore
+    changed on the host, by a human, while the agent keeps committing, fetching
+    and pushing with the config it was given;
+  * the engine must not forward external DNS from the internal network (Moby
+    CVE-2024-29018 did, with a loopback host resolver): a forwarded lookup leaks
+    data in the name without any connection. Require a patched engine and prove
+    it with a failed lookup, not just a failed request;
+  * the sidecar publishes **no host port** — a reachable proxy with no client
+    restriction is an open proxy for anything on the LAN;
+  * `setup-proxy.sh` lowercases every entry and rejects any that is not a
+    hostname of two or more labels, so a URL, path, bare `*` or `*.com` in a
+    source list can never widen the generated rules, and mixed case cannot
+    silently fail to match a case-sensitive filter;
+  * protocols without proxy variables are tunnelled, not exempted: git over SSH
+    uses a CONNECT `ProxyCommand` through the sidecar, and the sidecar permits
+    CONNECT only to the ports that need it (443, 22);
+  * `sudo` inside the container preserves the proxy variables (`env_keep`) so
+    privileged package installs go through the sidecar rather than failing — this
+    changes where traffic goes, never what the allow-list permits.
+* **Know what the proxy cannot see.** It filters by destination host, not URL —
+  TLS is not inspected, so an allowed host is allowed for every path on it; prefer
+  exact hosts to wildcards. Image builds (`docker compose build`) run on the Docker
+  host network and are **not** filtered; keep build steps to pinned, reviewed
+  sources (§3). Anything that reaches outside the internal network by other means
+  — most notably a mounted Docker socket (§2) — bypasses the proxy entirely.
 * Comment lines (`#`) and blank lines in the whitelist sources are ignored so the
   lists can be self-documenting.
 
@@ -128,7 +182,7 @@ baked into an image layer or committed.
   is a P0 incident. Prefer values passed at runtime over any value in a build arg —
   build args are visible in image history.
 * Keep the setup idempotent: re-running `init-workspace.sh` refreshes identity and
-  submodules without clobbering local edits, and skips cleanly when a variable is
+  secrets without clobbering local edits, and skips cleanly when a variable is
   absent rather than writing an empty secret.
 
 ## 6. YOLO Permissions Are Earned by the Sandbox, Not Assumed

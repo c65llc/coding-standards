@@ -1,4 +1,4 @@
-.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor worktree-gc merge-standards lint-standards generate-standards-lists check-agent-configs website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-worktree-gc test-website-csp
+.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor worktree-gc merge-standards lint-standards generate-standards-lists check-agent-configs website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-worktree-gc test-website-csp test-containerized-dev
 
 help: ## Show this help message
 	@echo "Standards Repository Management"
@@ -90,7 +90,10 @@ test-worktree-gc: ## Run functional tests on worktree-gc.sh, the doctor Worktree
 test-website-csp: ## Run functional tests on the website CSP post-build step (needs node)
 	@./website/scripts/test-csp-postbuild.sh
 
-test: test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-worktree-gc test-website-csp ## Run all tests
+test-containerized-dev: ## Run functional tests on the containerized-dev kit egress layer (setup-proxy.sh, egress sidecar entrypoint, compose contract)
+	@./scripts/test-containerized-dev.sh
+
+test: test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-worktree-gc test-website-csp test-containerized-dev ## Run all tests
 
 setup-agents: ## Setup AI agent configurations (Copilot, Aider, Codex)
 	@if [ -d ".standards" ]; then \

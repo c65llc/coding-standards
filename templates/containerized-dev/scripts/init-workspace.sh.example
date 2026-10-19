@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 # init-workspace.sh — developer entry point for the containerized agent env.
 #
-# Idempotent. Re-running refreshes identity/secrets/submodules without clobbering
-# local edits: only the keys this script manages are rewritten in .env
-# (HOST_UID, HOST_GID, SSH_AUTH_SOCK); every other line — including the
-# EGRESS_PROXY/NO_PROXY keys written by setup-proxy.sh and anything you added by
-# hand — is preserved. See arch-09 §5 (identity injection) and §3 (submodules).
+# Idempotent. Re-running refreshes identity/secrets without clobbering local
+# edits: only the keys this script manages are rewritten in .env (HOST_UID,
+# HOST_GID, SSH_AUTH_SOCK); every other line — including the EGRESS_PROXY/NO_PROXY
+# keys written by setup-proxy.sh and anything you added by hand — is preserved.
+# See arch-09 §5 (identity injection).
 #
 # What it does:
 #   1. Forwards the host SSH agent + git identity into the compose environment.
 #   2. Detects provider API keys on the host and writes a git-ignored .env.secret.
-#   3. Initializes/updates the coding_standards submodule.
+#
+# THIS SCRIPT RUNS ON THE HOST (devcontainer.json initializeCommand, or by hand)
+# against a workspace the agent container can write to. It therefore never runs
+# `git` — or any other tool that reads container-writable configuration — because
+# .git/config (core.hooksPath, core.fsmonitor, aliases, includes) and .gitmodules
+# would let an agent run code on the host at the next invocation. Submodules are
+# synced by you, on the host, after reviewing the diff:
+#   git submodule update --init --recursive
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,9 +42,17 @@ upsert_env() {
 }
 
 # --- 0. Guard: .env.secret must be git-ignored before we ever write it --------
-if ! git check-ignore -q "$SECRET_FILE" 2>/dev/null; then
-    warn "Refusing to write .env.secret: it is not git-ignored."
-    warn "Add '.env.secret' to .gitignore first (arch-09 §5, P0)."
+# Checked by reading .gitignore directly, not via `git check-ignore`: git would
+# consult the container-writable .git/config (see the header). Accepts the exact
+# patterns the kit README installs, plus the obvious equivalents.
+is_secret_ignored() {
+    [ -f "$ROOT_DIR/.gitignore" ] || return 1
+    sed -e 's/[[:space:]]*$//' "$ROOT_DIR/.gitignore" \
+        | grep -q -x -E '/?\.env\.secret|/?\*\.secret|/?\.env\*|/?\.env\.\*'
+}
+if ! is_secret_ignored; then
+    warn "Refusing to write .env.secret: .gitignore does not list it."
+    warn "Add a '.env.secret' line to .gitignore first (arch-09 §5, P0)."
     exit 1
 fi
 
@@ -69,10 +84,10 @@ for var in ANTHROPIC_API_KEY GOOGLE_API_KEY GEMINI_API_KEY GH_TOKEN; do
 done
 [ "$wrote_any" = true ] || warn "No provider API keys found in the host environment."
 
-# --- 3. Submodule sync (arch-09 §3) -------------------------------------------
-if [ -f "$ROOT_DIR/.gitmodules" ]; then
-    git submodule update --init --recursive
-    green "Submodules initialized/updated."
+# --- 3. Submodules are NOT touched here (see the header) ----------------------
+if [ -f "$ROOT_DIR/.gitmodules" ] && [ ! -e "$ROOT_DIR/coding_standards/templates" ]; then
+    warn "Standards submodule looks uninitialised. On the host, after reviewing .gitmodules:"
+    warn "  git submodule update --init --recursive"
 fi
 
-green "Workspace ready. Next: docker compose -f docker-compose.dev.yml up -d"
+green "Workspace ready. Next: ./scripts/setup-proxy.sh && docker compose -f docker-compose.dev.yml up -d --build"

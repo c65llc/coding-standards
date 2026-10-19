@@ -20,7 +20,7 @@ shared: # make: make test lint-standards — anything here changes how every lan
   - ".github/ci/routing.yml"
   - ".github/workflows/ci.yml"
 
-shell: # make: make test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards (+ shellcheck)
+shell: # make: make test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-containerized-dev (+ shellcheck)
   - "scripts/**"
   - "bin/**"
   - "install.sh"
