@@ -12,6 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Profiles (#227):** optional `profiles:` list in `.standards.yml`, a third
+  selector axis beside `languages` and `role` (`shared-core`, `ui-surface`).
+  Profile blocks assemble under a `## Profiles` heading after the role block;
+  a skill whose frontmatter carries `profiles:` installs only when one of
+  them is declared and is removed when un-declared if unmodified (a
+  customized copy is kept with a warning); `lint-standards.sh` runs
+  `lint-checks/profiles/<profile>/` for each declared profile; `doctor`
+  fails an unknown profile, warns on a missing profile skill and suggests
+  detected ones as INFO (`detect-profiles.sh`); `setup.sh --profiles`
+  writes the stanza. A project that declares nothing is unaffected.
 - **Containerized agent-dev environment (#10):** new standard
   `arch-09_containerized_agent_dev_standards.md` codifying a sandboxed,
   reproducible Docker environment for autonomous AI agents — separate dev/prod
