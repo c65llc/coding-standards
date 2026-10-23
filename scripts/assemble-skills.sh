@@ -56,6 +56,11 @@ DRY_RUN=false
 QUIET=false
 AGENTS=""
 PROFILES="${STANDARDS_PROFILES:-}"
+# Set when --profiles or STANDARDS_PROFILES decided the list; otherwise the
+# project's own .standards.yml is read below, so a direct run never withdraws
+# a skill the committed config opts into.
+PROFILES_SPECIFIED=false
+[ -n "${STANDARDS_PROFILES+x}" ] && PROFILES_SPECIFIED=true
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -67,7 +72,7 @@ while [ $# -gt 0 ]; do
             SKILLS_DIR="$2"; shift 2 ;;
         --profiles)
             [ $# -ge 2 ] || { echo "ERROR: --profiles requires a value (may be empty)" >&2; exit 2; }
-            PROFILES="$2"; shift 2 ;;
+            PROFILES="$2"; PROFILES_SPECIFIED=true; shift 2 ;;
         --dry-run) DRY_RUN=true; shift ;;
         --quiet)   QUIET=true; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -111,6 +116,14 @@ if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
     # shellcheck source=lib/checksums.sh disable=SC1091
     source "$SCRIPT_DIR/lib/checksums.sh"
     HAVE_CHECKSUMS=true
+fi
+# Declared profiles (#227) from the project's .standards.yml when the caller
+# did not say: a direct `assemble-skills.sh claude-code` must honour the
+# committed opt-in, not treat "unspecified" as "none".
+if [ "$PROFILES_SPECIFIED" = false ] && [ "$HAVE_CHECKSUMS" = true ] \
+   && declare -f read_standards_config >/dev/null 2>&1 && [ -f "$PROJECT_ROOT/.standards.yml" ] \
+   && read_standards_config "$PROJECT_ROOT" 2>/dev/null; then
+    PROFILES=$(printf '%s\n' "${STD_PROFILES:-}" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
 fi
 CHECKSUMS_PATH="$PROJECT_ROOT/${CHECKSUMS_FILE:-.standards-checksums}"
 PENDING_ROOT="$PROJECT_ROOT/${PENDING_DIR:-.standards-pending}"

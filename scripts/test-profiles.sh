@@ -188,6 +188,13 @@ skills "$proj" "" cursor copilot
 if [ -f "$proj/.cursor/commands/plain.md" ] && [ ! -f "$proj/.cursor/commands/gated.md" ] \
    && [ -f "$proj/.github/prompts/plain.prompt.md" ] && [ ! -f "$proj/.github/prompts/gated.prompt.md" ]; then pass; else fail "$(cat "$proj/.skills.out")"; fi
 
+proj=$(make_project "sk-direct")
+printf 'version: 1\nlanguages: []\nagents: [claude-code]\nprofiles: [ui-surface]\n' > "$proj/.standards.yml"
+skills "$proj" "ui-surface" claude-code
+echo -n "Test 19b: a direct run with no --profiles and no STANDARDS_PROFILES reads the declared profiles and keeps the skill... "
+env -u STANDARDS_PROFILES "$SKILLS" --project-root "$proj" --skills-dir "$FIX/skills" claude-code > "$proj/.skills.out" 2>&1
+if [ -f "$proj/.claude/skills/gated/SKILL.md" ] && ! grep -qi 'removed' "$proj/.skills.out"; then pass; else fail "$(cat "$proj/.skills.out")"; fi
+
 # --- sync-standards / diff-standards: block selection and pass-through -----
 
 SYNC="$REPO_ROOT/scripts/sync-standards.sh"
