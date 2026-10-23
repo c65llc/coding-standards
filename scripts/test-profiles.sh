@@ -188,6 +188,86 @@ skills "$proj" "" cursor copilot
 if [ -f "$proj/.cursor/commands/plain.md" ] && [ ! -f "$proj/.cursor/commands/gated.md" ] \
    && [ -f "$proj/.github/prompts/plain.prompt.md" ] && [ ! -f "$proj/.github/prompts/gated.prompt.md" ]; then pass; else fail "$(cat "$proj/.skills.out")"; fi
 
+# --- sync-standards / diff-standards: block selection and pass-through -----
+
+SYNC="$REPO_ROOT/scripts/sync-standards.sh"
+DIFF="$REPO_ROOT/scripts/diff-standards.sh"
+
+# fake_standards <proj> — .standards/ pointing at the real tree (symlinks).
+fake_standards() {
+    mkdir -p "$1/.standards"
+    ln -s "$REPO_ROOT/standards" "$1/.standards/standards"
+    ln -s "$REPO_ROOT/scripts"   "$1/.standards/scripts"
+    ln -s "$REPO_ROOT/templates" "$1/.standards/templates"
+}
+# fake_standards_with_profiles <proj> — .standards/ whose standards/ is a copy
+# of the real tree plus the two profile blocks and a gated skill, so the
+# end-to-end path can be exercised before the content layer lands.
+fake_standards_with_profiles() {
+    mkdir -p "$1/.standards"
+    cp -R "$REPO_ROOT/standards" "$1/.standards/standards"
+    echo "Shared core rule." > "$1/.standards/standards/shared/blocks/profile-shared-core.md"
+    echo "UI surface rule." > "$1/.standards/standards/shared/blocks/profile-ui-surface.md"
+    cp "$FIX/skills/gated.md" "$1/.standards/standards/skills/gated.md"
+    ln -s "$REPO_ROOT/scripts"   "$1/.standards/scripts"
+    ln -s "$REPO_ROOT/templates" "$1/.standards/templates"
+}
+# write_yml <proj> "<agents yaml list>" "<profiles line or empty>"
+write_yml() {
+    {
+        echo "version: 1"
+        echo "languages: [typescript]"
+        echo "agents: [$2]"
+        echo "role: app"
+        [ -n "$3" ] && echo "$3"
+    } > "$1/.standards.yml"
+}
+
+proj=$(make_project "sync-missing-block")
+fake_standards "$proj"; write_yml "$proj" "claude-code" "profiles: [shared-core]"
+echo -n "Test 20: sync with a declared profile whose block is absent warns, skips and still assembles... "
+out=$(cd "$proj" && "$SYNC" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && echo "$out" | grep -q 'profile block profile-shared-core.md not found; skipping' && [ -f "$proj/CLAUDE.md" ]; then pass; else fail "rc=$rc; $(echo "$out" | tail -5)"; fi
+
+proj=$(make_project "sync-block")
+fake_standards_with_profiles "$proj"; write_yml "$proj" "claude-code" "profiles: [shared-core]"
+echo -n "Test 20b: sync puts the declared profile block under '## Profiles' in CLAUDE.md... "
+out=$(cd "$proj" && "$SYNC" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && grep -q '^## Profiles$' "$proj/CLAUDE.md" && grep -q '^### Shared Core$' "$proj/CLAUDE.md" && ! grep -q 'UI surface rule' "$proj/CLAUDE.md"; then pass; else fail "rc=$rc; $(grep -n '^## ' "$proj/CLAUDE.md" 2>/dev/null | tail -4)"; fi
+
+proj=$(make_project "sync-bogus")
+fake_standards "$proj"; write_yml "$proj" "claude-code" "profiles: [bogus]"
+echo -n "Test 21: sync rejects an unknown profile before writing anything... "
+out=$(cd "$proj" && "$SYNC" 2>&1); rc=$?
+if [ "$rc" -eq 2 ] && echo "$out" | grep -q 'Unknown profile: bogus (expected one of: shared-core, ui-surface)' && [ ! -f "$proj/CLAUDE.md" ]; then pass; else fail "rc=$rc; $(echo "$out" | tail -3)"; fi
+
+proj=$(make_project "sync-skills")
+fake_standards_with_profiles "$proj"; write_yml "$proj" "claude-code, codex" "profiles: [ui-surface]"
+echo -n "Test 22: sync passes the declared profiles to the skill assembler and the Skills index... "
+out=$(cd "$proj" && "$SYNC" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ -f "$proj/.claude/skills/gated/SKILL.md" ] && grep -q '^### gated$' "$proj/AGENTS.md"; then pass; else fail "rc=$rc; $(echo "$out" | tail -4)"; fi
+
+proj=$(make_project "sync-skills-none")
+fake_standards_with_profiles "$proj"; write_yml "$proj" "claude-code, codex" ""
+echo -n "Test 22b: without the profile the gated skill is neither installed nor indexed... "
+out=$(cd "$proj" && "$SYNC" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ ! -f "$proj/.claude/skills/gated/SKILL.md" ] && ! grep -q '^### gated$' "$proj/AGENTS.md"; then pass; else fail "rc=$rc; $(echo "$out" | tail -4)"; fi
+
+proj=$(make_project "diff-profiles")
+fake_standards_with_profiles "$proj"; write_yml "$proj" "claude-code" ""
+( cd "$proj" && "$SYNC" >/dev/null 2>&1 )
+write_yml "$proj" "claude-code" "profiles: [shared-core, ui-surface]"
+echo -n "Test 23: diff-standards --exit-code sees the drift when profiles are declared after a sync... "
+out=$(cd "$proj" && "$DIFF" --exit-code 2>&1); rc=$?
+if [ "$rc" -eq 1 ] && echo "$out" | grep -q 'Shared Core' && ! echo "$out" | grep -q 'unknown prefix\|Unknown profile'; then pass; else fail "rc=$rc; $(echo "$out" | tail -4)"; fi
+
+# Same basename in two parents: the project name is derived from the directory.
+p1=$(make_project "nokey/proj"); fake_standards "$p1"; write_yml "$p1" "claude-code, codex" ""
+p2=$(make_project "empty/proj"); fake_standards "$p2"; write_yml "$p2" "claude-code, codex" "profiles: []"
+echo -n "Test 23b: no profiles key and profiles: [] assemble byte-identical CLAUDE.md and AGENTS.md... "
+( cd "$p1" && "$SYNC" >/dev/null 2>&1 ); ( cd "$p2" && "$SYNC" >/dev/null 2>&1 )
+if cmp -s "$p1/CLAUDE.md" "$p2/CLAUDE.md" && cmp -s "$p1/AGENTS.md" "$p2/AGENTS.md" && [ -f "$p1/AGENTS.md" ]; then pass; else fail "$(diff "$p1/CLAUDE.md" "$p2/CLAUDE.md" | head -5)"; fi
+
 # --- summary ----------------------------------------------------------------
 
 echo ""
