@@ -84,6 +84,67 @@ a=$(with_libs "read_standards_config '$proj'; printf '[%s]' \"\$STD_PROFILES\"")
 b=$(with_libs "read_standards_config '$proj2'; printf '[%s]' \"\$STD_PROFILES\"")
 if [ "$a" = "[]" ] && [ "$b" = "[]" ]; then pass; else fail "got '$a' and '$b'"; fi
 
+# --- assemble-config: profile- blocks and the skills index -----------------
+
+ASSEMBLE="$REPO_ROOT/scripts/assemble-config.sh"
+FIX="$TMP_BASE/fixtures"
+mkdir -p "$FIX/blocks" "$FIX/skills"
+echo "Role app rule." > "$FIX/blocks/role-app.md"
+echo "Shared core rule." > "$FIX/blocks/profile-shared-core.md"
+echo "UI surface rule." > "$FIX/blocks/profile-ui-surface.md"
+printf -- '---\nname: plain\ndescription: Plain skill\n---\n\n# Plain\n\n## When to Use\n\n- always\n' > "$FIX/skills/plain.md"
+printf -- '---\nname: gated\ndescription: Gated skill\nprofiles: ui-surface\n---\n\n# Gated\n\n## When to Use\n\n- only with ui-surface\n' > "$FIX/skills/gated.md"
+CODEX_BASE="$REPO_ROOT/standards/agents/codex/base-codex.md"
+CLAUDE_BASE="$REPO_ROOT/standards/agents/claude-code/base-claude-code.md"
+
+# assemble <agent> <out> <profiles|-> [blocks...]; "-" passes no --profiles
+# flag (the environment decides); stderr goes to <out>.err
+assemble() {
+    local agent="$1" out="$2" profiles="$3"; shift 3
+    local proj; proj=$(make_project "asm-$RANDOM")
+    local base="$CODEX_BASE"; [ "$agent" = claude-code ] && base="$CLAUDE_BASE"
+    local opts=(--project-root "$proj" --skills-dir "$FIX/skills")
+    [ "$profiles" != "-" ] && opts+=(--profiles "$profiles")
+    "$ASSEMBLE" "${opts[@]}" "$agent" "$FIX/blocks" "$base" "$out" "$@" >/dev/null 2>"$out.err"
+}
+
+out="$TMP_BASE/t7.md"
+echo -n "Test 7: one profile block renders under '## Profiles' / '### Shared Core' after '## Project Type'... "
+assemble claude-code "$out" - role-app.md profile-shared-core.md
+n=$(grep -c '^## Profiles$' "$out"); pt=$(grep -n '^## Project Type$' "$out" | cut -d: -f1); pf=$(grep -n '^## Profiles$' "$out" | cut -d: -f1)
+if [ "$n" = 1 ] && grep -q '^### Shared Core$' "$out" && [ -n "$pt" ] && [ "$pf" -gt "$pt" ]; then pass; else fail "headings wrong (count=$n pt=$pt pf=$pf)"; fi
+
+out="$TMP_BASE/t8.md"
+echo -n "Test 8: two profile blocks share one '## Profiles' heading in declared order... "
+assemble claude-code "$out" - role-app.md profile-shared-core.md profile-ui-surface.md
+n=$(grep -c '^## Profiles$' "$out"); a=$(grep -n '^### Shared Core$' "$out" | cut -d: -f1); b=$(grep -n '^### UI Surface$' "$out" | cut -d: -f1)
+if [ "$n" = 1 ] && [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]; then pass; else fail "count=$n a=$a b=$b"; fi
+
+echo -n "Test 9: no unknown-prefix WARNING on stderr for profile- blocks... "
+if ! grep -q 'unknown prefix' "$out.err"; then pass; else fail "$(cat "$out.err")"; fi
+
+out="$TMP_BASE/t10.md"
+echo -n "Test 10: codex Skills index with --profiles '' lists plain and not gated... "
+assemble codex "$out" "" role-app.md
+if grep -q '^### plain$' "$out" && ! grep -q '^### gated$' "$out"; then pass; else fail "$(grep '^### ' "$out" | tr '\n' ' ')"; fi
+
+out="$TMP_BASE/t11.md"
+echo -n "Test 11: codex Skills index with --profiles ui-surface lists both... "
+assemble codex "$out" "ui-surface" role-app.md
+if grep -q '^### plain$' "$out" && grep -q '^### gated$' "$out"; then pass; else fail "$(grep '^### ' "$out" | tr '\n' ' ')"; fi
+
+out="$TMP_BASE/t12.md"
+echo -n "Test 12: STANDARDS_PROFILES in the environment behaves like --profiles... "
+STANDARDS_PROFILES="ui-surface" assemble codex "$out" - role-app.md
+if grep -q '^### gated$' "$out"; then pass; else fail "gated not listed"; fi
+
+echo -n "Test 13: skill_profiles parses [a, b], 'a, b' and 'a'... "
+printf -- '---\nname: x\nprofiles: [a, b]\n---\n' > "$FIX/p1.md"
+printf -- '---\nname: x\nprofiles: a, b\n---\n' > "$FIX/p2.md"
+printf -- '---\nname: x\nprofiles: a\n---\n' > "$FIX/p3.md"
+r=$(bash -c "source '$REPO_ROOT/scripts/lib/skills.sh'; printf '%s|%s|%s' \"\$(skill_profiles '$FIX/p1.md')\" \"\$(skill_profiles '$FIX/p2.md')\" \"\$(skill_profiles '$FIX/p3.md')\"" 2>/dev/null)
+if [ "$r" = "a b|a b|a" ]; then pass; else fail "got '$r'"; fi
+
 # --- summary ----------------------------------------------------------------
 
 echo ""
