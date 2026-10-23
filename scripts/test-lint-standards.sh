@@ -3387,6 +3387,50 @@ echo -n "Test 303: --format json carries the profile check as WARN... "
 LINT_CHECKS_DIR="$profile_checks" "$LINT" --format json "$proj" > "$TMP_BASE/profiles.json" 2>/dev/null || true
 if json_valid "$TMP_BASE/profiles.json" && [ "$(json_check_status stub < "$TMP_BASE/profiles.json")" = "WARN" ]; then pass; else fail "$(cat "$TMP_BASE/profiles.json")"; fi
 
+# --- #227: ui-surface/web-tells ---------------------------------------------
+
+WEB_TELLS="$CHECKS/profiles/ui-surface/web-tells.sh"
+
+echo -n "Test 304: web-tells module exists and is executable... "
+if [ -x "$WEB_TELLS" ]; then pass; else fail "$WEB_TELLS missing or not executable"; fi
+
+proj=$(make_project "tells-hits")
+mkdir -p "$proj/src"
+printf '.row { cursor: pointer; }\n' > "$proj/src/a.css"
+printf "el.scrollTo({ top: 0, behavior: 'smooth' });\n" > "$proj/src/b.ts"
+( cd "$proj" && git add -A && git -c user.email="t@t.local" -c user.name="T" commit -q -m "feat: tells" )
+echo -n "Test 305: web-tells WARNs with the hit count and each file:line... "
+out=$("$WEB_TELLS" "$proj" 2>/dev/null); rc=$?
+if [ "$rc" -eq 2 ] && echo "$out" | grep -q '^WARN web-tells 2 hit(s)' && echo "$out" | grep -q 'src/a.css:1' && echo "$out" | grep -q 'src/b.ts:1'; then pass; else fail "rc=$rc out=$out"; fi
+
+echo -n "Test 306: a committed .standards-ui-allow glob exempts its files... "
+printf '# deliberate: the row cursor is a ruled exception\nsrc/a.css\n' > "$proj/.standards-ui-allow"
+out=$("$WEB_TELLS" "$proj" 2>/dev/null); rc=$?
+if [ "$rc" -eq 2 ] && echo "$out" | grep -q '^WARN web-tells 1 hit(s)' && ! echo "$out" | grep -q 'a.css' && echo "$out" | grep -q 'src/b.ts:1'; then pass; else fail "rc=$rc out=$out"; fi
+
+proj=$(make_project "tells-none")
+mkdir -p "$proj/src"; printf 'const x = 1;\n' > "$proj/src/clean.ts"
+( cd "$proj" && git add -A && git -c user.email="t@t.local" -c user.name="T" commit -q -m "feat: clean" )
+echo -n "Test 307: web-tells PASSes a project with no tells... "
+out=$("$WEB_TELLS" "$proj" 2>/dev/null); rc=$?
+if [ "$rc" -eq 0 ] && echo "$out" | grep -q '^PASS web-tells'; then pass; else fail "rc=$rc out=$out"; fi
+
+proj=$(make_project "tells-many")
+mkdir -p "$proj/src"
+for i in 1 2 3 4 5 6 7; do printf '.r%s { cursor: pointer; }\n' "$i" > "$proj/src/f$i.css"; done
+( cd "$proj" && git add -A && git -c user.email="t@t.local" -c user.name="T" commit -q -m "feat: many" )
+echo -n "Test 308: web-tells lists five locations and counts the rest... "
+out=$("$WEB_TELLS" "$proj" 2>/dev/null)
+if echo "$out" | grep -q '7 hit(s)' && echo "$out" | grep -q '(+2 more)' && [ "$(echo "$out" | grep -o 'src/f[0-9].css:1' | wc -l | tr -d ' ')" = 5 ]; then pass; else fail "out=$out"; fi
+
+proj=$(make_project "tells-sarif")
+mkdir -p "$proj/src"; printf '.row { cursor: pointer; }\n' > "$proj/src/a.css"
+printf 'version: 1\nlanguages: []\nprofiles: [ui-surface]\n' > "$proj/.standards.yml"
+( cd "$proj" && git add -A && git -c user.email="t@t.local" -c user.name="T" commit -q -m "feat: sarif" )
+echo -n "Test 309: lint-standards --format sarif carries web-tells as a warning when ui-surface is declared... "
+"$LINT" --format sarif "$proj" > "$TMP_BASE/tells.sarif" 2>/dev/null || true
+if json_valid "$TMP_BASE/tells.sarif" && grep -q 'web-tells' "$TMP_BASE/tells.sarif" && grep -q '"level": *"warning"' "$TMP_BASE/tells.sarif"; then pass; else fail "$(head -c 600 "$TMP_BASE/tells.sarif")"; fi
+
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"
     exit 0
