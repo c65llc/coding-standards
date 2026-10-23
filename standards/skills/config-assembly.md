@@ -50,7 +50,7 @@ Generate agent configuration files by composing content blocks based on the proj
    5. `git-workflow.md`
    6. `documentation-policy.md`
 
-   then the language and role blocks for the declared `languages:` and `role:`. For `codex`, `gemini` and `aider` it also appends a `## Skills` index of `standards/skills/` (name, description, triggers, runbook path), since those agents read a single file.
+   then the language and role blocks for the declared `languages:` and `role:`, then one `profile-<name>.md` block per declared profile under `## Profiles` (#227). For `codex`, `gemini` and `aider` it also appends a `## Skills` index of `standards/skills/` (name, description, triggers, runbook path), since those agents read a single file.
 
 4. The same sync emits the skills for the file-based agents (`assemble-skills.sh`, under the same guard): `claude-code` → `.claude/skills/<name>/SKILL.md`, `cursor` → `.cursor/commands/<name>.md`, `copilot` → `.github/prompts/<name>.prompt.md`. A file is rewritten only when its content changed; one the standards did not install, or that was edited since, is kept and the new version is staged to `.standards-pending/<path>`.
 

@@ -54,6 +54,19 @@ Default to the agents the user has tooling for (`.standards/scripts/setup.sh --a
 
 Every declared agent is treated the same way: its config is assembled from the same blocks, its worktree root comes from `worktree_dir:` in `.standards.yml` (default `.claude/worktrees`), and the standards skills reach it in its own shape (`.claude/skills/`, `.cursor/commands/`, `.github/prompts/`, or a `## Skills` index in `AGENTS.md` / `GEMINI.md` / the Aider instructions). Ask where the project keeps agent worktrees if it already has a convention (`.worktrees/`, `.codex/worktrees/`) and set `worktree_dir:` accordingly.
 
+### Step 3b: Offer Profiles
+
+Profiles are optional, cross-cutting standards a project opts in to; nothing enables one but the committed `.standards.yml`. Run the detector and present its suggestions as a question, never as a decision:
+
+```bash
+.standards/scripts/detect-profiles.sh
+```
+
+- **shared-core** — one logic core (Rust, WASM, FFI) under thin native shells: tenets, a platform-shape decision tree, a native-shell audit, the `shared-core` skill (`arch-07`)
+- **ui-surface** — what makes a UI feel like it belongs on its platform: ownership tables per surface class, a tagged audit, the `web-tells` lint check, the `ui-surface` skill (`arch-11`)
+
+"Detection suggests shared-core (uniffi in Cargo.toml). Declare it? Any other profile?" Leave `profiles:` out when the user declines; pass `--profiles <list>` to `setup.sh` when they accept.
+
 ### Step 4: Generate .standards.yml
 
 Write the config file:
