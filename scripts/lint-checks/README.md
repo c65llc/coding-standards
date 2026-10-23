@@ -57,6 +57,16 @@ no automated check modules for them yet. Consumers should not assume
 | `changelog-tags` | proc-02 §5 | Every released `## [x.y.z]` heading in `CHANGELOG.md` (also `CHANGELOG`, `CHANGES.md`, `HISTORY.md`, or `release.changelog`) has a matching tag — `v<version>` or `<version>` by default, `release.tag_prefix` when declared; `## [Unreleased]` and `[YANKED]` markers are handled. FAIL names the untagged versions (first four, then `(+N more)`) or a declared changelog that is missing or empty. WARN when only the topmost heading is untagged (a release in flight: heading merged, tag pending), when a root `package.json` / `Cargo.toml` / `pyproject.toml` version is not the topmost released heading, when release-shaped tags exist but the changelog has no release heading (operational tags such as `docs-preview-…` are ignored), and when a shallow clone cannot see a heading's tag (a `--depth` clone only carries tags inside the fetched history — unverifiable, never a false PASS or FAIL). Self-tests the heading parser, tag matcher and manifest readers on every run | WARN/FAIL |
 | `artifact-hygiene` | arch-06 §6, arch-07 §3 | Committed `*.wasm`, `*.a`, `*.so`(.N), `*.dylib` and `*.jar` files embed no absolute `/Users/<x>/` or `/home/<x>/` path (a machine-specific build the cold-rebuild drift gate cannot reproduce). JARs are scanned as raw bytes (entry names, archive comment, central directory) *and* as inflated entries via `unzip -p` when `unzip` is present; ELF objects and `.a` archives with compressed DWARF (`objcopy --compress-debug-sections`) are inflated via `objcopy --decompress-debug-sections` when an objcopy is present. A Git LFS pointer (checkout without `lfs: true`) and a compressed-debug object that cannot be inflated are reported as *not scanned*, never as a PASS. Strict like `no-secrets`: a committed artifact is scanned wherever it lives and `lint.exclude` does not apply. Reports up to three artifacts with the username redacted (`/Users/<user>/…`); a newline-named artifact is reported, not skipped. Never FAILs — the remedy is a regeneration from the pinned runner, not a blocked merge | WARN |
 
+### Profile checks
+
+Run only when the profile is declared under `profiles:` in `.standards.yml`
+(#227); the runner invokes `lint-checks/profiles/<profile>/` per declared
+profile, scoped like a language check. `shared-core` ships no checks yet.
+
+| Check | Standard | What it looks at | Severity on finding |
+| --- | --- | --- | --- |
+| `profiles/ui-surface/web-tells` | arch-11 §3, §5 | Stylesheets and scripts (`.css .scss .tsx .jsx .vue .svelte .ts .js`) for `cursor: pointer`, `scroll-behavior: smooth`, `behavior: 'smooth'` and `user-select: text`; names up to five `file:line` locations and counts the rest. Every hit is counted; up to five are named. A committed `.standards-ui-allow` (one glob per line, `lint.exclude` semantics: `*` within a segment, `**` across) records deliberate exceptions. Never FAILs: a tell is a design call | WARN |
+
 ## Module options
 
 ### conventional-commits
