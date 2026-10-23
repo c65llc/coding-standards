@@ -219,6 +219,45 @@ Paths are relative to the root config; absolute paths and `..` are rejected. A d
 
 Running `lint-standards.sh server` directly still treats `server/` as a single-root project, so a per-member Makefile target keeps working; the root run simply makes it unnecessary.
 
+## Profiles
+
+Some standards apply to a *shape* of product rather than to a language or a
+role: one logic core under several native shells, or a UI that has to pass for
+a native app. Those are **profiles**, declared under `profiles:` in
+`.standards.yml`, and nothing enables one except that list.
+
+```yaml
+# .standards.yml
+profiles:
+  - shared-core   # one core, thin native shells (arch-07 §7–§9)
+  - ui-surface    # platform-feel audit and ownership tables (arch-11)
+```
+
+Declaring a profile does three things on the next `make sync-standards`:
+
+| What | Where |
+| --- | --- |
+| A block lands in every assembled agent config | under `## Profiles`, after `## Project Type`, one `###` sub-heading per profile |
+| The profile's skill is installed for file-based agents and indexed for the rest | `.claude/skills/<profile>/SKILL.md`, `.cursor/commands/`, `.github/prompts/`, or the `## Skills` index |
+| The profile's lint checks run | `lint-checks/profiles/<profile>/` — `ui-surface` ships `web-tells` (WARN only); `shared-core` ships none |
+
+A profile differs from a role: a project has exactly one role and any number of
+profiles, including none, and a role is never suggested while a profile is.
+`make doctor` prints an INFO line when `scripts/detect-profiles.sh` thinks one
+applies (a `uniffi` dependency, a web app manifest, `role: app`), FAILs on an
+unknown name, and WARNs when a declared profile's skill is not installed.
+
+**Removing a profile** is deleting the line and syncing: the block disappears
+from the configs (a customized config is staged to `.standards-pending/` as
+usual), and the skill file is removed when it is still the one the standards
+wrote. An edited skill is kept and reported as no longer managed, so a project
+that built on it does not lose work.
+
+**Recording a deliberate exception** to the `web-tells` check: add a glob per
+line to a committed `.standards-ui-allow` at the project root. The file is the
+point: a ruled exception is written down where review can see it, rather than
+the check being switched off.
+
 ## Tips
 
 - **Start small.** Fork the repo, change only what you need, and expand over time.

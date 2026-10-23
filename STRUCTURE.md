@@ -57,6 +57,8 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │   │
 │   ├── skills/                    # Agent-neutral runbooks, emitted per agent by scripts/assemble-skills.sh
 │   │   ├── merge-standards.md     # (.claude/skills/, .cursor/commands/, .github/prompts/, or a Skills index)
+│   │   ├── shared-core.md         # profile-gated (profiles: shared-core) — installs only when declared
+│   │   ├── ui-surface.md          # profile-gated (profiles: ui-surface)
 │   │   ├── standards-audit.md
 │   │   ├── security-gate.md
 │   │   ├── coverage-enforcer.md
@@ -119,6 +121,7 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │   ├── doctor.sh                  # Standards health check (config, agents, hooks, worktrees)
 │   ├── worktree-gc.sh             # Remove merged, gone and idle agent worktrees
 │   ├── detect-languages.sh        # Detect project languages via manifest files
+│   ├── detect-profiles.sh         # Suggest profiles (shared-core, ui-surface) — suggestions only
 │   └── build-claude-settings.sh   # Build language-aware Claude Code settings
 │
 └── docs/                           # 📚 Documentation

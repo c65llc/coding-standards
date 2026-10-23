@@ -393,7 +393,9 @@ For products that ship the same UX on multiple platforms, a UI change is assumed
 to apply to **every** platform unless scoped otherwise. Scope the issue/PR to cover
 web *and* each native shell, and keep shared data/logic single-sourced in the core.
 See [arch-07_cross_platform_shared_core_standards.md](../architecture/arch-07_cross_platform_shared_core_standards.md)
-§4.
+§4. When the project declares the `ui-surface` profile, validation also walks the
+[arch-11](../architecture/arch-11_ui_surface_standards.md) §3 audit items for the
+touched surface on the running build, and a project ruling beats any audit item.
 
 ### Cross-agent invocation
 
