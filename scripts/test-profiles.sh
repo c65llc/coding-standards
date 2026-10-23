@@ -268,6 +268,57 @@ echo -n "Test 23b: no profiles key and profiles: [] assemble byte-identical CLAU
 ( cd "$p1" && "$SYNC" >/dev/null 2>&1 ); ( cd "$p2" && "$SYNC" >/dev/null 2>&1 )
 if cmp -s "$p1/CLAUDE.md" "$p2/CLAUDE.md" && cmp -s "$p1/AGENTS.md" "$p2/AGENTS.md" && [ -f "$p1/AGENTS.md" ]; then pass; else fail "$(diff "$p1/CLAUDE.md" "$p2/CLAUDE.md" | head -5)"; fi
 
+# --- detect-profiles.sh and doctor check_profiles ---------------------------
+
+DETECT="$REPO_ROOT/scripts/detect-profiles.sh"
+DOCTOR="$REPO_ROOT/scripts/doctor.sh"
+
+proj=$(make_project "det-empty")
+echo -n "Test 24: detect-profiles prints nothing for an empty project... "
+out=$(bash "$DETECT" "$proj" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && [ -z "$out" ]; then pass; else fail "rc=$rc out='$out'"; fi
+
+proj=$(make_project "det-uniffi")
+printf '[package]\nname = "x"\n[dependencies]\nuniffi = "0.29"\n' > "$proj/Cargo.toml"
+echo -n "Test 25: detect-profiles suggests shared-core for a uniffi dependency... "
+out=$(bash "$DETECT" "$proj" 2>/dev/null)
+if [ "$out" = "$(printf 'shared-core\tuniffi in Cargo.toml')" ]; then pass; else fail "out='$out'"; fi
+
+proj=$(make_project "det-shells")
+mkdir -p "$proj/crates/core" "$proj/shells/apple" "$proj/apps/web"
+echo -n "Test 26: detect-profiles suggests shared-core once for crates/ beside platform shells... "
+out=$(bash "$DETECT" "$proj" 2>/dev/null)
+if [ "$(echo "$out" | grep -c '^shared-core')" = 1 ] && echo "$out" | grep -q 'beside platform shells'; then pass; else fail "out='$out'"; fi
+
+proj=$(make_project "det-ui")
+touch "$proj/manifest.webmanifest"
+printf 'version: 1\nlanguages: [typescript]\nrole: app\n' > "$proj/.standards.yml"
+echo -n "Test 27: detect-profiles suggests ui-surface once for a manifest and role: app... "
+out=$(bash "$DETECT" "$proj" 2>/dev/null)
+if [ "$(echo "$out" | grep -c '^ui-surface')" = 1 ] && echo "$out" | grep -q 'web app manifest'; then pass; else fail "out='$out'"; fi
+
+proj=$(make_project "doc-bogus")
+printf 'version: 1\nlanguages: []\nagents: [codex]\nprofiles: [bogus]\n' > "$proj/.standards.yml"
+echo -n "Test 28: doctor FAILs an unknown declared profile... "
+out=$(cd "$proj" && bash "$DOCTOR" 2>&1) || true
+if echo "$out" | grep 'Profiles' | grep -q "FAIL.*Unknown profile 'bogus'"; then pass; else fail "$(echo "$out" | grep Profiles)"; fi
+
+proj=$(make_project "doc-missing-skill")
+printf 'version: 1\nlanguages: []\nagents: [claude-code]\nprofiles: [ui-surface]\n' > "$proj/.standards.yml"
+echo -n "Test 29: doctor WARNs when a declared profile's skill is not installed for claude-code... "
+out=$(cd "$proj" && bash "$DOCTOR" 2>&1) || true
+if echo "$out" | grep 'Profiles' | grep -q 'WARN.*ui-surface.*sync-standards'; then pass; else fail "$(echo "$out" | grep Profiles)"; fi
+
+proj=$(make_project "doc-suggest")
+printf '[package]\nname = "x"\n[dependencies]\nuniffi = "0.29"\n' > "$proj/Cargo.toml"
+printf 'version: 1\nlanguages: [rust]\nagents: [codex]\n' > "$proj/.standards.yml"
+base=$(make_project "doc-baseline")
+printf 'version: 1\nlanguages: [rust]\nagents: [codex]\n' > "$base/.standards.yml"
+echo -n "Test 30: doctor INFO-suggests a detected profile without changing its exit status... "
+out=$(cd "$proj" && bash "$DOCTOR" 2>&1); rc=$?
+(cd "$base" && bash "$DOCTOR" >/dev/null 2>&1); rc_base=$?
+if echo "$out" | grep 'Profiles' | grep -q 'INFO.*shared-core looks applicable' && [ "$rc" -eq "$rc_base" ]; then pass; else fail "rc=$rc base=$rc_base; $(echo "$out" | grep Profiles)"; fi
+
 # --- summary ----------------------------------------------------------------
 
 echo ""
