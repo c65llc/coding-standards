@@ -15,6 +15,7 @@ architecture/arch-07_cross_platform_shared_core_standards.md	Cross-platform shar
 architecture/arch-08_ci_cd_pipeline_standards.md	CI/CD pipeline
 architecture/arch-09_containerized_agent_dev_standards.md	Containerized agent-dev environment (sandboxed Docker dev image, egress allow-list, secret injection, YOLO permissions)
 architecture/arch-10_agent_tools_and_mcp_server_standards.md	Agent tools and MCP servers (schemas, write gating, untrusted-data fencing)
+architecture/arch-11_ui_surface_standards.md	UI surface: platform ownership per surface class, the native-feel audit, project rulings over the audit
 languages/lang-01_python_standards.md	Python (uv, ruff, mypy, pytest)	`.py` files
 languages/lang-02_java_standards.md	Java (Gradle/Maven, Java 17+, JUnit 5)	`.java` files
 languages/lang-03_kotlin_standards.md	Kotlin (Gradle, ktlint, detekt, MockK)	`.kt`, `.kts` files
