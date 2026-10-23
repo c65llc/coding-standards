@@ -254,7 +254,9 @@ wrote. An edited skill is kept and reported as no longer managed, so a project
 that built on it does not lose work.
 
 **Recording a deliberate exception** to the `web-tells` check: add a glob per
-line to a committed `.standards-ui-allow` at the project root. The file is the
+line to a committed `.standards-ui-allow` at the project root (the same glob
+rules as `lint.exclude`: `*` matches within a path segment, `**` across
+segments). The file is the
 point: a ruled exception is written down where review can see it, rather than
 the check being switched off.
 
