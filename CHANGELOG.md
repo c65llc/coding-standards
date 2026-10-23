@@ -22,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fails an unknown profile, warns on a missing profile skill and suggests
   detected ones as INFO (`detect-profiles.sh`); `setup.sh --profiles`
   writes the stanza. A project that declares nothing is unaffected.
+- **`shared-core` profile (#227):** `arch-07` gains ten numbered tenets (§7), a
+  platform-shape decision tree that can answer "not this shape" (§8) and a
+  native-shell ship audit (§9); `profile-shared-core.md` block; `shared-core`
+  routing skill.
+- **`ui-surface` profile (#227):** new `arch-11_ui_surface_standards.md` — who
+  owns what per surface class (browser tab, installed PWA, native shell), a
+  67-item tagged audit, and the rule that a project's own design rulings beat
+  the audit; `profile-ui-surface.md` block; `ui-surface` routing skill; the
+  WARN-only `profiles/ui-surface/web-tells` lint check with a committed
+  `.standards-ui-allow` allowlist.
 - **Containerized agent-dev environment (#10):** new standard
   `arch-09_containerized_agent_dev_standards.md` codifying a sandboxed,
   reproducible Docker environment for autonomous AI agents — separate dev/prod
