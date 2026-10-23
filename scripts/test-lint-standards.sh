@@ -3356,6 +3356,37 @@ out=$(bash "$CHECKS/common/changelog-tags.sh" "$REPO_ROOT" 2>/dev/null || true)
 if echo "$out" | grep -q '^PASS changelog-tags' || echo "$out" | grep -q '^WARN changelog-tags.*shallow' \
    || echo "$out" | grep -q '^WARN changelog-tags.*in flight'; then pass; else fail "got: $out"; fi
 
+# --- #227: profile checks (lint-checks/profiles/<profile>/) -----------------
+
+profile_checks="$TMP_BASE/profile-checks"
+mkdir -p "$profile_checks/common" "$profile_checks/profiles/ui-surface"
+printf '#!/bin/bash\necho "WARN stub ran"\nexit 2\n' > "$profile_checks/profiles/ui-surface/stub.sh"
+chmod +x "$profile_checks/profiles/ui-surface/stub.sh"
+
+proj=$(make_project "profiles-declared")
+printf 'version: 1\nlanguages: []\nprofiles: [ui-surface]\n' > "$proj/.standards.yml"
+echo -n "Test 300: a declared profile's checks run (text output carries the stub WARN)... "
+out=$(LINT_CHECKS_DIR="$profile_checks" "$LINT" --format text "$proj" 2>/dev/null || true)
+if echo "$out" | grep -q 'WARN.*stub.*ran'; then pass; else fail "out=$out"; fi
+
+proj=$(make_project "profiles-undeclared")
+printf 'version: 1\nlanguages: []\n' > "$proj/.standards.yml"
+echo -n "Test 301: with no profiles key the profile checks do not run... "
+out=$(LINT_CHECKS_DIR="$profile_checks" "$LINT" --format text "$proj" 2>/dev/null || true)
+if ! echo "$out" | grep -q 'stub'; then pass; else fail "out=$out"; fi
+
+proj=$(make_project "profiles-nodir")
+printf 'version: 1\nlanguages: []\nprofiles: [shared-core]\n' > "$proj/.standards.yml"
+echo -n "Test 302: a declared profile with no checks directory is skipped silently... "
+out=$(LINT_CHECKS_DIR="$profile_checks" "$LINT" --format text "$proj" 2>&1); rc=$?
+if [ "$rc" -le 1 ] && ! echo "$out" | grep -qi 'stub\|no such file\|profiles/shared-core'; then pass; else fail "rc=$rc out=$out"; fi
+
+proj=$(make_project "profiles-json")
+printf 'version: 1\nlanguages: []\nprofiles: [ui-surface]\n' > "$proj/.standards.yml"
+echo -n "Test 303: --format json carries the profile check as WARN... "
+LINT_CHECKS_DIR="$profile_checks" "$LINT" --format json "$proj" > "$TMP_BASE/profiles.json" 2>/dev/null || true
+if json_valid "$TMP_BASE/profiles.json" && [ "$(json_check_status stub < "$TMP_BASE/profiles.json")" = "WARN" ]; then pass; else fail "$(cat "$TMP_BASE/profiles.json")"; fi
+
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"
     exit 0

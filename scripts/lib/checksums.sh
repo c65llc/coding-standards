@@ -84,6 +84,16 @@ update_checksum_entry() {
 }
 
 # ---------------------------------------------------------------------------
+# remove_checksum_entry <key> <existing_content>
+#
+# Drops the line that records <key> from a checksums string and prints the
+# rest; content without that key is printed unchanged. The counterpart of
+# update_checksum_entry for a file the standards no longer manage (#227).
+remove_checksum_entry() {
+    local key="$1" content="$2"
+    printf '%s\n' "$content" | awk -v k="$key" '$1 != k' | sed '/^$/d'
+}
+
 # has_assembly_header <file>
 #
 # Returns 0 (true) if <file> contains the "Assembled by coding-standards"
@@ -531,6 +541,8 @@ read_standards_config() {
         STD_VERSION=$(yaml_get "version" "$yml")
         STD_LANGUAGES=$(yaml_list "languages" "$yml")
         STD_AGENTS=$(yaml_list "agents" "$yml")
+        # Profiles (#227): a missing key and `profiles: []` both read as empty.
+        STD_PROFILES=$(yaml_list "profiles" "$yml" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
         # members: root-relative sub-roots with their own .standards.yml (#179).
         # Raw values; scripts/lib/members.sh normalizes and validates them.
         STD_MEMBERS=$(yaml_list "members" "$yml" | sed 's/[[:space:]]*$//')
@@ -573,6 +585,7 @@ read_standards_config() {
         STD_ROLE="${cfg_role:-service}"
         STD_LANGUAGES=$(echo "${cfg_langs:-}" | tr ',' ' ')
         STD_AGENTS=$(echo "${cfg_agents:-}" | tr ',' ' ')
+        STD_PROFILES=""
         STD_VERSION="1"
         STD_COVERAGE_MIN="95"
         STD_COVERAGE_DOMAIN="100"

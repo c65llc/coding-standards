@@ -166,6 +166,16 @@ sync_ai_agents() {
     if [ -f "$BLOCKS_DIR/$ROLE_BLOCK" ]; then
         BLOCK_ARGS+=("$ROLE_BLOCK")
     fi
+    # Profile blocks (#227): after the role block, in declared order. A block
+    # the pinned standards do not ship yet is skipped with a warning.
+    local pb
+    for pb in $(map_profiles_to_blocks "$PROFILES"); do
+        if [ -f "$BLOCKS_DIR/$pb" ]; then
+            BLOCK_ARGS+=("$pb")
+        else
+            echo "⚠️  profile block $pb not found; skipping" >&2
+        fi
+    done
 
     # Checksum accumulator for tracking assembled file hashes
     local CHECKSUMS_PATH="$PROJECT_ROOT/$CHECKSUMS_FILE"
@@ -300,7 +310,7 @@ sync_ai_agents() {
         local dry_flag=""
         [ "$DRY_RUN" = true ] && dry_flag="--dry-run"
         # shellcheck disable=SC2086
-        if ! "$SKILLS_SCRIPT" --project-root "$PROJECT_ROOT" --skills-dir "$SKILLS_SOURCE" --quiet $dry_flag $skill_agents; then
+        if ! "$SKILLS_SCRIPT" --project-root "$PROJECT_ROOT" --skills-dir "$SKILLS_SOURCE" --profiles "$PROFILES" --quiet $dry_flag $skill_agents; then
             echo "⚠️  Failed to sync some skills (non-fatal, continuing...)"
         fi
     fi
@@ -448,6 +458,18 @@ sync_ai_agents() {
 echo "🔄 Syncing project standards..."
 
 # Determine standards location
+# Profiles (#227): validate the declared list before the submodule pull, the
+# first side effect of this script, so an unknown name changes nothing.
+if declare -f read_standards_config >/dev/null 2>&1 && read_standards_config "$PROJECT_ROOT" 2>/dev/null; then
+    for _p in ${STD_PROFILES:-}; do
+        if ! profile_supported "$_p"; then
+            echo "ERROR: Unknown profile: $_p (expected one of: ${SUPPORTED_PROFILES// /, })" >&2
+            exit 2
+        fi
+    done
+    unset _p
+fi
+
 STANDARDS_DIR=""
 
 if [ -d "$PROJECT_ROOT/.standards" ]; then
@@ -502,11 +524,13 @@ fi
 ROLE="service"
 DETECTED_LANGS=""
 AGENTS_LIST=""
+PROFILES=""
 
 if declare -f read_standards_config >/dev/null 2>&1 && read_standards_config "$PROJECT_ROOT"; then
     ROLE="${STD_ROLE:-service}"
     DETECTED_LANGS="${STD_LANGUAGES:-}"
     AGENTS_LIST="${STD_AGENTS:-}"
+    PROFILES="${STD_PROFILES:-}"
 else
     echo "⚠️  No .standards.yml or .standards-config found. Running auto-detection (default role: service)."
 fi
@@ -548,6 +572,10 @@ if [ -n "$MEMBERS" ]; then
     DETECTED_LANGS=$(aggregate_member_languages "$PROJECT_ROOT" "$DETECTED_LANGS" "$MEMBERS" "$SCRIPT_DIR/detect-languages.sh")
     echo "🧩 Languages across root and members: ${DETECTED_LANGS:-(none)}"
 fi
+
+# Declared profiles (#227) reach assemble-config.sh through the environment
+# so the guarded assembler's positional contract stays untouched.
+export STANDARDS_PROFILES="$PROFILES"
 
 # Default agents list if not in config
 if [ -z "$AGENTS_LIST" ]; then

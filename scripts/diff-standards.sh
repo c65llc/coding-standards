@@ -159,6 +159,15 @@ fi
 
 ROLE="${STD_ROLE:-service}"
 DETECTED_LANGS="${STD_LANGUAGES:-}"
+PROFILES="${STD_PROFILES:-}"
+for _p in $PROFILES; do
+    if ! profile_supported "$_p"; then
+        echo "ERROR: Unknown profile: $_p (expected one of: ${SUPPORTED_PROFILES// /, })" >&2
+        exit 2
+    fi
+done
+unset _p
+export STANDARDS_PROFILES="$PROFILES"
 AGENTS_LIST="${STD_AGENTS:-}"
 
 # Default agents if not in config
@@ -193,6 +202,14 @@ done
 if [ -n "$BLOCKS_DIR" ] && [ -f "$BLOCKS_DIR/$ROLE_BLOCK" ]; then
     BLOCK_ARGS+=("$ROLE_BLOCK")
 fi
+# Profile blocks (#227), after the role block, in declared order.
+for pb in $(map_profiles_to_blocks "$PROFILES"); do
+    if [ -n "$BLOCKS_DIR" ] && [ -f "$BLOCKS_DIR/$pb" ]; then
+        BLOCK_ARGS+=("$pb")
+    else
+        echo "⚠️  profile block $pb not found; skipping" >&2
+    fi
+done
 
 # ---------------------------------------------------------------------------
 # Diff each agent

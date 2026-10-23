@@ -1898,6 +1898,58 @@ echo "$line" | grep -q 'not installed'                                          
 echo "$line" | grep -qE 'PASS|WARN|FAIL'                                           && errs="$errs scored"
 if [ -z "$errs" ]; then pass; else fail "$errs; line: $line"; fi
 
+# --- #227: --profiles ---------------------------------------------------------
+
+echo -n "Test 117: setup.sh --profiles writes the profiles stanza in declared order... "
+proj=$(make_project "profiles-flag")
+fake_standards "$proj"
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript --profiles ui-surface,shared-core >/dev/null 2>&1) || true
+errs=""
+grep -q '^profiles:$' "$proj/.standards.yml"                                       || errs="$errs no-key"
+[ "$(grep -A2 '^profiles:$' "$proj/.standards.yml" | sed -n '2p')" = "  - ui-surface" ]  || errs="$errs first"
+[ "$(grep -A2 '^profiles:$' "$proj/.standards.yml" | sed -n '3p')" = "  - shared-core" ] || errs="$errs second"
+if [ -z "$errs" ]; then pass; else fail "$errs; $(grep -A3 'profiles' "$proj/.standards.yml")"; fi
+
+echo -n "Test 118: setup.sh --profiles bogus is a usage error naming the valid profiles and writes nothing... "
+proj=$(make_project "profiles-bogus")
+fake_standards "$proj"
+rc=0; bad_out=$(cd "$proj" && "$SETUP" --agents claude-code --languages typescript --profiles bogus 2>&1) || rc=$?
+errs=""
+[ "$rc" -eq 2 ]                                                                     || errs="$errs rc=$rc"
+echo "$bad_out" | grep -q 'Unknown profile: bogus (expected one of: shared-core, ui-surface)' || errs="$errs no-msg"
+[ ! -f "$proj/.standards.yml" ]                                                     || errs="$errs wrote-yml"
+[ ! -f "$proj/CLAUDE.md" ]                                                          || errs="$errs wrote-claude"
+if [ -z "$errs" ]; then pass; else fail "$errs; $(echo "$bad_out" | tail -2)"; fi
+
+echo -n "Test 119: setup.sh --profiles with an empty field is a usage error... "
+proj=$(make_project "profiles-empty-field")
+fake_standards "$proj"
+rc=0; bad_out=$(cd "$proj" && "$SETUP" --agents claude-code --languages typescript --profiles "shared-core, ,ui-surface" 2>&1) || rc=$?
+if [ "$rc" -eq 2 ] && echo "$bad_out" | grep -q 'empty profile name'; then pass; else fail "rc=$rc; $(echo "$bad_out" | tail -2)"; fi
+
+echo -n "Test 120: setup.sh without --profiles writes the commented profiles stanza... "
+proj=$(make_project "profiles-none")
+fake_standards "$proj"
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+if grep -q '^# profiles:$' "$proj/.standards.yml" && grep -q '^#   - shared-core$' "$proj/.standards.yml" && ! grep -q '^profiles:' "$proj/.standards.yml"; then pass; else fail "$(grep -n 'profiles' "$proj/.standards.yml")"; fi
+
+echo -n "Test 121: re-running setup.sh without --profiles keeps a declared profiles block... "
+proj=$(make_project "profiles-keep")
+fake_standards "$proj"
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript --profiles ui-surface >/dev/null 2>&1) || true
+(cd "$proj" && "$SETUP" --agents claude-code --languages typescript >/dev/null 2>&1) || true
+if grep -q '^profiles:$' "$proj/.standards.yml" && grep -q '^  - ui-surface$' "$proj/.standards.yml" && ! grep -q '^# profiles:$' "$proj/.standards.yml"; then pass; else fail "$(grep -n 'profiles\|ui-surface' "$proj/.standards.yml")"; fi
+
+echo -n "Test 122: setup.sh --dry-run --profiles announces and writes nothing... "
+proj=$(make_project "profiles-dry")
+fake_standards "$proj"
+dry=$(cd "$proj" && "$SETUP" --dry-run --agents claude-code --languages typescript --profiles ui-surface 2>&1) || true
+errs=""
+echo "$dry" | grep -q 'Would write: .*\.standards\.yml'  || errs="$errs no-announce"
+[ ! -f "$proj/.standards.yml" ]                            || errs="$errs wrote-yml"
+[ ! -f "$proj/CLAUDE.md" ]                                 || errs="$errs wrote-claude"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

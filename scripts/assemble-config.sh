@@ -30,6 +30,10 @@ set -e
 
 PROJECT_ROOT_OVERRIDE=""
 SKILLS_DIR_OVERRIDE=""
+# Declared profiles (#227): --profiles "<names>" wins; otherwise the
+# STANDARDS_PROFILES environment variable the sync/setup/diff scripts export,
+# so the guarded assembler's positional contract stays untouched.
+PROFILES="${STANDARDS_PROFILES:-}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --project-root)
@@ -38,6 +42,10 @@ while [ $# -gt 0 ]; do
             ;;
         --skills-dir)
             SKILLS_DIR_OVERRIDE="$2"
+            shift 2
+            ;;
+        --profiles)
+            PROFILES="$2"
             shift 2
             ;;
         --) shift; break ;;
@@ -84,6 +92,15 @@ SENTINEL="<!-- BEGIN PROJECT-SPECIFIC"
 
 # Agent-neutral skills (standards/skills/, #194). Agents that read one config
 # file get an index of them; see lib/skills.sh for the per-agent shapes.
+_LANGS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/languages.sh"
+if [ -f "$_LANGS_LIB" ]; then
+    # shellcheck source=lib/languages.sh disable=SC1091
+    source "$_LANGS_LIB"
+fi
+if ! declare -f profile_display_name >/dev/null 2>&1; then
+    # Fallback when the library is not shipped: the derived name as is.
+    profile_display_name() { printf '%s\n' "$1"; }
+fi
 _SKILLS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/skills.sh"
 if [ -f "$_SKILLS_LIB" ]; then
     # shellcheck disable=SC1090,SC1091
@@ -154,9 +171,10 @@ append_block() {
 
 derive_name() {
     local filename="$1"
-    # Strip lang-/role- prefix and .md suffix
+    # Strip lang-/role-/profile- prefix and .md suffix
     local base="${filename##lang-}"
     base="${base##role-}"
+    base="${base##profile-}"
     base="${base%.md}"
     # Capitalize first letter (compatible with bash 3.x / macOS)
     printf '%s%s' "$(echo "${base:0:1}" | tr '[:lower:]' '[:upper:]')" "${base:1}"
@@ -222,8 +240,9 @@ trap 'rm -f "$TMPFILE"' EXIT
         append_block "$block_path" "$section" ""
     done
 
-    # Extra blocks (lang-* and role-*)
+    # Extra blocks (lang-*, role-* and profile-*)
     lang_header_printed=false
+    profiles_header_printed=false
     for block in "${EXTRA_BLOCKS[@]}"; do
         block_path="${BLOCKS_DIR}/${block}"
         block_basename="$(basename "$block")"
@@ -238,9 +257,19 @@ trap 'rm -f "$TMPFILE"' EXIT
             fi
         elif [[ "$block_basename" == role-* ]]; then
             append_block "$block_path" "## Project Type" ""
+        elif [[ "$block_basename" == profile-* ]]; then
+            # Profiles (#227): one "## Profiles" section, one sub-heading per
+            # declared profile, in the order the blocks were passed.
+            profile_name="$(profile_display_name "$(derive_name "$block_basename" | tr '[:upper:]' '[:lower:]')")"
+            if [ "$profiles_header_printed" = false ]; then
+                append_block "$block_path" "## Profiles" "### ${profile_name}"
+                profiles_header_printed=true
+            else
+                append_block "$block_path" "" "### ${profile_name}"
+            fi
         else
             # Unknown prefix — include without a section header, warn
-            echo "WARNING [$AGENT]: block '$block_basename' has unknown prefix (expected lang- or role-), including without section header" >&2
+            echo "WARNING [$AGENT]: block '$block_basename' has unknown prefix (expected lang-, role- or profile-), including without section header" >&2
             append_block "$block_path" "" ""
         fi
     done
@@ -251,7 +280,7 @@ trap 'rm -f "$TMPFILE"' EXIT
         case " $SKILLS_INDEX_AGENTS " in
             *" $AGENT "*)
                 printf '\n## Skills\n\n'
-                render_skills_index "$SKILLS_DIR" "$(skills_runbook_ref)"
+                render_skills_index "$SKILLS_DIR" "$(skills_runbook_ref)" "$PROFILES"
                 ;;
         esac
     fi

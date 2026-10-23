@@ -1,4 +1,4 @@
-.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor worktree-gc merge-standards lint-standards generate-standards-lists check-agent-configs website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-worktree-gc test-website-csp test-containerized-dev
+.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor worktree-gc merge-standards lint-standards generate-standards-lists check-agent-configs website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-profiles test-worktree-gc test-website-csp test-containerized-dev
 
 help: ## Show this help message
 	@echo "Standards Repository Management"
@@ -84,6 +84,9 @@ test-lint-standards: ## Run functional tests on lint-standards.sh and lint-check
 test-generate-standards-lists: ## Run functional tests on generate-standards-lists.sh (agent config generator)
 	@./scripts/test-generate-standards-lists.sh
 
+test-profiles: ## Run functional tests on the profiles selector (lib, assemblers, sync, detect-profiles, doctor)
+	@./scripts/test-profiles.sh
+
 test-worktree-gc: ## Run functional tests on worktree-gc.sh, the doctor Worktrees check and the pre-commit worktree guard
 	@./scripts/test-worktree-gc.sh
 
@@ -93,7 +96,7 @@ test-website-csp: ## Run functional tests on the website CSP post-build step (ne
 test-containerized-dev: ## Run functional tests on the containerized-dev kit egress layer (setup-proxy.sh, egress sidecar entrypoint, compose contract)
 	@./scripts/test-containerized-dev.sh
 
-test: test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-worktree-gc test-website-csp test-containerized-dev ## Run all tests
+test: test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-profiles test-worktree-gc test-website-csp test-containerized-dev ## Run all tests
 
 setup-agents: ## Setup AI agent configurations (Copilot, Aider, Codex)
 	@if [ -d ".standards" ]; then \

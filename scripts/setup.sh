@@ -36,6 +36,8 @@ Options:
   --languages <list>   Comma-separated languages (skips auto-detection), e.g.
                        typescript,python
   --role <role>        Project role block to include (default: service)
+  --profiles <list>    Comma-separated profiles to opt in to (shared-core,
+                       ui-surface); omitted keeps what .standards.yml declares
   --workflow           Also install the opt-in GitHub workflow templates
                        (standards-review.yml, trufflehog.yml)
   --containerized      Also install the containerized agent-dev starter kit
@@ -95,6 +97,9 @@ ROLE="service"
 ROLE_EXPLICIT=false
 AGENTS_OVERRIDE=""
 LANGUAGES_OVERRIDE=""
+PROFILES_OVERRIDE=""
+PROFILES_EXPLICIT=false
+PROFILES=""
 DRY_RUN=false
 INSTALL_WORKFLOW=false
 INSTALL_CONTAINERIZED=false
@@ -136,6 +141,18 @@ while [ $# -gt 0 ]; do
         --languages=*)
             require_option_value "--languages" "${1#--languages=}"
             LANGUAGES_OVERRIDE="${1#--languages=}"
+            shift
+            ;;
+        --profiles)
+            require_option_value "$@"
+            PROFILES_OVERRIDE="$2"
+            PROFILES_EXPLICIT=true
+            shift 2
+            ;;
+        --profiles=*)
+            require_option_value "--profiles" "${1#--profiles=}"
+            PROFILES_OVERRIDE="${1#--profiles=}"
+            PROFILES_EXPLICIT=true
             shift
             ;;
         --dry-run)
@@ -231,6 +248,46 @@ if agents_explicit && [ "$AGENTS_OVERRIDE" != "all" ]; then
     AGENTS_OVERRIDE="$normalised"
     unset normalised rest field
 fi
+
+# Profiles (#227): validate the explicit --profiles list field by field, the
+# way --agents is validated; without the flag, keep what .standards.yml already
+# declares (validated too, so an unknown name in the file is caught here).
+if ! declare -f profile_supported >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/lib/languages.sh" ]; then
+    # shellcheck source=lib/languages.sh disable=SC1091
+    source "$SCRIPT_DIR/lib/languages.sh"
+fi
+if [ "$PROFILES_EXPLICIT" = true ]; then
+    rest="$PROFILES_OVERRIDE,"
+    while [ -n "$rest" ]; do
+        field="$(trim_ws "${rest%%,*}")"
+        rest="${rest#*,}"
+        if [ -z "$field" ]; then
+            usage_error "Option --profiles contains an empty profile name: '$PROFILES_OVERRIDE'"
+        fi
+        if ! profile_supported "$field"; then
+            usage_error "Unknown profile: $field (expected one of: ${SUPPORTED_PROFILES// /, })"
+        fi
+        case " $PROFILES " in *" $field "*) ;; *) PROFILES="${PROFILES:+$PROFILES }$field" ;; esac
+    done
+    unset rest field
+else
+    if ! declare -f read_standards_config >/dev/null 2>&1 && [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
+        # shellcheck source=lib/checksums.sh disable=SC1091
+        source "$SCRIPT_DIR/lib/checksums.sh"
+    fi
+fi
+if [ "$PROFILES_EXPLICIT" = false ] && declare -f read_standards_config >/dev/null 2>&1 && read_standards_config "$PROJECT_ROOT" 2>/dev/null; then
+    for field in ${STD_PROFILES:-}; do
+        if ! profile_supported "$field"; then
+            usage_error "Unknown profile: $field (expected one of: ${SUPPORTED_PROFILES// /, })"
+        fi
+    done
+    PROFILES="${STD_PROFILES:-}"
+    unset field
+fi
+# Declared profiles reach assemble-config.sh through the environment so the
+# guarded assembler's positional contract stays untouched.
+export STANDARDS_PROFILES="$PROFILES"
 
 # Refuse to run from inside the .standards/ submodule (see lib/guard.sh).
 # This runs after argument parsing, which has no side effects, so --help and
@@ -394,6 +451,16 @@ setup_ai_agents() {
     if [ -f "$BLOCKS_DIR/$ROLE_BLOCK" ]; then
         BLOCK_ARGS+=("$ROLE_BLOCK")
     fi
+    # Profile blocks (#227): after the role block, in declared order. A block
+    # the pinned standards do not ship yet is skipped with a warning.
+    local pb
+    for pb in $(map_profiles_to_blocks "$PROFILES"); do
+        if [ -f "$BLOCKS_DIR/$pb" ]; then
+            BLOCK_ARGS+=("$pb")
+        else
+            echo "⚠️  profile block $pb not found; skipping" >&2
+        fi
+    done
 
     # Determine which agents to set up
     local AGENTS_LIST
@@ -725,6 +792,16 @@ setup_ai_agents() {
             echo "agents: []"
         fi
         echo "role: $ROLE"
+        if [ -n "$PROFILES" ]; then
+            echo "profiles:"
+            for pf in $PROFILES; do echo "  - $pf"; done
+        else
+            echo "# Optional profiles — cross-cutting standards a project opts in to"
+            echo "# (shared-core: one logic core under native shells; ui-surface: platform-feel audit)."
+            echo "# profiles:"
+            echo "#   - shared-core"
+            echo "#   - ui-surface"
+        fi
         if [ "$MEMBERS_EXPLICIT" = true ]; then
             echo "# Monorepo members: sub-roots with their own .standards.yml. lint-standards,"
             echo "# doctor and sync iterate them; the root agent configs cover their languages."
@@ -884,7 +961,7 @@ install_agent_skills() {
     local dry_flag=""
     [ "$DRY_RUN" = true ] && dry_flag="--dry-run"
     # shellcheck disable=SC2086
-    if ! "$SKILLS_SCRIPT" --project-root "$PROJECT_ROOT" --skills-dir "$SKILLS_SOURCE" --quiet $dry_flag $file_agents; then
+    if ! "$SKILLS_SCRIPT" --project-root "$PROJECT_ROOT" --skills-dir "$SKILLS_SOURCE" --profiles "$PROFILES" --quiet $dry_flag $file_agents; then
         echo "⚠️  Failed to install some skills (non-fatal, continuing...)"
     fi
 }
