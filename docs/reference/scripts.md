@@ -14,7 +14,7 @@ All automation scripts live in the `scripts/` directory. They are written in Bas
 **Usage:**
 
 ```bash
-./scripts/setup.sh [--agents <list>|all|detect] [--languages <list>] [--role <role>] [--workflow] [--containerized] [--migrate] [--dry-run]
+./scripts/setup.sh [--agents <list>|all|detect] [--languages <list>] [--role <role>] [--profiles <list>] [--workflow] [--containerized] [--migrate] [--dry-run]
 ./scripts/setup.sh --help
 ```
 
@@ -37,7 +37,7 @@ make setup
    - `.aider-instructions.md` and `.aiderrc` (Aider)
 
    Every assembled config resolves `{{WORKTREE_DIR}}` to `worktree_dir:` from `.standards.yml` (default `.claude/worktrees`), so all declared agents name the same worktree root. Codex, Gemini and Aider configs carry a `## Skills` index (name, description, triggers, runbook path) instead of skill files; see [assemble-skills.sh](#assemble-skillssh).
-4. Writes `.standards.yml` (declared languages, agents, role; a declared `members:` list is preserved) and `.standards-checksums`. In a monorepo the root `.standards.yml` keeps only the root's own languages, detected from the root's own manifests (a non-empty list makes `lint-standards.sh` run language checks against the root; a sub-root that carries other languages is pointed out so it can become a member), while the root agent configs are assembled from the union of the root's and every member's (see [Monorepos: Members](../guides/customization.md#monorepos-members)); a declared member without a `.standards.yml` gets one bootstrapped with the languages detected in it.
+4. Writes `.standards.yml` (declared languages, agents, role, and the `profiles:` stanza — from `--profiles <list>`, else whatever the existing file declares, else a commented example; a declared `members:` list is preserved) and `.standards-checksums`. In a monorepo the root `.standards.yml` keeps only the root's own languages, detected from the root's own manifests (a non-empty list makes `lint-standards.sh` run language checks against the root; a sub-root that carries other languages is pointed out so it can become a member), while the root agent configs are assembled from the union of the root's and every member's (see [Monorepos: Members](../guides/customization.md#monorepos-members)); a declared member without a `.standards.yml` gets one bootstrapped with the languages detected in it.
 5. In detect mode only: installs a `post-merge` git hook that checks for standards updates, installs the pre-commit worktree guard (`templates/pre-commit-worktree-guard.example`, refusing commits that stage a path under the worktree root) when no pre-commit hook exists and `hooks:` names the standards as the hook manager — otherwise prints how to wire it into husky / lefthook / the existing hook — and runs `setup-git-aliases.sh` to configure global git aliases.
 6. Adds `.cursorrules.backup`, `.standards_tmp/`, `.standards-pending/` and the worktree root (`worktree_dir:` in `.standards.yml`, default `.claude/worktrees/`) to `.gitignore`.
 7. With `--containerized`: installs the [arch-09 starter kit](../../templates/containerized-dev/README.md) from `templates/containerized-dev/` — `Dockerfile.dev`, `Dockerfile.prod`, `Dockerfile.egress`, `docker-compose.dev.yml`, `scripts/*.sh` (`.example` stripped, made executable), `proxy/`, `.devcontainer/devcontainer.json` and, when `cursor` is a configured agent, `.cursor/rules/containerized-dev.mdc` — and adds `.env` and `.env.secret` to `.gitignore`. A file that already exists is never overwritten: identical files are reported as installed, differing ones are kept and the kit's version is staged to `.standards-pending/<path>`, listed in `MERGE_PLAN.md` under its own section. Kit files are meant to be adapted, so they are not recorded in `.standards-checksums` and `sync-standards.sh` leaves them alone. Without the flag, setup prints how to install the kit (unless `docker-compose.dev.yml` already exists). Tests: `scripts/test-setup-safe.sh` (Tests 103–109).
@@ -122,7 +122,7 @@ make sync-standards
 **Usage:**
 
 ```bash
-.standards/scripts/assemble-skills.sh [--project-root <dir>] [--skills-dir <dir>] [--dry-run] [--quiet] <agent> [<agent> ...]
+.standards/scripts/assemble-skills.sh [--project-root <dir>] [--skills-dir <dir>] [--profiles "<names>"] [--dry-run] [--quiet] <agent> [<agent> ...]
 ```
 
 | Agent | Output | Shape |
@@ -176,6 +176,18 @@ Use it as a CI gate:
 
 ---
 
+## detect-profiles.sh
+
+**Purpose:** Suggest standards profiles (`shared-core`, `ui-surface`) a project looks eligible for. Feeds `doctor.sh` (INFO lines) and the setup wizard. Suggestions only: a profile is enabled solely by `profiles:` in the committed `.standards.yml`.
+
+**Usage:**
+
+```bash
+./scripts/detect-profiles.sh [/path/to/project]
+```
+
+Prints one `<profile><TAB><reason>` line per profile, each at most once, and nothing for a project that matches none. `shared-core` when a `Cargo.toml` (root, `core/`, `crates/*`) depends on `uniffi` or `wasm-bindgen`, or `crates/` or `core/` coexists with more than one of `shells/`, `apps/`, `ios/`, `android/`, `windows/`, `macos/`. `ui-surface` when a web app manifest exists (root, `public/`, `apps/*`), `role: app` is declared, or a SwiftUI, Compose, Flutter or WinUI import is found in the sources.
+
 ## detect-languages.sh
 
 **Purpose:** Detect a project's languages from manifest files. Feeds `setup.sh`, `sync-standards.sh`, `doctor.sh` and `build-claude-settings.sh`.
@@ -214,7 +226,7 @@ In a monorepo the runner iterates the root plus every member (`members:` in `.st
 
 ## doctor.sh
 
-**Purpose:** Standards health check — configuration, members, agent configs, checksums, languages, submodule, git hooks, `.aiderrc` drift, Postgres MCP, `.gitignore` entries, worktrees. Exit 1 on any `FAIL`.
+**Purpose:** Standards health check — configuration, members, agent configs, checksums, languages, profiles (unknown name → FAIL, declared but skill missing → WARN, detected but undeclared → INFO), submodule, git hooks, `.aiderrc` drift, Postgres MCP, `.gitignore` entries, worktrees. Exit 1 on any `FAIL`.
 
 ```bash
 ./scripts/doctor.sh

@@ -108,6 +108,12 @@ All configs point back to the same `core-standards.md`, so every agent enforces 
 
 ## Language-Aware Bootstrap
 
+Two selectors decide which blocks a config carries — `languages:` and `role:` —
+and a third, **`profiles:`**, is opt-in: a declared profile (`shared-core`,
+`ui-surface`) adds its block under `## Profiles`, installs the skill bound to it
+and enables its lint checks, and a project that declares none is unchanged. See
+[Profiles](../guides/customization.md#profiles).
+
 When `setup.sh` runs, it also detects your project's languages and generates a `settings.json` for Claude Code with the right tools pre-approved:
 
 ```text
