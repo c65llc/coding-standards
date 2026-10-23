@@ -84,6 +84,16 @@ update_checksum_entry() {
 }
 
 # ---------------------------------------------------------------------------
+# remove_checksum_entry <key> <existing_content>
+#
+# Drops the line that records <key> from a checksums string and prints the
+# rest; content without that key is printed unchanged. The counterpart of
+# update_checksum_entry for a file the standards no longer manage (#227).
+remove_checksum_entry() {
+    local key="$1" content="$2"
+    printf '%s\n' "$content" | awk -v k="$key" '$1 != k' | sed '/^$/d'
+}
+
 # has_assembly_header <file>
 #
 # Returns 0 (true) if <file> contains the "Assembled by coding-standards"

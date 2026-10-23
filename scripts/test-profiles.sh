@@ -145,6 +145,49 @@ printf -- '---\nname: x\nprofiles: a\n---\n' > "$FIX/p3.md"
 r=$(bash -c "source '$REPO_ROOT/scripts/lib/skills.sh'; printf '%s|%s|%s' \"\$(skill_profiles '$FIX/p1.md')\" \"\$(skill_profiles '$FIX/p2.md')\" \"\$(skill_profiles '$FIX/p3.md')\"" 2>/dev/null)
 if [ "$r" = "a b|a b|a" ]; then pass; else fail "got '$r'"; fi
 
+# --- assemble-skills: the profile gate and removal -------------------------
+
+SKILLS="$REPO_ROOT/scripts/assemble-skills.sh"
+# skills <proj> <profiles> <agents...>; stdout+stderr to <proj>/.skills.out
+skills() {
+    local proj="$1" profiles="$2"; shift 2
+    "$SKILLS" --project-root "$proj" --skills-dir "$FIX/skills" --profiles "$profiles" "$@" > "$proj/.skills.out" 2>&1
+}
+
+proj=$(make_project "sk-gate")
+echo -n "Test 14: --profiles '' installs plain and not gated for claude-code... "
+skills "$proj" "" claude-code
+if [ -f "$proj/.claude/skills/plain/SKILL.md" ] && [ ! -f "$proj/.claude/skills/gated/SKILL.md" ]; then pass; else fail "$(cat "$proj/.skills.out")"; fi
+
+echo -n "Test 15: --profiles ui-surface installs both and records the gated checksum... "
+skills "$proj" "ui-surface" claude-code
+if [ -f "$proj/.claude/skills/gated/SKILL.md" ] && grep -q '^\.claude/skills/gated/SKILL\.md ' "$proj/.standards-checksums"; then pass; else fail "$(cat "$proj/.skills.out"; cat "$proj/.standards-checksums" 2>/dev/null)"; fi
+
+echo -n "Test 16: un-declaring removes an unmodified gated skill, drops its checksum, keeps plain... "
+skills "$proj" "" claude-code
+if [ ! -f "$proj/.claude/skills/gated/SKILL.md" ] && ! grep -q 'gated/SKILL' "$proj/.standards-checksums" \
+   && grep -qi 'removed' "$proj/.skills.out" && [ -f "$proj/.claude/skills/plain/SKILL.md" ]; then pass; else fail "$(cat "$proj/.skills.out"; ls -R "$proj/.claude" 2>/dev/null)"; fi
+
+proj=$(make_project "sk-custom")
+skills "$proj" "ui-surface" claude-code
+echo "project note" >> "$proj/.claude/skills/gated/SKILL.md"
+echo -n "Test 17: un-declaring keeps a customized gated skill and warns it is no longer managed... "
+skills "$proj" "" claude-code
+if [ -f "$proj/.claude/skills/gated/SKILL.md" ] && grep -q 'no longer managed' "$proj/.skills.out" \
+   && grep -q '^\.claude/skills/gated/SKILL\.md ' "$proj/.standards-checksums"; then pass; else fail "$(cat "$proj/.skills.out")"; fi
+
+proj=$(make_project "sk-dry")
+skills "$proj" "ui-surface" claude-code
+echo -n "Test 18: --dry-run announces the removal and removes nothing... "
+"$SKILLS" --project-root "$proj" --skills-dir "$FIX/skills" --profiles "" --dry-run claude-code > "$proj/.skills.out" 2>&1
+if grep -q 'Would remove: .*gated/SKILL.md' "$proj/.skills.out" && [ -f "$proj/.claude/skills/gated/SKILL.md" ]; then pass; else fail "$(cat "$proj/.skills.out")"; fi
+
+proj=$(make_project "sk-agents")
+echo -n "Test 19: cursor and copilot follow the same gate... "
+skills "$proj" "" cursor copilot
+if [ -f "$proj/.cursor/commands/plain.md" ] && [ ! -f "$proj/.cursor/commands/gated.md" ] \
+   && [ -f "$proj/.github/prompts/plain.prompt.md" ] && [ ! -f "$proj/.github/prompts/gated.prompt.md" ]; then pass; else fail "$(cat "$proj/.skills.out")"; fi
+
 # --- summary ----------------------------------------------------------------
 
 echo ""

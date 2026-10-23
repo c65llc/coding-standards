@@ -18,6 +18,13 @@
 #   --skills-dir <dir>    Source directory (default: ../standards/skills next
 #                         to this script).
 #   --dry-run             Print every write that would happen; modify nothing.
+#   --profiles "<names>"  Declared profiles (#227), space-separated. A skill
+#                         whose frontmatter carries `profiles:` is installed
+#                         only when one of them is declared; an installed copy
+#                         of one that no longer applies is removed when it is
+#                         still the file the standards wrote, and left with a
+#                         warning when it was edited. Default: the
+#                         STANDARDS_PROFILES environment variable, else none.
 #   --quiet               Print only the per-agent summary and any warnings.
 #   -h, --help            Show this help.
 #
@@ -48,6 +55,7 @@ SKILLS_DIR="$SCRIPT_DIR/../standards/skills"
 DRY_RUN=false
 QUIET=false
 AGENTS=""
+PROFILES="${STANDARDS_PROFILES:-}"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -57,6 +65,9 @@ while [ $# -gt 0 ]; do
         --skills-dir)
             [ $# -ge 2 ] || { echo "ERROR: --skills-dir requires a directory" >&2; exit 2; }
             SKILLS_DIR="$2"; shift 2 ;;
+        --profiles)
+            [ $# -ge 2 ] || { echo "ERROR: --profiles requires a value (may be empty)" >&2; exit 2; }
+            PROFILES="$2"; shift 2 ;;
         --dry-run) DRY_RUN=true; shift ;;
         --quiet)   QUIET=true; shift ;;
         -h|--help) usage; exit 0 ;;
@@ -111,6 +122,15 @@ fi
 
 # record_hash <rel> <file> — remember <file>'s hash under <rel> for the
 # checksums write at the end (no-op without the checksum library).
+# forget_hash <rel> — drop <rel>'s entry for the checksums write at the end.
+forget_hash() {
+    [ "$HAVE_CHECKSUMS" = true ] || return 0
+    if printf '%s\n' "$CHECKSUMS_CONTENT" | grep -q "^$1 "; then
+        CHECKSUMS_CONTENT=$(remove_checksum_entry "$1" "$CHECKSUMS_CONTENT")
+        CHECKSUMS_DIRTY=true
+    fi
+}
+
 record_hash() {
     [ "$HAVE_CHECKSUMS" = true ] || return 0
     local hash
@@ -141,11 +161,37 @@ for agent in $AGENTS; do
         continue
     fi
 
-    written=0; unchanged=0; staged=0; failed=0
+    written=0; unchanged=0; staged=0; failed=0; removed=0
     for name in $(skills_list "$SKILLS_DIR"); do
         src="$SKILLS_DIR/$name.md"
         rel=$(skills_agent_target "$agent" "$name")
         dest="$PROJECT_ROOT/$rel"
+
+        # Profile gate (#227): a skill bound to profiles that are not declared
+        # is not installed, and an installed copy is withdrawn — removed when
+        # it is still ours, kept with a warning when it was edited.
+        if ! skill_applies "$src" "$PROFILES"; then
+            [ -f "$dest" ] || continue
+            if [ "$(ownership "$rel" "$dest")" != "ours" ]; then
+                echo "   ⚠️  $rel is no longer managed (its profile is not declared) — left as is" >&2
+                continue
+            fi
+            if [ "$DRY_RUN" = true ]; then
+                echo "  [dry-run] Would remove: $dest (profile not declared)"
+                removed=$((removed + 1))
+                continue
+            fi
+            if rm -f "$dest" 2>/dev/null; then
+                rmdir "$(dirname "$dest")" 2>/dev/null || true
+                forget_hash "$rel"
+                removed=$((removed + 1))
+                [ "$QUIET" = true ] || echo "   🗑  $rel removed (profile not declared)"
+            else
+                failed=$((failed + 1)); STATUS=1
+                echo "   ⚠️  Failed to remove $rel" >&2
+            fi
+            continue
+        fi
         tmp=$(mktemp "${TMPDIR:-/tmp}/assemble-skill.XXXXXX")
         render_skill_for_agent "$agent" "$src" > "$tmp"
 
@@ -197,9 +243,10 @@ for agent in $AGENTS; do
 
     staged_note=""
     [ "$staged" -gt 0 ] && staged_note=", $staged staged to ${PENDING_DIR:-.standards-pending}/"
+    [ "$removed" -gt 0 ] && staged_note="$staged_note, $removed removed"
     if [ "$DRY_RUN" = true ]; then
         echo "[$agent] Would install $written skill(s) to $target_dir/ ($unchanged unchanged$staged_note)"
-    elif [ "$written" -eq 0 ] && [ "$failed" -eq 0 ] && [ "$staged" -eq 0 ]; then
+    elif [ "$written" -eq 0 ] && [ "$failed" -eq 0 ] && [ "$staged" -eq 0 ] && [ "$removed" -eq 0 ]; then
         echo "[$agent] Skills up to date in $target_dir/ ($unchanged unchanged)"
     else
         echo "[$agent] Installed $written skill(s) to $target_dir/ ($unchanged unchanged$staged_note, $failed failed)"
