@@ -531,6 +531,8 @@ read_standards_config() {
         STD_VERSION=$(yaml_get "version" "$yml")
         STD_LANGUAGES=$(yaml_list "languages" "$yml")
         STD_AGENTS=$(yaml_list "agents" "$yml")
+        # Profiles (#227): a missing key and `profiles: []` both read as empty.
+        STD_PROFILES=$(yaml_list "profiles" "$yml" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
         # members: root-relative sub-roots with their own .standards.yml (#179).
         # Raw values; scripts/lib/members.sh normalizes and validates them.
         STD_MEMBERS=$(yaml_list "members" "$yml" | sed 's/[[:space:]]*$//')
@@ -573,6 +575,7 @@ read_standards_config() {
         STD_ROLE="${cfg_role:-service}"
         STD_LANGUAGES=$(echo "${cfg_langs:-}" | tr ',' ' ')
         STD_AGENTS=$(echo "${cfg_agents:-}" | tr ',' ' ')
+        STD_PROFILES=""
         STD_VERSION="1"
         STD_COVERAGE_MIN="95"
         STD_COVERAGE_DOMAIN="100"

@@ -51,3 +51,49 @@ map_languages_to_blocks() {
         printf '%s\n' "${BLOCKS[@]}" | sort -u | tr '\n' ' '
     fi
 }
+
+# ---------------------------------------------------------------------------
+# Profiles (#227) — the third selector axis beside languages and role.
+# ---------------------------------------------------------------------------
+
+SUPPORTED_PROFILES="shared-core ui-surface"
+
+# profile_supported <name> — true for a profile this repo ships.
+profile_supported() {
+    case " $SUPPORTED_PROFILES " in
+        *" $1 "*) return 0 ;;
+        *)        return 1 ;;
+    esac
+}
+
+# map_profiles_to_blocks "<names>" — one profile-<name>.md per declared
+# profile, in declared order, duplicates dropped, trailing space like
+# map_languages_to_blocks. Unknown names are skipped: validation is the
+# caller's job and happens before any assembly.
+map_profiles_to_blocks() {
+    local seen=" " name out=""
+    for name in $1; do
+        profile_supported "$name" || continue
+        case "$seen" in *" $name "*) continue ;; esac
+        seen="$seen$name "
+        out="${out}profile-${name}.md "
+    done
+    printf '%s' "$out"
+}
+
+# profile_display_name <name> — the sub-heading a profile block renders
+# under in an assembled config.
+profile_display_name() {
+    case "$1" in
+        shared-core) printf 'Shared Core\n' ;;
+        ui-surface)  printf 'UI Surface\n' ;;
+        *)
+            # Fallback: hyphens to spaces, each word capitalised (bash 3.2).
+            local word out=""
+            for word in $(printf '%s' "$1" | tr '-' ' '); do
+                out="${out:+$out }$(printf '%s%s' "$(printf '%s' "${word:0:1}" | tr '[:lower:]' '[:upper:]')" "${word:1}")"
+            done
+            printf '%s\n' "$out"
+            ;;
+    esac
+}
