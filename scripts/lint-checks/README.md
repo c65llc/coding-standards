@@ -65,7 +65,7 @@ profile, scoped like a language check. `shared-core` ships no checks yet.
 
 | Check | Standard | What it looks at | Severity on finding |
 | --- | --- | --- | --- |
-| `profiles/ui-surface/web-tells` | arch-11 §3, §5 | Stylesheets and scripts (`.css .scss .tsx .jsx .vue .svelte .ts .js`) for `cursor: pointer`, `scroll-behavior: smooth`, `behavior: 'smooth'` and `user-select: text`; names up to five `file:line` locations and counts the rest. A committed `.standards-ui-allow` (one glob per line) records deliberate exceptions. Never FAILs: a tell is a design call | WARN |
+| `profiles/ui-surface/web-tells` | arch-11 §3, §5 | Stylesheets and scripts (`.css .scss .tsx .jsx .vue .svelte .ts .js`) for `cursor: pointer`, `scroll-behavior: smooth`, `behavior: 'smooth'` and `user-select: text`; names up to five `file:line` locations and counts the rest. Every hit is counted; up to five are named. A committed `.standards-ui-allow` (one glob per line, `lint.exclude` semantics: `*` within a segment, `**` across) records deliberate exceptions. Never FAILs: a tell is a design call | WARN |
 
 ## Module options
 

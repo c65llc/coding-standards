@@ -3431,6 +3431,41 @@ echo -n "Test 309: lint-standards --format sarif carries web-tells as a warning 
 "$LINT" --format sarif "$proj" > "$TMP_BASE/tells.sarif" 2>/dev/null || true
 if json_valid "$TMP_BASE/tells.sarif" && grep -q 'web-tells' "$TMP_BASE/tells.sarif" && grep -q '"level": *"warning"' "$TMP_BASE/tells.sarif"; then pass; else fail "$(head -c 600 "$TMP_BASE/tells.sarif")"; fi
 
+proj=$(make_project "tells-onefile")
+mkdir -p "$proj/src"
+for i in 1 2 3 4 5 6 7; do printf '.r%s { cursor: pointer; }\n' "$i"; done > "$proj/src/many.css"
+( cd "$proj" && git add -A && git -c user.email="t@t.local" -c user.name="T" commit -q -m "feat: one file" )
+echo -n "Test 310: web-tells counts every hit in one file, not five per file... "
+out=$("$WEB_TELLS" "$proj" 2>/dev/null)
+if echo "$out" | grep -q '7 hit(s)' && echo "$out" | grep -q '(+2 more)'; then pass; else fail "out=$out"; fi
+
+proj=$(make_project "tells-globs")
+mkdir -p "$proj/src/deep"
+printf '.a { cursor: pointer; }\n' > "$proj/src/a.css"
+printf '.d { cursor: pointer; }\n' > "$proj/src/deep/d.css"
+( cd "$proj" && git add -A && git -c user.email="t@t.local" -c user.name="T" commit -q -m "feat: globs" )
+echo -n "Test 311: allowlist globs follow lint.exclude semantics (* within a segment, ** across)... "
+printf 'src/*\n' > "$proj/.standards-ui-allow"
+one=$("$WEB_TELLS" "$proj" 2>/dev/null)
+printf 'src/**\n' > "$proj/.standards-ui-allow"
+two=$("$WEB_TELLS" "$proj" 2>/dev/null)
+if echo "$one" | grep -q '1 hit(s)' && echo "$one" | grep -q 'src/deep/d.css' && echo "$two" | grep -q '^PASS web-tells'; then pass; else fail "one=$one two=$two"; fi
+
+proj=$(make_project "tells-universal")
+mkdir -p "$proj/src"
+printf '* { cursor: pointer; }\n/* cursor: pointer in a comment */\n// cursor: pointer in a line comment\n' > "$proj/src/u.css"
+( cd "$proj" && git add -A && git -c user.email="t@t.local" -c user.name="T" commit -q -m "feat: universal" )
+echo -n "Test 312: a universal-selector rule is a hit; commented lines are not... "
+out=$("$WEB_TELLS" "$proj" 2>/dev/null)
+if echo "$out" | grep -q '1 hit(s)' && echo "$out" | grep -q 'src/u.css:1'; then pass; else fail "out=$out"; fi
+
+proj=$(make_project "tells-nofiles")
+printf '# readme\n' > "$proj/README.md"
+( cd "$proj" && git add -A && git -c user.email="t@t.local" -c user.name="T" commit -q -m "docs: readme" )
+echo -n "Test 313: web-tells PASSes a project with no stylesheet or script files... "
+out=$("$WEB_TELLS" "$proj" 2>/dev/null); rc=$?
+if [ "$rc" -eq 0 ] && echo "$out" | grep -q '^PASS web-tells no stylesheet or script files'; then pass; else fail "rc=$rc out=$out"; fi
+
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"
     exit 0

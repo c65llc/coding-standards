@@ -16,11 +16,15 @@
 #   user-select: text         chrome made selectable; only content is
 #
 # Exemptions: .standards-ui-allow at the project root, one shell-style glob
-# per line (`#` comments), matched against project-relative paths. Committed,
-# so a deliberate tell is written down where review can see it. Files come
-# from scripts/lib/lint-files.sh (default policy: built-in exclusions and
-# .standards.yml lint.exclude apply) filtered to stylesheet and script
-# extensions. Up to five locations are named; the rest are counted.
+# per line (`#` comments), matched against project-relative paths with the
+# same semantics as `.standards.yml` lint.exclude: `*` matches within a path
+# segment, `**` across segments (lint__glob_to_ere). Committed, so a
+# deliberate tell is written down where review can see it. Files come from
+# scripts/lib/lint-files.sh (default policy: built-in exclusions and
+# lint.exclude apply) filtered to stylesheet and script extensions. Every hit
+# is counted; up to five locations are named and the rest summarised. A line
+# that starts with `//` or `/*` is a comment and not a hit; a bare `*` is a
+# universal selector and is.
 
 PROJECT_ROOT="${1:-.}"
 CHECK_NAME="web-tells"
@@ -46,47 +50,47 @@ if [ -z "$FILES" ]; then
     exit 0
 fi
 
-# Allowlist: one glob per line; a path matching any glob is exempt.
+# Allowlist: one glob per line, lint.exclude semantics, joined into one ERE
+# anchored to the whole project-relative path.
 ALLOW_FILE="$PROJECT_ROOT/.standards-ui-allow"
-ALLOW_GLOBS=""
+ALLOW_ERE=""
 if [ -f "$ALLOW_FILE" ]; then
-    ALLOW_GLOBS=$(sed 's/[[:space:]]*#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//' "$ALLOW_FILE" | grep -v '^$' || true)
+    while IFS= read -r glob; do
+        glob=$(printf '%s' "$glob" | sed 's/[[:space:]]*#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//')
+        [ -n "$glob" ] || continue
+        ALLOW_ERE="${ALLOW_ERE:+$ALLOW_ERE|}$(lint__glob_to_ere "$glob")"
+    done < "$ALLOW_FILE"
 fi
 
 allowed() {
-    local rel="$1" glob
-    [ -n "$ALLOW_GLOBS" ] || return 1
-    while IFS= read -r glob; do
-        [ -n "$glob" ] || continue
-        # shellcheck disable=SC2254 # the glob is the point
-        case "$rel" in $glob) return 0 ;; esac
-    done <<EOF_GLOBS
-$ALLOW_GLOBS
-EOF_GLOBS
-    return 1
+    [ -n "$ALLOW_ERE" ] || return 1
+    printf '%s\n' "$1" | grep -qE "^($ALLOW_ERE)$"
 }
 
 PATTERN='cursor:[[:space:]]*pointer|scroll-behavior:[[:space:]]*smooth|behavior:[[:space:]]*["'"'"']smooth["'"'"']|user-select:[[:space:]]*text'
 
-# lint_grep_hits yields "<rel>:<line>:<content>"; the third argument drops
-# lines that start with a line comment so a commented-out tell is not a tell.
-HITS=$(lint_grep_hits "$FILES" "$PROJECT_ROOT" '//|/\*|\*' "$PATTERN" || true)
-
+# Every matching line in every matching file (no per-file cap, unlike
+# lint_grep_hits), minus lines that start with a comment opener. The per-file
+# "<line>:" prefix anchors the comment test so neither the filename nor the
+# content can forge a suppression.
 LOCATIONS=""
 COUNT=0
-while IFS= read -r hit; do
-    [ -n "$hit" ] || continue
-    rel="${hit%%:*}"
-    rest="${hit#*:}"
-    line="${rest%%:*}"
+while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    rel="${f#"$PROJECT_ROOT/"}"
     allowed "$rel" && continue
-    COUNT=$((COUNT + 1))
-    if [ "$COUNT" -le 5 ]; then
-        LOCATIONS="${LOCATIONS:+$LOCATIONS, }$rel:$line"
-    fi
-done <<EOF_HITS
-$HITS
-EOF_HITS
+    while IFS= read -r numbered; do
+        [ -n "$numbered" ] || continue
+        COUNT=$((COUNT + 1))
+        if [ "$COUNT" -le 5 ]; then
+            LOCATIONS="${LOCATIONS:+$LOCATIONS, }$rel:${numbered%%:*}"
+        fi
+    done <<EOF_LINES
+$(grep -InE -- "$PATTERN" "$f" 2>/dev/null | grep -vE '^[0-9]+:[[:space:]]*(//|/\*)' || true)
+EOF_LINES
+done <<EOF_FILES
+$(lint_grep_files "$FILES" -lE "$PATTERN")
+EOF_FILES
 
 if [ "$COUNT" -eq 0 ]; then
     echo "PASS $CHECK_NAME no web tells found (cursor: pointer, smooth scroll, selectable chrome)"

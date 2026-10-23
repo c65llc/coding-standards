@@ -178,7 +178,7 @@ items on first pass; each is cheap once named.
 * **46** **[both]** Save state is visible where the product's ruling places it, and
   nowhere else.
 * **47** **[both]** An action's result is acknowledged within one frame by structure
-  (selection, a minted tab) even when its content is still arriving.
+  (a selection, a new tab) even when its content is still arriving.
 
 ### System integration
 
@@ -225,7 +225,7 @@ items on first pass; each is cheap once named.
 
 The audit is generic. A product accumulates decisions that are better than
 generic: where its save state lives, which surface adopts a skeleton and why,
-what its ghost row at the end of a list does. Where a project keeps such
+what the always-present empty row at the end of a list does. Where a project keeps such
 rulings, **the ruling wins over any audit item and the change cites it.**
 
 This standard does not mandate the files, but it names the shape that has held
@@ -267,7 +267,8 @@ item, it says so rather than inventing.
   editable regions, `scroll-behavior: smooth`, `behavior: 'smooth'`, custom modal
   overlays, hard-coded accent colours. The `ui-surface` profile's `web-tells`
   check reports the first four as warnings; a committed `.standards-ui-allow`
-  records the deliberate ones.
+  records the deliberate ones, one shell-style glob per line with the same
+  semantics as `lint.exclude` (`*` within a path segment, `**` across).
 
 ## 6. Output style for agents
 
