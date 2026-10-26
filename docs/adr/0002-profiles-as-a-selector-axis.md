@@ -57,7 +57,8 @@ additive and optional.
 ## Consequences
 
 Easier: a project opts in to a product-shape standard with one line, and the
-block, the skill and the checks arrive together on the next sync. A project
+block and skill arrive on the next sync, and the checks run on the next
+`make lint-standards` or CI invocation. A project
 that declares nothing is byte-for-byte unaffected, which keeps this release a
 minor version.
 
