@@ -463,6 +463,67 @@ check_languages() {
 }
 
 # ---------------------------------------------------------------------------
+# Check 4a: Profiles (#227) — declared names are known, their skills are
+# installed, and detected-but-undeclared ones are suggested (INFO only:
+# opting out is normal).
+# ---------------------------------------------------------------------------
+
+check_profiles() {
+    local declared="" agents="" p
+    if declare -f read_standards_config >/dev/null 2>&1 && [ -f "$PROJECT_ROOT/.standards.yml" ]; then
+        read_standards_config "$PROJECT_ROOT" 2>/dev/null || true
+        declared=$(printf '%s\n' "${STD_PROFILES:-}" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
+        agents="${STD_AGENTS:-}"
+    fi
+
+    local unknown=""
+    for p in $declared; do
+        if declare -f profile_supported >/dev/null 2>&1 && ! profile_supported "$p"; then
+            unknown="${unknown:+$unknown }$p"
+        fi
+    done
+    if [ -n "$unknown" ]; then
+        check_fail "Profiles" "Unknown profile '$unknown' in .standards.yml" \
+            "Valid profiles: ${SUPPORTED_PROFILES:-shared-core ui-surface}; fix the profiles: list"
+        return
+    fi
+
+    local missing="" agent target
+    [ -n "$agents" ] || agents="claude-code cursor copilot gemini codex aider"
+    for agent in $SKILLS_FILE_AGENTS; do
+        in_list "$agent" "$agents" || continue
+        for p in $declared; do
+            target=$(skills_agent_target "$agent" "$p")
+            [ -f "$PROJECT_ROOT/$target" ] || missing="${missing:+$missing }$agent/$p"
+        done
+    done
+    if [ -n "$missing" ]; then
+        check_warn "Profiles" "Declared '$missing' but its skill is not installed — run make sync-standards" \
+            "Run: make sync-standards (installs profile skills for each configured file-based agent)"
+    fi
+
+    local DETECT="" prof reason
+    if [ -f "$SCRIPT_DIR/detect-profiles.sh" ]; then
+        DETECT="$SCRIPT_DIR/detect-profiles.sh"
+    elif [ -f "$PROJECT_ROOT/.standards/scripts/detect-profiles.sh" ]; then
+        DETECT="$PROJECT_ROOT/.standards/scripts/detect-profiles.sh"
+    fi
+    if [ -n "$DETECT" ]; then
+        while IFS=$'\t' read -r prof reason; do
+            [ -n "$prof" ] || continue
+            in_list "$prof" "$declared" && continue
+            check_info "Profiles" "$prof looks applicable ($reason) — declare it under profiles: to opt in"
+        done <<EOF
+$(bash "$DETECT" "$PROJECT_ROOT" 2>/dev/null)
+EOF
+    fi
+
+    if [ -n "$declared" ] && [ -z "$missing" ]; then
+        check_pass "Profiles" "Declared: $declared"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Check 4b: Members (monorepo sub-roots) are present and configured
 # ---------------------------------------------------------------------------
 
@@ -1007,6 +1068,7 @@ check_members
 check_agents
 check_checksums
 check_languages
+check_profiles
 check_submodule
 check_git_hooks
 check_gh_stack

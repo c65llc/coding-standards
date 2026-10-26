@@ -95,6 +95,25 @@ skill_section() {
     '
 }
 
+# skill_profiles <file> — the profiles a skill is bound to, space-separated,
+# from a `profiles:` frontmatter scalar written as `a`, `a, b` or `[a, b]`.
+# Prints nothing for a skill without the key (an unconditional skill).
+skill_profiles() {
+    skill_field "$1" profiles | tr '[],' '   ' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//'
+}
+
+# skill_applies <file> "<declared>" — true when the skill has no `profiles:`
+# key, or when any of its profiles is in the declared list (#227).
+skill_applies() {
+    local wanted p
+    wanted=$(skill_profiles "$1")
+    [ -n "$wanted" ] || return 0
+    for p in $wanted; do
+        case " $2 " in *" $p "*) return 0 ;; esac
+    done
+    return 1
+}
+
 # skills_agent_target <agent> <name> — the project-relative path a file-based
 # agent reads skill <name> from; prints nothing for index-only agents.
 skills_agent_target() {
@@ -182,15 +201,18 @@ render_skill_for_agent() {
     esac
 }
 
-# render_skills_index <skills_dir> <runbook_ref> — the body of the "## Skills"
-# section for agents that read one config file: each skill's name,
-# description and triggers, and where its full runbook lives.
+# render_skills_index <skills_dir> <runbook_ref> [<declared profiles>] — the
+# body of the "## Skills" section for agents that read one config file: each
+# skill's name, description and triggers, and where its full runbook lives.
+# A skill bound to a profile (#227) is listed only when that profile is in
+# the declared list.
 render_skills_index() {
-    local dir="$1" ref="$2" name file desc when
+    local dir="$1" ref="$2" declared="${3:-}" name file desc when
     [ -d "$dir" ] || return 0
     printf 'Runbooks the standards ship for recurring tasks. Read the runbook before carrying one out and report as it says; each is also installed as a native skill, command or prompt for agents that support them.\n'
     for name in $(skills_list "$dir"); do
         file="$dir/$name.md"
+        skill_applies "$file" "$declared" || continue
         desc=$(skill_field "$file" description)
         printf '\n### %s\n\n' "$name"
         if [ -n "$desc" ]; then

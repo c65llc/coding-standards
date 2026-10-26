@@ -405,3 +405,22 @@ aggregate_member_languages() {
     done
     dedupe_words "$all"
 }
+
+# aggregate_member_profiles <root> <root-profiles> <members>
+# Validate the complete selection before callers perform any writes. Root
+# profiles stay separate for persistence; this union is only for assembly.
+aggregate_member_profiles() {
+    local root="$1" all="$2" members="$3" m p
+    for m in $members; do
+        if [ -f "$root/$m/.standards.yml" ]; then
+            all="$all $(yaml_profiles "$root/$m/.standards.yml")"
+        fi
+    done
+    for p in $all; do
+        if ! profile_supported "$p"; then
+            echo "ERROR: Unknown profile: $p (expected one of: ${SUPPORTED_PROFILES// /, })" >&2
+            return 2
+        fi
+    done
+    dedupe_words "$all"
+}

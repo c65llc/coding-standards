@@ -192,11 +192,13 @@ fi
 
 # Read .standards.yml config if available
 LANGUAGES=""
+PROFILES=""
 if declare -f read_standards_config >/dev/null 2>&1; then
     read_standards_config "$PROJECT_ROOT" 2>/dev/null || true
     # Normalize: `languages: []` parses to a lone space, which must read as
-    # "no languages" below.
+    # "no languages" below. Profiles (#227) are read the same way.
     LANGUAGES=$(printf '%s\n' "${STD_LANGUAGES:-}" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
+    PROFILES=$(printf '%s\n' "${STD_PROFILES:-}" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
 fi
 
 # ---------------------------------------------------------------------------
@@ -208,6 +210,8 @@ if [ ! -f "$SCRIPT_DIR/lib/members.sh" ]; then
 fi
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/members.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/languages.sh"
 MEMBERS=(".")
 while IFS= read -r m; do
     [ -z "$m" ] && continue
@@ -397,8 +401,10 @@ run_member() {
         fi
     done
 
+    local member_profiles=""
     if [ "$member" = "." ]; then
         member_langs="$LANGUAGES"
+        member_profiles="$PROFILES"
     else
         [ -d "$member_dir" ] || return 0
         if [ -f "$member_dir/.standards.yml" ] && declare -f read_standards_config >/dev/null 2>&1; then
@@ -406,6 +412,7 @@ run_member() {
             # yaml_list yields a lone space for `languages: []`; normalise so an
             # explicit empty list reads as empty (as the root's does above).
             member_langs=$(printf '%s\n' "${STD_LANGUAGES:-}" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
+            member_profiles=$(printf '%s\n' "${STD_PROFILES:-}" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
         fi
         # Re-base the --since scope onto this member.
         if [ -n "${LINT_FILE_LIST:-}" ] && [ -r "$LINT_FILE_LIST" ]; then
@@ -447,6 +454,21 @@ run_member() {
     for lang in $member_langs; do
         if [ -d "$CHECKS_DIR/$lang" ]; then
             for check in "$CHECKS_DIR/$lang/"*.sh; do
+                run_check "$check" "$member_dir" "$member"
+            done
+        fi
+    done
+    # Profile checks (#227): lint-checks/profiles/<profile>/ for each declared
+    # profile, scoped like a language check. A profile with no directory
+    # (shared-core ships none) is skipped silently.
+    local prof
+    for prof in $member_profiles; do
+        if ! profile_supported "$prof"; then
+            record_result "$member" "FAIL profiles Unknown profile: $prof"
+            continue
+        fi
+        if [ -d "$CHECKS_DIR/profiles/$prof" ]; then
+            for check in "$CHECKS_DIR/profiles/$prof/"*.sh; do
                 run_check "$check" "$member_dir" "$member"
             done
         fi

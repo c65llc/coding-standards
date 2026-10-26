@@ -84,6 +84,16 @@ update_checksum_entry() {
 }
 
 # ---------------------------------------------------------------------------
+# remove_checksum_entry <key> <existing_content>
+#
+# Drops the line that records <key> from a checksums string and prints the
+# rest; content without that key is printed unchanged. The counterpart of
+# update_checksum_entry for a file the standards no longer manage (#227).
+remove_checksum_entry() {
+    local key="$1" content="$2"
+    printf '%s\n' "$content" | awk -v k="$key" '$1 != k' | sed '/^$/d'
+}
+
 # has_assembly_header <file>
 #
 # Returns 0 (true) if <file> contains the "Assembled by coding-standards"
@@ -518,6 +528,17 @@ yaml_map_entries() {
     ' "$file" 2>/dev/null
 }
 
+# Read the fixed profile vocabulary as unquoted, first-seen unique words.
+# yaml_list preserves quotes for callers that need raw values.
+yaml_profiles() {
+    yaml_list profiles "$1" | awk 'BEGIN { ORS="" }
+        { for (i=1; i<=NF; i++) {
+            p=$i
+            if (p ~ /^".*"$/ || p ~ /^\047.*\047$/) p=substr(p,2,length(p)-2)
+            if (p != "" && !seen[p]++) { printf "%s%s", sep, p; sep=" " }
+        } }'
+}
+
 # Read .standards.yml or fall back to .standards-config
 # Sets global variables: STD_LANGUAGES, STD_AGENTS, STD_ROLE, STD_VERSION, STD_COVERAGE_MIN, STD_COVERAGE_DOMAIN, STD_ARCHITECTURE, STD_SECURITY, STD_LINT_EXCLUDE, STD_MEMBERS,
 # STD_PROJECT_OVERVIEW and STD_KEY_COMMANDS (text assembled into {{PROJECT_OVERVIEW}} / {{KEY_COMMANDS}}),
@@ -531,6 +552,8 @@ read_standards_config() {
         STD_VERSION=$(yaml_get "version" "$yml")
         STD_LANGUAGES=$(yaml_list "languages" "$yml")
         STD_AGENTS=$(yaml_list "agents" "$yml")
+        # Profiles (#227): a missing key and `profiles: []` both read as empty.
+        STD_PROFILES=$(yaml_profiles "$yml")
         # members: root-relative sub-roots with their own .standards.yml (#179).
         # Raw values; scripts/lib/members.sh normalizes and validates them.
         STD_MEMBERS=$(yaml_list "members" "$yml" | sed 's/[[:space:]]*$//')
@@ -573,6 +596,7 @@ read_standards_config() {
         STD_ROLE="${cfg_role:-service}"
         STD_LANGUAGES=$(echo "${cfg_langs:-}" | tr ',' ' ')
         STD_AGENTS=$(echo "${cfg_agents:-}" | tr ',' ' ')
+        STD_PROFILES=""
         STD_VERSION="1"
         STD_COVERAGE_MIN="95"
         STD_COVERAGE_DOMAIN="100"
