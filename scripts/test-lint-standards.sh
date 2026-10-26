@@ -3466,6 +3466,27 @@ echo -n "Test 313: web-tells PASSes a project with no stylesheet or script files
 out=$("$WEB_TELLS" "$proj" 2>/dev/null); rc=$?
 if [ "$rc" -eq 0 ] && echo "$out" | grep -q '^PASS web-tells no stylesheet or script files'; then pass; else fail "rc=$rc out=$out"; fi
 
+# Review regressions: final allowlist line, complete comments, docs sources.
+proj=$(make_project "tells-review")
+mkdir -p "$proj/docs"
+printf '.row { cursor: pointer; }\n' > "$proj/docs/app.css"
+echo -n "Test 314: UI source files under docs are checked... "
+out=$("$WEB_TELLS" "$proj" 2>/dev/null)
+if echo "$out" | grep -q 'docs/app.css:1'; then pass; else fail "$out"; fi
+printf 'docs/app.css' > "$proj/.standards-ui-allow"
+echo -n "Test 315: an unterminated final allowlist entry exempts its file... "
+out=$("$WEB_TELLS" "$proj" 2>/dev/null)
+if echo "$out" | grep -q '^PASS web-tells'; then pass; else fail "$out"; fi
+rm "$proj/.standards-ui-allow"
+printf '/*\n * cursor: pointer;\n scroll-behavior: smooth;\n */\n.row { /* cursor: pointer; */ color: red; }\n' > "$proj/docs/app.css"
+echo -n "Test 316: block-comment continuations and inline comments are ignored... "
+out=$("$WEB_TELLS" "$proj" 2>/dev/null)
+if echo "$out" | grep -q '^PASS web-tells'; then pass; else fail "$out"; fi
+printf '/* hidden */ .row { cursor: pointer; }\n' >> "$proj/docs/app.css"
+echo -n "Test 317: real code after a closing block comment retains its line number... "
+out=$("$WEB_TELLS" "$proj" 2>/dev/null)
+if echo "$out" | grep -q '1 hit(s): docs/app.css:6'; then pass; else fail "$out"; fi
+
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"
     exit 0

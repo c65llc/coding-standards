@@ -23,8 +23,8 @@
 # scripts/lib/lint-files.sh (default policy: built-in exclusions and
 # lint.exclude apply) filtered to stylesheet and script extensions. Every hit
 # is counted; up to five locations are named and the rest summarised. A line
-# that starts with `//` or `/*` is a comment and not a hit; a bare `*` is a
-# universal selector and is.
+# inside a line or block comment is not a hit; a bare `*` universal selector
+# is. Quoted strings are retained and line numbers survive comment removal.
 
 PROJECT_ROOT="${1:-.}"
 CHECK_NAME="web-tells"
@@ -43,7 +43,7 @@ if [ ! -d "$PROJECT_ROOT" ]; then
 fi
 
 EXT_ERE='\.(css|scss|tsx|jsx|vue|svelte|ts|js)$'
-FILES=$(lint_list_files "$PROJECT_ROOT" docs | grep -E "$EXT_ERE" | grep -vE '\.(min\.js|d\.ts)$' || true)
+FILES=$(lint_list_files "$PROJECT_ROOT" | grep -E "$EXT_ERE" | grep -vE '\.(min\.js|d\.ts)$' || true)
 
 if [ -z "$FILES" ]; then
     echo "PASS $CHECK_NAME no stylesheet or script files to check"
@@ -55,7 +55,7 @@ fi
 ALLOW_FILE="$PROJECT_ROOT/.standards-ui-allow"
 ALLOW_ERE=""
 if [ -f "$ALLOW_FILE" ]; then
-    while IFS= read -r glob; do
+    while IFS= read -r glob || [ -n "$glob" ]; do
         glob=$(printf '%s' "$glob" | sed 's/[[:space:]]*#.*$//; s/^[[:space:]]*//; s/[[:space:]]*$//')
         [ -n "$glob" ] || continue
         ALLOW_ERE="${ALLOW_ERE:+$ALLOW_ERE|}$(lint__glob_to_ere "$glob")"
@@ -70,9 +70,8 @@ allowed() {
 PATTERN='cursor:[[:space:]]*pointer|scroll-behavior:[[:space:]]*smooth|behavior:[[:space:]]*["'"'"']smooth["'"'"']|user-select:[[:space:]]*text'
 
 # Every matching line in every matching file (no per-file cap, unlike
-# lint_grep_hits), minus lines that start with a comment opener. The per-file
-# "<line>:" prefix anchors the comment test so neither the filename nor the
-# content can forge a suppression.
+# lint_grep_hits), after stripping line and complete block comments while
+# retaining quoted strings and original line numbers.
 LOCATIONS=""
 COUNT=0
 while IFS= read -r f; do
@@ -86,7 +85,26 @@ while IFS= read -r f; do
             LOCATIONS="${LOCATIONS:+$LOCATIONS, }$rel:${numbered%%:*}"
         fi
     done <<EOF_LINES
-$(grep -InE -- "$PATTERN" "$f" 2>/dev/null | grep -vE '^[0-9]+:[[:space:]]*(//|/\*)' || true)
+$(awk '
+    {
+        out=""
+        for (i=1; i<=length($0); i++) {
+            c=substr($0,i,1); pair=substr($0,i,2)
+            if (block) { if (pair=="*/") { block=0; i++ }; continue }
+            if (quote!="") {
+                out=out c
+                if (escape) escape=0
+                else if (c=="\\") escape=1
+                else if (c==quote) quote=""
+            } else if (pair=="/*") { block=1; i++; out=out " " }
+            else if (pair=="//") break
+            else {
+                out=out c
+                if (c=="\"" || c=="\047" || c=="`") quote=c
+            }
+        }
+        print NR ":" out
+    }' "$f" | grep -E -- "$PATTERN" || true)
 EOF_LINES
 done <<EOF_FILES
 $(lint_grep_files "$FILES" -lE "$PATTERN")
