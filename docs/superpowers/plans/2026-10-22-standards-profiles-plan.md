@@ -15,6 +15,34 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-17-standards-profiles-design.md`
 
+## Review addendum — 2026-10-26
+
+The task text below is the original implementation record. These corrections
+apply to execution and validation of the stack (#228–#231):
+
+- Setup must add profile blocks to `BLOCK_ARGS` and export `STANDARDS_PROFILES`
+  before config assembly, including the Codex, Gemini and Aider skills indexes.
+- Setup, sync and diff must aggregate root and member profiles in first-seen
+  order for root config and skill assembly, while persisting only root profiles
+  in the root configuration. Validate every member before any write or sync pull.
+- Normalize YAML quotes and deduplicate profiles before validation and lint.
+  Validate root and member names against `profile_supported` before constructing
+  a check path; a traversal value must never execute a script outside the checks.
+- An undeclared profile adds no scored doctor finding. Resolve the effective
+  agent list (empty means all), then check each declared profile's installed
+  Claude skill, Cursor command and Copilot prompt for the applicable agents.
+- The content layer commits every generated index, including `.cursorrules`,
+  and the hand-maintained `STRUCTURE.md` and project-structure guide, alongside
+  the new standard. It must pass `make check-agent-configs` independently.
+- Before any release tag, convert the changelog's Unreleased entry to a dated
+  release heading and commit it. Verify the proposed tag is unused; `v1.6.0`
+  already exists as of this review, so this stack must not recreate or move it.
+  Merging this stack does not itself authorize a new release.
+
+Regression coverage must exercise member-only profiles in setup/sync/diff,
+quoted values, duplicate lint results, traversal rejection, unchanged doctor
+scores without profiles, and every effective file-based agent's missing skill.
+
 ## Global Constraints
 
 - bash 3.2 compatible: no associative arrays, no `mapfile`, no `${var,,}`.
