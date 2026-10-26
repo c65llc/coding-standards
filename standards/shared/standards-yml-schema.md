@@ -87,7 +87,8 @@ Optional, cross-cutting standards a project **opts in to**. A third selector
 axis beside `languages` and `role`: each declared profile injects one block
 under a `## Profiles` heading in every assembled agent config (after the role
 block, in declared order), installs the skill bound to it, and enables its lint
-checks (`lint-checks/profiles/<profile>/`). Nothing enables a profile but this
+checks (`lint-checks/profiles/<profile>/`) for a later `make lint-standards`
+or CI run. Sync does not execute lint checks. Nothing enables a profile but this
 key: `make doctor` and `scripts/detect-profiles.sh` only *suggest*.
 
 **Valid values:**
@@ -98,6 +99,11 @@ key: `make doctor` and `scripts/detect-profiles.sh` only *suggest*.
 | `ui-surface` | `profile-ui-surface.md` | `arch-11` (ownership per surface class, the native-feel audit, project rulings over the audit) | `ui-surface` | `web-tells` (WARN) |
 
 Default: none. A missing key and `profiles: []` are the same thing.
+
+In a monorepo, setup, sync and diff assemble root configs and skills from the
+first-seen union of root and declared member profiles. Only the root selection
+is persisted in the root configuration. Lint checks use each member's own
+profile declaration and scope.
 
 An unknown value is a usage error: `setup.sh` and `sync-standards.sh` exit 2
 before writing anything, naming the valid list; `doctor` reports it as FAIL.

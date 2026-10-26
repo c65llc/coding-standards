@@ -24,12 +24,12 @@ profiles:
   - ui-surface
 ```
 
-Declaring one does three things on the next `make sync-standards`. A block
+On the next `make sync-standards`, a block
 lands in every assembled agent config under a `## Profiles` heading, after the
 role block. The profile's skill is installed for the agents that read skill
 files (Claude Code, Cursor, Copilot) and indexed for the ones that read a single
-config (Codex, Gemini, Aider). And the profile's lint checks run, scoped like a
-language check.
+config (Codex, Gemini, Aider). The profile's lint checks become eligible for
+`make lint-standards` or CI, scoped like a language check; sync does not run them.
 
 A project that declares nothing is byte-for-byte unchanged. That is the
 property we cared most about: an optional standard that leaks into projects

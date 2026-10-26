@@ -122,8 +122,11 @@ make sync-standards
 **Usage:**
 
 ```bash
-.standards/scripts/assemble-skills.sh [--project-root <dir>] [--skills-dir <dir>] [--profiles "<names>"] [--dry-run] [--quiet] <agent> [<agent> ...]
+.standards/scripts/assemble-skills.sh [--project-root <dir>] [--skills-dir <dir>] [--profiles "shared-core ui-surface"] [--dry-run] [--quiet] <agent> [<agent> ...]
 ```
+
+The direct `--profiles` argument is space-separated, unlike setup's
+comma-separated list: `--profiles "shared-core ui-surface"`.
 
 | Agent | Output | Shape |
 | ----- | ------ | ----- |

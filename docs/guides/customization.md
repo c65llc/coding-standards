@@ -233,13 +233,13 @@ profiles:
   - ui-surface    # platform-feel audit and ownership tables (arch-11)
 ```
 
-Declaring a profile does three things on the next `make sync-standards`:
+Declaring a profile makes its guidance available on the next `make sync-standards`:
 
 | What | Where |
 | --- | --- |
 | A block lands in every assembled agent config | under `## Profiles`, after `## Project Type`, one `###` sub-heading per profile |
 | The profile's skill is installed for file-based agents and indexed for the rest | `.claude/skills/<profile>/SKILL.md`, `.cursor/commands/`, `.github/prompts/`, or the `## Skills` index |
-| The profile's lint checks run | `lint-checks/profiles/<profile>/` — `ui-surface` ships `web-tells` (WARN only); `shared-core` ships none |
+| The profile's lint checks are enabled for `make lint-standards` or CI | `lint-checks/profiles/<profile>/` — `ui-surface` ships `web-tells` (WARN only); `shared-core` ships none |
 
 A profile differs from a role: a project has exactly one role and any number of
 profiles, including none, and a role is never suggested while a profile is.
