@@ -20,6 +20,7 @@ This project follows comprehensive development standards. Reference these docume
 - `standards/architecture/arch-08_ci_cd_pipeline_standards.md` — CI/CD pipeline
 - `standards/architecture/arch-09_containerized_agent_dev_standards.md` — Containerized agent-dev environment (sandboxed Docker dev image, egress allow-list, secret injection, YOLO permissions)
 - `standards/architecture/arch-10_agent_tools_and_mcp_server_standards.md` — Agent tools and MCP servers (schemas, write gating, untrusted-data fencing)
+- `standards/architecture/arch-11_ui_surface_standards.md` — UI surface: platform ownership per surface class, the native-feel audit, project rulings over the audit
 
 **Language Standards:**
 

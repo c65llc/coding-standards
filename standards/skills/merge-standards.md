@@ -70,7 +70,7 @@ When `MERGE_PLAN.md` has a **Migration** section, the pending files are the proj
 
 ## Merge Strategy
 
-Standards sections are identified by `##` headers injected by the assembler: `## Architecture`, `## Testing`, `## Security`, `## Naming Conventions`, `## Git Workflow`, `## Documentation`, `## Language Standards`, `## Project Type`.
+Standards sections are identified by `##` headers injected by the assembler: `## Architecture`, `## Testing`, `## Security`, `## Naming Conventions`, `## Git Workflow`, `## Documentation`, `## Language Standards`, `## Project Type`, `## Profiles`.
 
 **Standards sections:**
 

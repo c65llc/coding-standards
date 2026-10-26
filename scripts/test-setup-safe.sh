@@ -1367,7 +1367,11 @@ if [ -z "$errs" ]; then pass; else fail "$errs"; fi
 # --- #194: agent-neutral workflow text and per-agent skills -------------------
 
 ALL_AGENTS="claude-code cursor copilot gemini codex aider"
-SKILL_NAMES=$(for f in "$REPO_ROOT"/standards/skills/*.md; do basename "$f" .md; done | tr '\n' ' ')
+# Unconditional skills install for every file-based agent; a skill whose
+# frontmatter carries `profiles:` (#227) installs only when that profile is
+# declared, so it is listed separately.
+SKILL_NAMES=$(for f in "$REPO_ROOT"/standards/skills/*.md; do grep -q '^profiles:' "$f" || basename "$f" .md; done | tr '\n' ' ')
+GATED_SKILL_NAMES=$(for f in "$REPO_ROOT"/standards/skills/*.md; do grep -q '^profiles:' "$f" && basename "$f" .md; done | tr '\n' ' ')
 
 # assemble_for <proj> <agent> <out> — assemble one agent config into <out>.
 assemble_for() {
@@ -1409,6 +1413,9 @@ for n in $SKILL_NAMES; do
     grep -q '^description: ' "$f"             || errs="$errs $n:no-description"
 done
 echo "$out" | grep -q 'claude-code' || errs="$errs not-reported"
+for n in $GATED_SKILL_NAMES; do
+    [ -f "$proj/.claude/skills/$n/SKILL.md" ] && errs="$errs $n:installed-without-profile"
+done
 if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
 
 echo -n "Test 93: assemble-skills.sh cursor writes .cursor/commands/<name>.md with a description frontmatter and no name: key... "
@@ -1949,6 +1956,20 @@ echo "$dry" | grep -q 'Would write: .*\.standards\.yml'  || errs="$errs no-annou
 [ ! -f "$proj/.standards.yml" ]                            || errs="$errs wrote-yml"
 [ ! -f "$proj/CLAUDE.md" ]                                 || errs="$errs wrote-claude"
 if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 123: the shared-core and ui-surface skills install only with --profiles and carry their profiles: key... "
+proj=$(make_project "profile-skills")
+rc=0; out=$(bash "$REPO_ROOT/scripts/assemble-skills.sh" --project-root "$proj" --profiles "shared-core ui-surface" claude-code 2>&1) || rc=$?
+errs=""
+[ "$rc" -eq 0 ] || errs="$errs rc=$rc"
+for n in shared-core ui-surface; do
+    f="$proj/.claude/skills/$n/SKILL.md"
+    [ -f "$f" ]                        || { errs="$errs $n:missing"; continue; }
+    grep -q "^name: $n$" "$f"          || errs="$errs $n:no-name"
+    grep -q "^profiles: $n$" "$f"      || errs="$errs $n:no-profiles-key"
+    [ "$(wc -l < "$f")" -lt 100 ]      || errs="$errs $n:over-100-lines"
+done
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
 
 echo ""
 if [ "$FAIL" -gt 0 ]; then

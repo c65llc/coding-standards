@@ -230,8 +230,18 @@ write_yml() {
     } > "$1/.standards.yml"
 }
 
+# fake_standards_without_block <proj> — a copied tree with the shared-core
+# block deleted, so the "block absent" path stays testable now that the real
+# tree ships the block.
+fake_standards_without_block() {
+    mkdir -p "$1/.standards"
+    cp -R "$REPO_ROOT/standards" "$1/.standards/standards"
+    rm -f "$1/.standards/standards/shared/blocks/profile-shared-core.md"
+    ln -s "$REPO_ROOT/scripts"   "$1/.standards/scripts"
+    ln -s "$REPO_ROOT/templates" "$1/.standards/templates"
+}
 proj=$(make_project "sync-missing-block")
-fake_standards "$proj"; write_yml "$proj" "claude-code" "profiles: [shared-core]"
+fake_standards_without_block "$proj"; write_yml "$proj" "claude-code" "profiles: [shared-core]"
 echo -n "Test 20: sync with a declared profile whose block is absent warns, skips and still assembles... "
 out=$(cd "$proj" && "$SYNC" 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && echo "$out" | grep -q 'profile block profile-shared-core.md not found; skipping' && [ -f "$proj/CLAUDE.md" ]; then pass; else fail "rc=$rc; $(echo "$out" | tail -5)"; fi

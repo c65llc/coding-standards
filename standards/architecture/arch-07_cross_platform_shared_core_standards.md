@@ -184,3 +184,173 @@ follow-up on the rest.
   version, the core crate version). Adding a platform means adding it to this
   enumeration, so a missed platform fails the release rather than shipping mismatched
   versions.
+
+## 7. Tenets
+
+The sections above are rules. These are the tensions behind them, numbered so a
+review comment or an agent can cite one by its short name (`T3 — inject ambient
+inputs`) instead of re-deriving the argument. Every rule in this standard follows
+from one of them; a proposal that contradicts a tenet owes a better resolution of
+the same tension, not a restatement of the trade-off the tenet refused.
+
+1. **T1 — Seam below the UI.** Tension: sharing everything doubles the polish
+   cost per platform; sharing nothing doubles every feature. Resolution: logic is
+   written once in the core; rendering is written per platform in that platform's
+   toolkit. The seam sits at the facade, never inside a widget tree.
+2. **T2 — One core, many shells.** Tension: shells drift when each carries a copy
+   of a rule. Resolution: a rule lives in the core or it does not exist; a
+   behavior difference between platforms is a bug, never a platform characteristic.
+3. **T3 — Inject ambient inputs.** Tension: a core that reads the clock, the
+   locale, the timezone or an id generator is not deterministic and cannot be
+   replayed. Resolution: the shell passes them in; the core is a function of its
+   inputs.
+4. **T4 — Coarse serializable facade.** Tension: a rich object graph across an
+   FFI is slow, fragile and binding-specific. Resolution: the facade takes and
+   returns plain values (records, enums, strings). Coarse opaque ownership
+   handles with explicit create/destroy pairing (§3) are allowed; borrowed
+   internals and rich object graphs must not cross the boundary.
+5. **T5 — Golden vectors through the FFI.** Tension: a core that is correct in
+   its own tests can still be wrong at the boundary (encoding, nulls, endianness).
+   Resolution: one language-neutral fixture set, replayed by every binding
+   *through* the boundary (§2, §3).
+6. **T6 — Generated artifacts are committed and drift-gated.** Tension:
+   regenerating on every build is slow and non-reproducible; never regenerating
+   lets the committed artifact rot. Resolution: commit it, and let CI prove a cold
+   rebuild reproduces it byte for byte (§3).
+7. **T7 — Cross-platform by default.** Tension: a change scoped to one platform is
+   cheaper today and a parity defect tomorrow. Resolution: a UI change applies to
+   every shell unless the issue or PR says why not (§4).
+8. **T8 — Adopt the platform.** Tension: a hand-drawn scrollbar, window shadow or
+   context menu is slower, less correct and more brittle than the platform's, and
+   the user notices. Resolution: the platform owns the window, selection,
+   spelling, the context menu, scrolling, focus order and the accessibility tree;
+   the design system owns what is inside the frame (`arch-11` §2).
+9. **T9 — Thin shells bound iteration cost.** Tension: native rendering gives up
+   the sub-second hot reload a web UI enjoys. Resolution: keep the shells thin
+   (view plus platform glue) so the slow loop covers as little code as possible,
+   and keep the fast loop (`cargo test` on the core) covering as much as possible.
+10. **T10 — Name what you give up.** Tension: every choice in this standard is a
+    trade; a recommendation that hides its cost is advocacy. Resolution: every
+    recommendation, review finding and ADR under this profile states what it costs.
+
+## 8. Platform-Shape Decision Tree
+
+Run a product through these questions **before** recommending the shared-core
+shape. The tree is allowed to answer "not this shape": a single-platform native
+app or a web app in a tab is often correct, and saying so is more useful than
+over-fitting. Outcomes are **tab web app**, **installed PWA**, **shared core +
+native shells**, or **single-platform native**. Each branch names what it gives up.
+
+1. **How many platforms must it run on?**
+   * One native desktop or mobile platform, with no web target → **single-platform native**. Gives up: nothing you need; a shared core
+     with one consumer is overhead.
+   * Two or more desktop or mobile platforms → continue.
+   * Web only → **tab web app** or **installed PWA** (question 2 decides).
+2. **Is platform feel a product goal, or a nicety?**
+   * A nicety, or an internal tool → **tab web app**. Gives up: platform
+     integration (file associations, native menus, offline).
+   * Nice to have, web-first → **installed PWA**. Gives up: everything the browser
+     cannot do (true native sheets, system materials, deep OS integration).
+   * A product goal → continue.
+3. **Does the product centre on text editing, selection, input methods or
+   accessibility?** These are where web surfaces are weakest and native shells
+   strongest. Yes → the shells must own those surfaces natively; a web view there
+   is an interim step recorded in an ADR (§1). No → continue, and a web view for a
+   low-stakes surface is acceptable if still recorded.
+4. **Does a server or a mobile counterpart need the same logic?** Yes → the core
+   is the only sane place for it; proceed. No → a shared core still pays off at two
+   or more shells, but a TypeScript package shared by web shells may be enough.
+5. **Who on the team is fluent where?** One native platform plus the core
+   language → proceed; budget a learning curve for each further shell. No native
+   fluency at all → proceed with caution and prototype the riskiest shell first,
+   not the easiest.
+6. **How long is the runway?** Under a quarter to first release → ship the web or
+   PWA shape and record the shared-core shape as the destination. Longer →
+   proceed.
+7. **Will third parties extend it?** Yes → the extension surface needs a scripting
+   runtime the core does not provide; decide where it lives (a shell, a sidecar)
+   before the first shell exists. No → proceed.
+
+| Answers | Recommendation |
+|---------|----------------|
+| Any branch marked tab web app / installed PWA / single-platform native | That shape. This profile does not apply. |
+| Every remaining question "proceed" | Shared core + native shells, all of §1–§6. |
+| "Proceed with caution" anywhere | Same shape; front-load the risk it names. |
+
+**Clearly not this shape:** a dashboard the team wants to "feel native" (ship it
+as a web app); a one-platform utility; a game or media player (platform media
+and graphics frameworks dominate the design); a product whose only cross-platform
+need is a shared API client.
+
+## 9. Native-Shell Ship Audit
+
+Before claiming a native shell "feels native," walk this list. Items marked
+**(free)** are supplied by the platform toolkit by default; they stay on the list
+because refactors silently undo them. Score each item observed on the running
+app, not inferred from the source. For a PR, pick the items in its surface area;
+for a refactor, walk the whole list. The surface-level audit, which this list
+shares its sections with, lives in `arch-11` §3.
+
+**Launch and lifecycle**
+
+* Cold launch to a usable window within the product's stated budget; no blank or
+  mis-coloured frame before first paint.
+* The window reopens where it was closed, on the screen it was closed on.
+* Initial focus lands in the control the user most likely types into.
+* Quitting quits: no helper or sidecar process survives.
+* The app registers for login or startup only on the user's opt-in.
+
+**Window and focus**
+
+* The platform's close, minimise and zoom shortcuts work **(free)**.
+* Zoom sizes to content; full screen is a separate, explicit action **(free)**.
+* Settings open in their own window with the platform's shortcut.
+* Dialogs are the platform's dialogs or sheets, never overlays drawn in content.
+* Losing focus behaves predictably (a launcher hides; a document window does not).
+
+**Input and keyboard**
+
+* Every action is reachable by keyboard; tab order is logical **(free)**.
+* Focus rings are the platform's **(free)**.
+* Escape always does something: dismiss, cancel, close.
+* Type-ahead works in lists.
+* Input methods compose at the caret; test with at least one CJK input method.
+* The context menu is the platform's; spelling and text selection are the
+  platform's in editable text only.
+
+**Visual and material**
+
+* The window background is the platform material; dark mode follows the system
+  and switches without flicker **(free)**.
+* The accent colour follows the system accent unless a design ruling says
+  otherwise.
+* The system font is used for chrome.
+* Window shadow and corner radius are drawn by the platform, never by the app.
+* Animations honour the platform's reduced-motion setting.
+
+**System integration**
+
+* URL schemes and file associations are registered and work from the shell.
+* Drag and drop carries real file URLs the file manager accepts.
+* Copy writes every pasteboard type the content warrants (plain, rich, HTML).
+* Save and open panels are the platform's.
+* Notifications go through the platform's notification centre.
+* Updates are real (a signed updater or the store), never a "download the new
+  version" link.
+* Crashes reach a crash reporter with symbolicated stacks.
+
+**Accessibility**
+
+* The platform screen reader can navigate the entire interface **(free for
+  platform controls; verify for custom views)**.
+* Focus changes are announced.
+* Contrast meets WCAG AA in both appearances.
+* Layout survives the largest system text size.
+
+**Parity (T2, T7)**
+
+* Every shell ships the same feature set, or the gap is written down.
+* Every shell links the same core version; the conformance vectors pass through
+  every binding (§2).
+* A visual difference between shells matches a platform convention, not an
+  accident.
