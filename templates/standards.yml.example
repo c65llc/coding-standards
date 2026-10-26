@@ -26,6 +26,21 @@ agents:
 # Options: service, library, app, data-pipeline
 role: service
 
+# Optional profiles — cross-cutting standards a project opts in to. Each one
+# adds a block under "## Profiles" in every agent config, installs its skill,
+# and enables its lint checks. Nothing enables a profile but this list; doctor
+# and scripts/detect-profiles.sh only suggest.
+#   shared-core  one logic core (Rust/WASM/FFI) under thin native shells:
+#                tenets, a platform-shape decision tree, a native-shell audit
+#                (arch-07 §7–9), the shared-core skill
+#   ui-surface   what makes a UI feel like it belongs on its platform:
+#                ownership per surface class, a tagged audit, the web-tells
+#                lint check with a committed .standards-ui-allow (arch-11),
+#                the ui-surface skill
+# profiles:
+#   - shared-core
+#   - ui-surface
+
 # Monorepo members — sub-roots that are projects in their own right, each with
 # its own .standards.yml (languages, lint.exclude, coverage ...). Paths are
 # relative to this file; absolute paths, "..", and symlinks (or paths that
