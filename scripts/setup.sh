@@ -330,6 +330,10 @@ source "$SCRIPT_DIR/lib/languages.sh"
 # shellcheck source=lib/members.sh disable=SC1091
 source "$SCRIPT_DIR/lib/members.sh"
 
+ASSEMBLY_PROFILES=$(aggregate_member_profiles "$PROJECT_ROOT" "$PROFILES" "$(resolve_members "$PROJECT_ROOT")") || exit 2
+export STANDARDS_PROFILES="$ASSEMBLY_PROFILES"
+
+
 # Worktree root (`worktree_dir:` in .standards.yml, default .claude/worktrees):
 # gitignored by setup and guarded by the pre-commit template (proc-04, #190).
 # shellcheck source=lib/worktrees.sh disable=SC1091
@@ -454,7 +458,7 @@ setup_ai_agents() {
     # Profile blocks (#227): after the role block, in declared order. A block
     # the pinned standards do not ship yet is skipped with a warning.
     local pb
-    for pb in $(map_profiles_to_blocks "$PROFILES"); do
+    for pb in $(map_profiles_to_blocks "$ASSEMBLY_PROFILES"); do
         if [ -f "$BLOCKS_DIR/$pb" ]; then
             BLOCK_ARGS+=("$pb")
         else
@@ -961,7 +965,7 @@ install_agent_skills() {
     local dry_flag=""
     [ "$DRY_RUN" = true ] && dry_flag="--dry-run"
     # shellcheck disable=SC2086
-    if ! "$SKILLS_SCRIPT" --project-root "$PROJECT_ROOT" --skills-dir "$SKILLS_SOURCE" --profiles "$PROFILES" --quiet $dry_flag $file_agents; then
+    if ! "$SKILLS_SCRIPT" --project-root "$PROJECT_ROOT" --skills-dir "$SKILLS_SOURCE" --profiles "$ASSEMBLY_PROFILES" --quiet $dry_flag $file_agents; then
         echo "⚠️  Failed to install some skills (non-fatal, continuing...)"
     fi
 }

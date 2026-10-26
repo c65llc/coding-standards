@@ -190,6 +190,9 @@ if [ -n "$MEMBERS" ]; then
     printf "  %s\n\n" "Members: ${MEMBERS// /, } (languages: ${DETECTED_LANGS:-none})"
 fi
 
+PROFILES=$(aggregate_member_profiles "$PROJECT_ROOT" "$PROFILES" "$MEMBERS") || exit 2
+export STANDARDS_PROFILES="$PROFILES"
+
 # Build block arguments
 # shellcheck disable=SC2086
 LANG_BLOCKS=$(map_languages_to_blocks "$DETECTED_LANGS")

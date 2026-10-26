@@ -210,6 +210,8 @@ if [ ! -f "$SCRIPT_DIR/lib/members.sh" ]; then
 fi
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/members.sh"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/languages.sh"
 MEMBERS=(".")
 while IFS= read -r m; do
     [ -z "$m" ] && continue
@@ -461,6 +463,10 @@ run_member() {
     # (shared-core ships none) is skipped silently.
     local prof
     for prof in $member_profiles; do
+        if ! profile_supported "$prof"; then
+            record_result "$member" "FAIL profiles Unknown profile: $prof"
+            continue
+        fi
         if [ -d "$CHECKS_DIR/profiles/$prof" ]; then
             for check in "$CHECKS_DIR/profiles/$prof/"*.sh; do
                 run_check "$check" "$member_dir" "$member"
