@@ -37,6 +37,7 @@ manual dispatch  ──┘
 2. **Build settings:**
    - **Production branch:** `live`
    - **Root directory:** `website`
+   - **Node.js:** `website/.node-version` pins `22.23.4`, matching CI; Astro requires at least `22.22.0`.
    - **Build command:** `npm run build`
    - **Build output directory:** `dist`
    - Cloudflare installs deps from the committed `website/package-lock.json`.
