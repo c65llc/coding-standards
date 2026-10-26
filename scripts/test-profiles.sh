@@ -336,6 +336,68 @@ out=$(cd "$proj" && bash "$DOCTOR" 2>&1); rc=$?
 (cd "$base" && bash "$DOCTOR" >/dev/null 2>&1); rc_base=$?
 if echo "$out" | grep 'Profiles' | grep -q 'INFO.*shared-core looks applicable' && [ "$rc" -eq "$rc_base" ]; then pass; else fail "rc=$rc base=$rc_base; $(echo "$out" | grep Profiles)"; fi
 
+# --- review regressions ----------------------------------------------------
+
+proj=$(make_project "quoted-dedup")
+printf '%s\n' 'version: 1' 'profiles: ["ui-surface", '\''shared-core'\'', "ui-surface"]' > "$proj/.standards.yml"
+echo -n "Test 31: quoted YAML profiles normalize and deduplicate in first-seen order... "
+out=$(with_libs "read_standards_config '$proj'; printf '%s' \"\$STD_PROFILES\"")
+if [ "$out" = "ui-surface shared-core" ]; then pass; else fail "got '$out'"; fi
+printf '%s\n' 'profiles:' '  - "ui-surface"' "  - 'shared-core'" > "$proj/.standards.yml"
+out=$(with_libs "read_standards_config '$proj'; printf '%s' \"\$STD_PROFILES\"")
+echo -n "Test 32: block YAML profiles strip both quote styles... "
+if [ "$out" = "ui-surface shared-core" ]; then pass; else fail "got '$out'"; fi
+
+proj=$(make_project "member-profiles")
+fake_standards_with_profiles "$proj"
+printf 'version: 1\nlanguages: []\nagents: [claude-code, codex]\nmembers: [web]\n' > "$proj/.standards.yml"
+mkdir -p "$proj/web"
+printf 'version: 1\nlanguages: []\nprofiles: ["ui-surface"]\n' > "$proj/web/.standards.yml"
+echo -n "Test 33: setup assembles member-only profiles without persisting them at root... "
+out=$(cd "$proj" && bash "$REPO_ROOT/scripts/setup.sh" --agents claude-code,codex 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && grep -q 'UI surface rule' "$proj/AGENTS.md" && [ -f "$proj/.claude/skills/gated/SKILL.md" ] && ! grep -q '^profiles:' "$proj/.standards.yml"; then pass; else fail "rc=$rc; $(echo "$out" | tail -4)"; fi
+echo -n "Test 34: sync and diff agree on member-only profile blocks and index... "
+out=$(cd "$proj" && "$SYNC" 2>&1); rc=$?
+diffout=$(cd "$proj" && "$DIFF" 2>&1)
+if [ "$rc" -eq 0 ] && grep -q 'UI surface rule' "$proj/AGENTS.md" && grep -q '### gated' "$proj/AGENTS.md" && ! echo "$diffout" | grep -q '^[-+]UI surface rule'; then pass; else fail "rc=$rc; $diffout"; fi
+
+printf 'version: 1\nprofiles: [../../../../scripts]\n' > "$proj/web/.standards.yml"
+for tool in setup.sh sync-standards.sh diff-standards.sh; do
+    echo -n "Test 35 ($tool): reject invalid member profiles before writing... "
+    out=$(cd "$proj" && bash "$REPO_ROOT/scripts/$tool" --dry-run 2>&1); rc=$?
+    # diff has no dry-run flag; its normal operation is read-only.
+    if [ "$tool" = diff-standards.sh ]; then out=$(cd "$proj" && "$DIFF" 2>&1); rc=$?; fi
+    if [ "$rc" -eq 2 ] && echo "$out" | grep -q 'Unknown profile'; then pass; else fail "rc=$rc; $out"; fi
+done
+
+checks="$TMP_BASE/review-checks"
+mkdir -p "$checks/profiles/ui-surface" "$TMP_BASE/outside"
+printf '#!/bin/bash\necho "WARN profile-stub ran"\nexit 2\n' > "$checks/profiles/ui-surface/stub.sh"
+printf '#!/bin/bash\ntouch "$1/executed"\necho "PASS escaped ran"\n' > "$TMP_BASE/outside/escape.sh"
+chmod +x "$checks/profiles/ui-surface/stub.sh" "$TMP_BASE/outside/escape.sh"
+proj=$(make_project "lint-profiles")
+printf 'version: 1\nlanguages: []\nprofiles: [ui-surface, ui-surface]\n' > "$proj/.standards.yml"
+echo -n "Test 36: duplicate declarations run a profile lint check once... "
+out=$(LINT_CHECKS_DIR="$checks" bash "$REPO_ROOT/scripts/lint-standards.sh" --format text "$proj" 2>/dev/null)
+if [ "$(echo "$out" | grep -c 'profile-stub.*ran')" -eq 1 ]; then pass; else fail "$out"; fi
+printf 'version: 1\nlanguages: []\nprofiles: [../../outside]\n' > "$proj/.standards.yml"
+echo -n "Test 37: lint rejects traversal without executing an escaped module... "
+out=$(LINT_CHECKS_DIR="$checks" bash "$REPO_ROOT/scripts/lint-standards.sh" --format text "$proj" 2>/dev/null)
+if [ ! -f "$proj/executed" ] && echo "$out" | grep -q 'FAIL.*profiles.*Unknown profile'; then pass; else fail "$out"; fi
+
+proj=$(make_project "doctor-no-profiles")
+printf 'version: 1\nlanguages: []\nagents: [codex]\n' > "$proj/.standards.yml"
+echo -n "Test 38: doctor has no scored finding when no profile is declared... "
+out=$(cd "$proj" && bash "$DOCTOR" 2>&1) || true
+if ! echo "$out" | grep Profiles | grep -Eq 'PASS|WARN|FAIL'; then pass; else fail "$out"; fi
+for agent in cursor copilot default; do
+    printf 'version: 1\nlanguages: []\nprofiles: [ui-surface]\n' > "$proj/.standards.yml"
+    [ "$agent" = default ] || printf 'agents: [%s]\n' "$agent" >> "$proj/.standards.yml"
+    echo -n "Test 39 ($agent): doctor warns about missing profile skill... "
+    out=$(cd "$proj" && bash "$DOCTOR" 2>&1) || true
+    if echo "$out" | grep Profiles | grep -q 'WARN.*ui-surface'; then pass; else fail "$out"; fi
+done
+
 # --- summary ----------------------------------------------------------------
 
 echo ""

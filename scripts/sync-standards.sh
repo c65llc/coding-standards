@@ -469,6 +469,8 @@ if declare -f read_standards_config >/dev/null 2>&1 && read_standards_config "$P
     done
     unset _p
 fi
+# Validate member declarations before fetching or pulling the submodule too.
+aggregate_member_profiles "$PROJECT_ROOT" "${STD_PROFILES:-}" "$(resolve_members "$PROJECT_ROOT")" >/dev/null || exit 2
 
 STANDARDS_DIR=""
 
@@ -575,6 +577,7 @@ fi
 
 # Declared profiles (#227) reach assemble-config.sh through the environment
 # so the guarded assembler's positional contract stays untouched.
+PROFILES=$(aggregate_member_profiles "$PROJECT_ROOT" "$PROFILES" "$MEMBERS") || exit 2
 export STANDARDS_PROFILES="$PROFILES"
 
 # Default agents list if not in config

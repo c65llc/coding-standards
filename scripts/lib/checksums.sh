@@ -528,6 +528,17 @@ yaml_map_entries() {
     ' "$file" 2>/dev/null
 }
 
+# Read the fixed profile vocabulary as unquoted, first-seen unique words.
+# yaml_list preserves quotes for callers that need raw values.
+yaml_profiles() {
+    yaml_list profiles "$1" | awk 'BEGIN { ORS="" }
+        { for (i=1; i<=NF; i++) {
+            p=$i
+            if (p ~ /^".*"$/ || p ~ /^\047.*\047$/) p=substr(p,2,length(p)-2)
+            if (p != "" && !seen[p]++) { printf "%s%s", sep, p; sep=" " }
+        } }'
+}
+
 # Read .standards.yml or fall back to .standards-config
 # Sets global variables: STD_LANGUAGES, STD_AGENTS, STD_ROLE, STD_VERSION, STD_COVERAGE_MIN, STD_COVERAGE_DOMAIN, STD_ARCHITECTURE, STD_SECURITY, STD_LINT_EXCLUDE, STD_MEMBERS,
 # STD_PROJECT_OVERVIEW and STD_KEY_COMMANDS (text assembled into {{PROJECT_OVERVIEW}} / {{KEY_COMMANDS}}),
@@ -542,7 +553,7 @@ read_standards_config() {
         STD_LANGUAGES=$(yaml_list "languages" "$yml")
         STD_AGENTS=$(yaml_list "agents" "$yml")
         # Profiles (#227): a missing key and `profiles: []` both read as empty.
-        STD_PROFILES=$(yaml_list "profiles" "$yml" | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//')
+        STD_PROFILES=$(yaml_profiles "$yml")
         # members: root-relative sub-roots with their own .standards.yml (#179).
         # Raw values; scripts/lib/members.sh normalizes and validates them.
         STD_MEMBERS=$(yaml_list "members" "$yml" | sed 's/[[:space:]]*$//')

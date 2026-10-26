@@ -488,18 +488,21 @@ check_profiles() {
         return
     fi
 
-    local missing=""
-    if in_list claude-code "$agents"; then
+    local missing="" agent target
+    [ -n "$agents" ] || agents="claude-code cursor copilot gemini codex aider"
+    for agent in $SKILLS_FILE_AGENTS; do
+        in_list "$agent" "$agents" || continue
         for p in $declared; do
-            [ -f "$PROJECT_ROOT/.claude/skills/$p/SKILL.md" ] || missing="${missing:+$missing }$p"
+            target=$(skills_agent_target "$agent" "$p")
+            [ -f "$PROJECT_ROOT/$target" ] || missing="${missing:+$missing }$agent/$p"
         done
-    fi
+    done
     if [ -n "$missing" ]; then
         check_warn "Profiles" "Declared '$missing' but its skill is not installed — run make sync-standards" \
-            "Run: make sync-standards (installs .claude/skills/<profile>/SKILL.md)"
+            "Run: make sync-standards (installs profile skills for each configured file-based agent)"
     fi
 
-    local DETECT="" line prof reason suggested=0
+    local DETECT="" prof reason
     if [ -f "$SCRIPT_DIR/detect-profiles.sh" ]; then
         DETECT="$SCRIPT_DIR/detect-profiles.sh"
     elif [ -f "$PROJECT_ROOT/.standards/scripts/detect-profiles.sh" ]; then
@@ -510,7 +513,6 @@ check_profiles() {
             [ -n "$prof" ] || continue
             in_list "$prof" "$declared" && continue
             check_info "Profiles" "$prof looks applicable ($reason) — declare it under profiles: to opt in"
-            suggested=$((suggested + 1))
         done <<EOF
 $(bash "$DETECT" "$PROJECT_ROOT" 2>/dev/null)
 EOF
@@ -518,8 +520,6 @@ EOF
 
     if [ -n "$declared" ] && [ -z "$missing" ]; then
         check_pass "Profiles" "Declared: $declared"
-    elif [ -z "$declared" ] && [ "$suggested" -eq 0 ]; then
-        check_pass "Profiles" "No profiles declared (optional)"
     fi
 }
 

@@ -76,6 +76,15 @@ to: **[web]** (browser tab and installed PWA), **[native]** (native shell),
 **[both]**. Score each item on the running app. Most products fail five to ten
 items on first pass; each is cheap once named.
 
+**Surface capability limits:** `[web]` covers both browser tabs and installed
+PWAs only where the browser exposes the capability. Items 12–14, 16–17,
+48–49 and 58 concern installed apps: mark them N/A in a browser tab. For a PWA,
+window placement, launcher behaviour, settings windows, protocol/file handlers,
+file URLs, pasteboard formats and file panels (items 12–14, 48–52) are assessed
+only where supported by its browser/OS. Unsupported capabilities are recorded
+as N/A with the platform constraint; browser-owned behaviour is not a failure.
+Use native shells when those capabilities are product requirements.
+
 ### Input and cursor
 
 * **1** **[web]** No `cursor: pointer` on rows, tabs, toolbar items or buttons. Native
@@ -84,7 +93,9 @@ items on first pass; each is cheap once named.
    selectable. Only content is.
 * **3** **[both]** The I-beam cursor appears over editable text only.
 * **4** **[both]** The context menu is the platform's, or the product's own menu of
-   real actions; never the browser's default.
+   real actions. In browser tabs and PWAs, the browser default is the platform
+   menu for content and editable controls; preserve its selection, spelling and
+   editing actions. Product chrome may offer a menu of relevant product actions.
 * **5** **[web]** No link preview, force-touch or long-press callout on chrome.
 * **6** **[web]** No spellcheck underline on chrome; only in editable text.
 * **7** **[both]** Input methods compose at the caret. Test with at least one CJK
@@ -287,7 +298,8 @@ An agent advising under this standard:
 
 * yetone, *native-feel-skill* (MIT) —
   <https://github.com/yetone/native-feel-skill>. The audit in §3 adapts its
-  native-conventions and ship-readiness lists; the architecture it recommends
+  native-conventions and ship-readiness lists; its copyright and permission
+  notice is in [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md). The architecture it recommends
   (a shared web UI inside a system web view) is not adopted here, see
   [arch-07](./arch-07_cross_platform_shared_core_standards.md) §8.
 * [arch-05](./arch-05_resilient_architecture_patterns.md) §2–§3 (pure render

@@ -206,8 +206,9 @@ the same tension, not a restatement of the trade-off the tenet refused.
    inputs.
 4. **T4 — Coarse serializable facade.** Tension: a rich object graph across an
    FFI is slow, fragile and binding-specific. Resolution: the facade takes and
-   returns plain values (records, enums, strings); shells never hold a live handle
-   into core internals.
+   returns plain values (records, enums, strings). Coarse opaque ownership
+   handles with explicit create/destroy pairing (§3) are allowed; borrowed
+   internals and rich object graphs must not cross the boundary.
 5. **T5 — Golden vectors through the FFI.** Tension: a core that is correct in
    its own tests can still be wrong at the boundary (encoding, nulls, endianness).
    Resolution: one language-neutral fixture set, replayed by every binding
@@ -241,7 +242,7 @@ over-fitting. Outcomes are **tab web app**, **installed PWA**, **shared core +
 native shells**, or **single-platform native**. Each branch names what it gives up.
 
 1. **How many platforms must it run on?**
-   * One → **single-platform native**. Gives up: nothing you need; a shared core
+   * One native desktop or mobile platform, with no web target → **single-platform native**. Gives up: nothing you need; a shared core
      with one consumer is overhead.
    * Two or more desktop or mobile platforms → continue.
    * Web only → **tab web app** or **installed PWA** (question 2 decides).
