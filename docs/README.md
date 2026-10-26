@@ -45,6 +45,8 @@ retires it.
 |----------|--------|-------|
 | [adr/0001-unified-standards-repository.md](adr/0001-unified-standards-repository.md) | live | Accepted; live until superseded |
 
+| [adr/0002-profiles-as-a-selector-axis.md](adr/0002-profiles-as-a-selector-axis.md) | live | Accepted; profiles as an opt-in selector |
+
 ## Specs, plans and design records
 
 | Document | Status | Notes |
