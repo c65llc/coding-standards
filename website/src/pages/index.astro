@@ -51,6 +51,16 @@ const features = [
   },
 ];
 
+// Apps built with these standards: each one's repository includes them as the
+// `.standards` submodule. Keep in step with "Usage" in README.md.
+const usage = [
+  { name: 'Sosta Logbook', desc: 'Journal', site: 'https://sostalog.com' },
+  { name: 'Dopo Tasks', desc: 'Tasks', site: 'https://dopotasks.com' },
+  { name: 'Pigeonpile Wiki', desc: 'Wiki', site: 'https://pigeonpile.com/apps/wiki' },
+  { name: 'Sprig Edit', desc: 'Markdown editor', site: 'https://sprigedit.com' },
+  { name: 'Away Team', desc: 'Trip planning', site: 'https://awayteamapp.com' },
+];
+
 const steps = [
   { num: '1', title: 'Install', desc: 'Run a single install command in your repo.' },
   { num: '2', title: 'Standards sync to all agents', desc: 'Config files are generated for Cursor, Copilot, Claude Code, Codex, and Gemini CLI.' },
@@ -79,6 +89,7 @@ const steps = [
         <a href="/" class="nav-brand">Coding Standards</a>
         <div class="nav-links">
           <a href={docsUrl}>Docs</a>
+          <a href="#usage">Usage</a>
           <a href={githubUrl} target="_blank" rel="noopener noreferrer">GitHub</a>
           <a href="/rss.xml" class="rss-link" title="RSS Feed" aria-label="RSS Feed">
             <svg class="rss-icon" viewBox="0 0 24 24" fill="currentColor" width="16" height="16" aria-hidden="true"><circle cx="6.18" cy="17.82" r="2.18"/><path d="M4 4.44v2.83c7.03 0 12.73 5.7 12.73 12.73h2.83c0-8.59-6.97-15.56-15.56-15.56z"/><path d="M4 10.1v2.83c3.9 0 7.07 3.17 7.07 7.07h2.83c0-5.47-4.43-9.9-9.9-9.9z"/></svg>
@@ -177,6 +188,23 @@ const steps = [
               <p>{s.desc}</p>
               {i < steps.length - 1 && <span class="step-arrow" aria-hidden="true">&rarr;</span>}
             </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- USAGE -->
+    <section class="usage" id="usage">
+      <div class="container">
+        <h2 class="section-title">Usage</h2>
+        <p class="section-sub"><a href="https://www.c65llc.com">C65</a> builds its own apps with these standards, three of them in the <a href="https://pigeonpile.com">Pigeonpile</a> suite.</p>
+        <div class="usage-grid">
+          {usage.map((u) => (
+            <a class="usage-card" href={u.site}>
+              <span class="usage-name">{u.name}</span>
+              <span class="usage-desc">{u.desc}</span>
+              <span class="usage-site">{new URL(u.site).host}</span>
+            </a>
           ))}
         </div>
       </div>
@@ -327,6 +355,16 @@ const steps = [
   .footer-links a:hover { color: var(--sl-color-white); }
 
   /* ---- Responsive ---- */
+  /* ---- Usage ---- */
+  .usage { padding: 5rem 0; }
+  .usage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1.25rem; }
+  .usage-card { padding: 1.5rem 1.25rem; border: 1px solid var(--sl-color-gray-5); border-radius: var(--radius); background: var(--sl-color-gray-7); transition: border-color 0.2s; }
+  .usage-card:hover { border-color: var(--sl-color-accent); text-decoration: none; }
+  .usage-name, .usage-desc, .usage-site { display: block; }
+  .usage-name { font-weight: 600; color: var(--sl-color-white); }
+  .usage-desc { font-size: 0.95rem; color: var(--sl-color-gray-2); }
+  .usage-site { margin-top: 0.75rem; font-size: 0.9rem; }
+
   @media (max-width: 700px) {
     .ps-grid { grid-template-columns: 1fr; }
     .steps { flex-direction: column; align-items: center; }

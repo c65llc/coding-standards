@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Usage section:** the README and the site's home page name the C65 apps built
+  with these standards and link to each one.
 - **Profiles (#227):** optional `profiles:` list in `.standards.yml`, a third
   selector axis beside `languages` and `role` (`shared-core`, `ui-surface`).
   Profile blocks assemble under a `## Profiles` heading after the role block;
