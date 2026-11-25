@@ -54,6 +54,18 @@ Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby
 - **Containerized Agent Development** -- [arch-09](standards/architecture/arch-09_containerized_agent_dev_standards.md) sandboxes autonomous agents in a disposable Docker dev container behind a deny-by-default egress proxy. Opt-in: `.standards/scripts/setup.sh --containerized` installs the [starter kit](templates/containerized-dev/README.md) (Dockerfiles, compose file, host-side scripts, proxy config, devcontainer, Cursor rules) without overwriting anything you already have, and git-ignores `.env` and `.env.secret`.
 - **GitHub Project Lifecycle** -- CLI-driven workflow connecting issues to Draft PRs via GitHub Projects V2.
 
+## Usage
+
+[C65](https://www.c65llc.com) builds its own apps with these standards. Each app's repository includes them as the `.standards` submodule.
+
+- [Sosta Logbook](https://sostalog.com), a journal
+- [Dopo Tasks](https://dopotasks.com), a task list
+- [Pigeonpile Wiki](https://pigeonpile.com/apps/wiki), a personal knowledge base
+- [Sprig Edit](https://sprigedit.com), a Markdown editor
+- [Away Team](https://awayteamapp.com), trip planning for small groups
+
+Sosta, Dopo and Wiki are part of [Pigeonpile](https://pigeonpile.com).
+
 ## Documentation
 
 - [Quick Start](https://coding-standards.c65llc.com/getting-started/quick-start/)
