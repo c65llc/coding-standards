@@ -12,6 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Configs with no usable `.standards-checksums` line are no longer
+  overwritten.** A customized `.aiderrc` that setup kept was replaced by the
+  next sync. An assembled config was re-assembled when its line or the whole
+  checksum file was missing. A `managed: false` file had its own hash
+  recorded, so removing `managed: false` let the next sync replace it; it now
+  gets the line `<filename> curated`. In all three cases the file is kept
+  unless it already matches the current version, and `doctor` reports a
+  formerly curated file as modified.
+  **If you rely on automatic updates:** an untouched but out-of-date config
+  with no line is now kept too. Agent configs get the update staged in
+  `.standards-pending/`; adopt it once. For `.aiderrc`, copy
+  `.standards/standards/agents/aider/aiderrc.template` over it and run sync.
+  **If a file is curated now:** run sync once with this release before you
+  remove `managed: false`.
 - **Hand-merged agent configs are no longer overwritten.** The
   `merge-standards` skill told you to record the merged file's own hash in
   `.standards-checksums`, so the next sync or setup run took it as unmodified

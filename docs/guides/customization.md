@@ -151,7 +151,7 @@ managed:
   CLAUDE.md: false
 ```
 
-`setup.sh` and `sync-standards.sh` never regenerate or stage a curated file, `doctor.sh` reports a checksum mismatch on it as `curated, not drifted` (the check still passes), and `diff-standards.sh` keeps showing the upstream template changes for manual review without counting them as pending (`--exit-code` stays 0). Everything below the `<!-- BEGIN PROJECT-SPECIFIC` marker is preserved for managed files too, so prefer that section, or `project_overview` / `key_commands`, whenever the customisation fits there — a managed file keeps receiving standards updates, a curated one does not.
+`setup.sh` and `sync-standards.sh` never regenerate or stage a curated file (`.standards-checksums` records it as `<file> curated`, so after you remove `managed: false` updates are staged rather than applied), `doctor.sh` reports a checksum mismatch on it as `curated, not drifted` (the check still passes), and `diff-standards.sh` keeps showing the upstream template changes for manual review without counting them as pending (`--exit-code` stays 0). Everything below the `<!-- BEGIN PROJECT-SPECIFIC` marker is preserved for managed files too, so prefer that section, or `project_overview` / `key_commands`, whenever the customisation fits there — a managed file keeps receiving standards updates, a curated one does not.
 
 **Name your hook manager.** `doctor.sh` fails when no post-merge standards-sync hook is installed. With lefthook or husky it reads their config; for a project that wires hooks itself (`make hooks`, a pre-commit framework), declare it:
 

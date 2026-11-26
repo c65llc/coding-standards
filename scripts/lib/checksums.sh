@@ -17,6 +17,10 @@ CHECKSUMS_FILE=".standards-checksums"
 PENDING_DIR=".standards-pending"
 SENTINEL="<!-- BEGIN PROJECT-SPECIFIC"
 ASSEMBLY_HEADER="Assembled by coding-standards"
+# Recorded in place of a hash for a curated (managed: false) config. It never
+# matches a file, so removing managed: false stages updates instead of
+# replacing the project's text.
+CURATED_MARK="curated"
 
 # ---------------------------------------------------------------------------
 # compute_hash <file>
@@ -145,9 +149,10 @@ write_pending() {
 #
 # Exit codes:
 #   0 — assemble normally
-#         (file does not exist, or file matches stored hash, or file has the
-#          assembly header but no stored hash exists yet)
-#   1 — skip: file has been customized (hash differs from stored hash)
+#         (file does not exist, or file matches stored hash)
+#   1 — skip: file has been customized (hash differs from stored hash), or has
+#       the assembly header but no stored hash, so edits cannot be ruled out
+#       (the caller still records it when a fresh assembly reproduces it)
 #   2 — skip: file was manually created without the assembly header
 #             (a .bak copy is written to .standards-pending/ as a safety backup)
 #
@@ -170,10 +175,11 @@ should_assemble() {
     # File exists but was never recorded by us.
     if [ -z "$stored_hash" ]; then
         if has_assembly_header "$output_file"; then
-            # Our header is present but we have no hash — first run after
-            # this library was introduced, or hash file was wiped. Allow
-            # assembly so we can record a baseline.
-            return 0
+            # Our header is present but we have no hash (checksum file or
+            # line lost). The header survives hand edits, so it does not show
+            # the file is unmodified.
+            echo "WARNING: $output_file has no entry in $(basename "$checksums_file") — keeping it unless it is already up to date." >&2
+            return 1
         else
             # File was created by the user (no assembly header).  Back it up
             # and skip assembly to avoid destroying their work.

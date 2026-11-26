@@ -2066,6 +2066,116 @@ grep -q '^AGENTS.md ' "$proj/.standards-checksums" 2>/dev/null || errs="$errs en
 grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs clobbered"
 if [ -z "$errs" ]; then pass; else fail "$errs"; fi
 
+# --- Configs with no usable .standards-checksums line -------------------------
+
+# set_role <project> <from> <to> — changes what the next assembly produces.
+set_role() {
+    sed "s/^role: $2/role: $3/" "$1/.standards.yml" > "$1/t" && mv "$1/t" "$1/.standards.yml"
+}
+
+# edit_above_sentinel <file> — add the hand-written line near the top.
+edit_above_sentinel() {
+    { sed -n '1,3p' "$1"; echo "$MERGED_LINE"; sed '1,3d' "$1"; } > "$1.new" && mv "$1.new" "$1"
+}
+
+echo -n "Test 136: a customized .aiderrc that setup.sh kept (no checksum line) survives the next sync... "
+proj=$(make_project "aiderrc-unrecorded")
+fake_standards "$proj"
+printf '# %s\nauto-commits = false\n' "$MERGED_LINE" > "$proj/.aiderrc"
+cp "$proj/.aiderrc" "$proj/aiderrc.orig"
+errs=""
+(cd "$proj" && bash "$SETUP" --agents aider >/dev/null 2>&1) || errs="$errs setup-rc"
+rc=0; out=$(cd "$proj" && bash "$SYNC" --dry-run 2>&1) || rc=$?
+echo "$out" | grep -q 'Would sync: .*\.aiderrc' && errs="$errs dry-run-claims-overwrite"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync-rc"
+cmp -s "$proj/aiderrc.orig" "$proj/.aiderrc" || errs="$errs clobbered"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 137: sync records a verbatim .aiderrc (with a model = line) when .standards-checksums is missing... "
+proj=$(make_project "aiderrc-verbatim-unrecorded")
+fake_standards "$proj"
+write_standards_yml "$proj" aider
+errs=""
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync1-rc"
+tmpl="$REPO_ROOT/standards/agents/aider/aiderrc.template"
+bash -c "source '$REPO_ROOT/scripts/lib/migrate.sh'; echo 'model = claude-sonnet-4-6' > '$proj/.aiderrc'; install_aiderrc '$tmpl' '$proj/.aiderrc'"
+rm -f "$proj/.standards-checksums"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync2-rc"
+grep -q '^model = claude-sonnet-4-6$' "$proj/.aiderrc" || errs="$errs model-lost"
+h=$(shasum -a 256 "$proj/.aiderrc" | awk '{print $1}')
+grep -q "^\.aiderrc $h\$" "$proj/.standards-checksums" || errs="$errs not-recorded"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 138: a hand-edited assembled config survives sync and setup when .standards-checksums is missing... "
+proj=$(make_project "no-checksums-edited")
+fake_standards "$proj"
+write_standards_yml "$proj" codex gemini
+errs=""
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync1-rc"
+edit_above_sentinel "$proj/AGENTS.md"
+rm -f "$proj/.standards-checksums"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync2-rc"
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs clobbered-by-sync"
+[ -f "$proj/.standards-pending/AGENTS.md" ] || errs="$errs not-staged"
+(cd "$proj" && bash "$SETUP" --agents codex,gemini >/dev/null 2>&1) || errs="$errs setup-rc"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync3-rc"
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs clobbered-by-setup"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 139: with .standards-checksums missing, sync records an up-to-date config and keeps upgrading it... "
+proj=$(make_project "no-checksums-verbatim")
+fake_standards "$proj"
+write_standards_yml "$proj" codex gemini
+errs=""
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync1-rc"
+cp "$proj/AGENTS.md" "$proj/agents.v1"
+rm -f "$proj/.standards-checksums"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync2-rc"
+grep -q '^AGENTS.md ' "$proj/.standards-checksums" || errs="$errs not-recorded"
+[ ! -f "$proj/.standards-pending/AGENTS.md" ] || errs="$errs staged-needlessly"
+set_role "$proj" service library
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync3-rc"
+cmp -s "$proj/agents.v1" "$proj/AGENTS.md" && errs="$errs not-upgraded"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+# curated_then_managed <name> <sync|setup> — edit AGENTS.md, declare it curated,
+# let that script see it, then remove the declaration and sync.
+curated_then_managed() {
+    local dir
+    dir=$(make_project "$1")
+    fake_standards "$dir"
+    write_standards_yml "$dir" codex gemini
+    (
+        cd "$dir"
+        bash "$SYNC" >/dev/null 2>&1
+        edit_above_sentinel AGENTS.md
+        cp .standards.yml yml.orig
+        printf 'managed:\n  AGENTS.md: false\n' >> .standards.yml
+        if [ "$2" = setup ]; then
+            bash "$SETUP" --agents codex,gemini >/dev/null 2>&1
+        else
+            bash "$SYNC" >/dev/null 2>&1
+        fi
+        cp yml.orig .standards.yml
+        bash "$SYNC" >/dev/null 2>&1
+    )
+    echo "$dir"
+}
+
+echo -n "Test 140: removing managed: false after a sync does not let the next sync replace the curated file... "
+proj=$(curated_then_managed "uncurate-sync" sync)
+errs=""
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs clobbered"
+[ -f "$proj/.standards-pending/AGENTS.md" ] || errs="$errs not-staged"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 141: removing managed: false after a setup run does not let the next sync replace the curated file... "
+proj=$(curated_then_managed "uncurate-setup" setup)
+errs=""
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs clobbered"
+[ -f "$proj/.standards-pending/AGENTS.md" ] || errs="$errs not-staged"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

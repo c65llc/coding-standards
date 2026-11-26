@@ -574,13 +574,12 @@ setup_ai_agents() {
             4)
                 echo "ℹ️  $agent config is curated (managed: false in .standards.yml) — left as is."
                 echo "   Review upstream template changes with diff-standards.sh."
-                # Record the curated file's hash so .standards-checksums has a
-                # baseline for it: doctor then inspects the file (labelling a
-                # later edit curated, not drifted) instead of never seeing it.
+                # Give the curated file a line so doctor inspects it (labelled
+                # curated, not drifted). The line is a marker, not the file's
+                # hash: its own hash would let a later sync, with managed:
+                # false removed, take it as unmodified and replace it.
                 if [ "$DRY_RUN" = false ] && [ -f "$OUTPUT_PATH" ] && type compute_hash &>/dev/null; then
-                    local curated_hash
-                    curated_hash=$(compute_hash "$OUTPUT_PATH")
-                    NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$curated_hash" "$NEW_CHECKSUMS")
+                    NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$CURATED_MARK" "$NEW_CHECKSUMS")
                 fi
                 ;;
         esac
