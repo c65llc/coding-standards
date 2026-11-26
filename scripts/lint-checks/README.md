@@ -31,6 +31,7 @@ no automated check modules for them yet. Consumers should not assume
 
 | Check | Severity model |
 | --- | --- |
+| `go/golangci-config` | PASS when the config golangci-lint would pick (`.golangci.json`, `.toml`, `.yaml`, `.yml`, in that order) declares a top-level `version` of `"2"`; WARN when it does not (a v1 config); FAIL when there is none, including a lone `.golangci-lint.yml`, which golangci-lint never reads |
 | `rust/clippy-ci` | PASS when a CI step runs `cargo clippy … -D warnings` (or `RUSTFLAGS=-D warnings`), directly or via a `Makefile`/`justfile` that CI invokes; WARN when clippy runs without `-D warnings`; FAIL when no CI definition exists or no CI step runs clippy |
 | `rust/deny-config` | PASS when `deny.toml` has a non-empty `[licenses] allow` list (double- or single-quoted TOML strings); WARN when the file exists without one; FAIL when missing |
 | `rust/toolchain-pin` | PASS when `rust-toolchain.toml`, `Cargo.toml rust-version`, and CI toolchain pins agree; FAIL when CI pins a different version or `rust-version` is newer than the toolchain; WARN when the toolchain file is missing, floats (`stable`, or `1.99` without a patch component), or `rust-version` trails it. Reads GitHub, GitLab, CircleCI, and Buildkite definitions |

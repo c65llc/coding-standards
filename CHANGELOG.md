@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Go tool config:** `standards/agents/go/.golangci.yml`, a golangci-lint v2
+  config (verified with v2.15.0) holding the lang-12 minimum set plus the
+  `gosec` linter lang-12 §12 already required. `setup.sh` and
+  `sync-standards.sh` add it to Go projects; they add nothing when a
+  `.golangci.yaml`, `.toml` or `.json` exists, and never overwrite an existing
+  `.golangci.yml`.
 - **Usage section:** the README and the site's home page name the C65 apps built
   with these standards and link to each one.
 - **Profiles (#227):** optional `profiles:` list in `.standards.yml`, a third
@@ -45,6 +51,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   devcontainer) with a Definition-of-Done validation checklist. The kit scaffolds
   the controls; the enforcing egress-proxy sidecar is tracked in #157 and the
   host Docker socket mount is a documented opt-in, off by default.
+
+### Changed
+
+- **Go standard moved to golangci-lint v2:** `lang-12` §2 and the `lang-go`
+  block use the v2 format (`version: "2"`, `linters` vs `formatters`,
+  `gosimple` folded into `staticcheck`) and the filename `.golangci.yml`; the
+  old `.golangci-lint.yml` sample was never read by golangci-lint.
+- **`go/golangci-config` lint check:** WARNs on a config without
+  `version: "2"`, and its FAIL message names an unread `.golangci-lint.yml`.
+  **Upgrading:** a v1 config that used to PASS now WARNs; see lang-12 §2.
 
 ## [1.5.0] - 2026-07-05
 

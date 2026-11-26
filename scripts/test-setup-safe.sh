@@ -1971,6 +1971,53 @@ for n in shared-core ui-surface; do
 done
 if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
 
+# --- Go language tool config (standards/agents/go) ----------------------------
+
+# go_project <name> — a project with a go.mod and a codex-only config.
+go_project() {
+    local dir
+    dir=$(make_project "$1")
+    fake_standards "$dir"
+    printf 'module example.com/x\n\ngo 1.25\n' > "$dir/go.mod"
+    printf 'version: 1\nlanguages:\n  - go\nagents:\n  - codex\nrole: service\n' > "$dir/.standards.yml"
+    echo "$dir"
+}
+GO_CONFIG="$REPO_ROOT/standards/agents/go/.golangci.yml"
+
+echo -n "Test 124: setup.sh installs .golangci.yml in a Go project... "
+proj=$(go_project "go-config")
+rc=0; out=$(cd "$proj" && bash "$SETUP" --agents codex 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && cmp -s "$GO_CONFIG" "$proj/.golangci.yml"; then pass; else fail "rc=$rc output: $out"; fi
+
+echo -n "Test 125: setup.sh keeps an existing .golangci.yml... "
+proj=$(go_project "go-config-existing")
+printf 'version: "2"\n# mine\n' > "$proj/.golangci.yml"
+rc=0; out=$(cd "$proj" && bash "$SETUP" --agents codex 2>&1) || rc=$?
+if [ "$rc" -eq 0 ] && grep -q '^# mine' "$proj/.golangci.yml"; then pass; else fail "rc=$rc output: $out"; fi
+
+echo -n "Test 126: setup.sh and sync add no .golangci.yml beside a .golangci.yaml... "
+proj=$(go_project "go-config-alternate")
+printf 'version: "2"\n' > "$proj/.golangci.yaml"
+rc=0; out=$(cd "$proj" && bash "$SETUP" --agents codex 2>&1) || rc=$?
+rc2=0; out2=$(cd "$proj" && bash "$SYNC" 2>&1) || rc2=$?
+if [ "$rc" -eq 0 ] && [ "$rc2" -eq 0 ] && [ ! -f "$proj/.golangci.yml" ] \
+   && echo "$out2" | grep -q 'Keeping .golangci.yaml'; then pass; else fail "rc=$rc/$rc2 output: $out $out2"; fi
+
+echo -n "Test 127: sync adds a missing .golangci.yml and --dry-run keeps a customized one... "
+proj=$(go_project "go-config-sync")
+rc=0; out=$(cd "$proj" && bash "$SYNC" 2>&1) || rc=$?
+errs=""
+{ [ "$rc" -eq 0 ] && cmp -s "$GO_CONFIG" "$proj/.golangci.yml"; } || errs="$errs not-added:rc=$rc"
+printf 'version: "2"\n# mine\n' > "$proj/.golangci.yml"
+# --dry-run assumes upstream updates, the path that overwrites other tool configs.
+rm -rf "$proj/.standards"; make_inner_standards_repo "$proj" >/dev/null
+for d in standards scripts templates .cursor .gemini; do ln -s "$REPO_ROOT/$d" "$proj/.standards/$d"; done
+rc2=0; out2=$(cd "$proj" && bash "$SYNC" --dry-run 2>&1) || rc2=$?
+{ [ "$rc2" -eq 0 ] && echo "$out2" | grep -q 'Kept your .golangci.yml' \
+  && ! echo "$out2" | grep -q 'Would update: .*\.golangci\.yml'; } || errs="$errs dry-run:rc=$rc2"
+grep -q '^# mine' "$proj/.golangci.yml" || errs="$errs clobbered"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out2"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

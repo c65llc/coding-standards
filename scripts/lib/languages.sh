@@ -97,3 +97,16 @@ profile_display_name() {
             ;;
     esac
 }
+
+# golangci_alternate_config <project_root> — the golangci-lint config the
+# project already has under another name, if any. golangci-lint reads these
+# before .golangci.yml, so installing ours next to one would add a dead file.
+golangci_alternate_config() {
+    local f
+    for f in .golangci.json .golangci.toml .golangci.yaml; do
+        if [ -f "$1/$f" ]; then
+            printf '%s\n' "$f"
+            return 0
+        fi
+    done
+}
