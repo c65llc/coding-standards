@@ -2018,6 +2018,54 @@ rc2=0; out2=$(cd "$proj" && bash "$SYNC" --dry-run 2>&1) || rc2=$?
 grep -q '^# mine' "$proj/.golangci.yml" || errs="$errs clobbered"
 if [ -z "$errs" ]; then pass; else fail "$errs; output: $out2"; fi
 
+# --- Hand-merged agent configs (merge-standards skill) ------------------------
+
+MERGE_SKILL="$REPO_ROOT/standards/skills/merge-standards.md"
+MERGED_LINE='Hand-merged line that must survive.'
+
+# merged_project <name> — a codex + gemini project whose customized AGENTS.md was merged
+# with a staged update exactly as the skill says: the hash comes from running
+# the bash block under "## After Merging Each File".
+merged_project() {
+    local dir snippet hash
+    dir=$(make_project "$1")
+    fake_standards "$dir"
+    write_standards_yml "$dir" codex gemini
+    (
+        cd "$dir"
+        bash "$SYNC" >/dev/null 2>&1
+        { sed -n '1,3p' AGENTS.md; echo "$MERGED_LINE"; sed '1,3d' AGENTS.md; } > t && mv t AGENTS.md
+        sed 's/^role: service/role: library/' .standards.yml > t && mv t .standards.yml
+        bash "$SYNC" >/dev/null 2>&1
+        { sed -n '1,3p' .standards-pending/AGENTS.md; echo "$MERGED_LINE"; sed '1,3d' .standards-pending/AGENTS.md; } > AGENTS.md
+        snippet=$(awk '/^## After Merging Each File/{s=1} s && /^ *```bash/{c=1;next} c && /^ *```/{exit} c{sub(/^   /,""); print}' "$MERGE_SKILL")
+        hash=$(file=AGENTS.md bash -c "$snippet"$'\n''printf %s "$hash"')
+        { grep -v '^AGENTS.md ' .standards-checksums || true; echo "AGENTS.md $hash"; } > t && mv t .standards-checksums
+        rm -rf .standards-pending
+    )
+    echo "$dir"
+}
+
+echo -n "Test 134: a config merged per the merge-standards skill survives later syncs, which stage the next update instead... "
+proj=$(merged_project "merged-sync")
+errs=""
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs setup-of-test-failed"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync1-rc"
+sed 's/^role: library/role: service/' "$proj/.standards.yml" > "$proj/t" && mv "$proj/t" "$proj/.standards.yml"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync2-rc"
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs clobbered"
+[ -f "$proj/.standards-pending/AGENTS.md" ] || errs="$errs not-staged"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 135: re-running setup.sh keeps a merged config's checksum entry, so the next sync does not overwrite it... "
+proj=$(merged_project "merged-setup")
+errs=""
+(cd "$proj" && bash "$SETUP" --agents codex,gemini >/dev/null 2>&1) || errs="$errs setup-rc"
+grep -q '^AGENTS.md ' "$proj/.standards-checksums" 2>/dev/null || errs="$errs entry-dropped"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync-rc"
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs clobbered"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

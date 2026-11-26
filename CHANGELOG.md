@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- Add entries under the standard Keep a Changelog headings as work lands:
 ### Added / ### Changed / ### Deprecated / ### Removed / ### Fixed / ### Security -->
 
+### Fixed
+
+- **Hand-merged agent configs are no longer overwritten.** The
+  `merge-standards` skill told you to record the merged file's own hash in
+  `.standards-checksums`, so the next sync or setup run took it as unmodified
+  and replaced the text above the PROJECT-SPECIFIC section. It now records the
+  hash of the staged standards version. Separately, re-running `setup.sh`
+  dropped the lines of configs it kept, which let the next sync re-assemble
+  them; it now keeps existing lines.
+  **If you merged a config before this release:** before your next sync or
+  setup, change that file's line in `.standards-checksums` to
+  `<filename> merged` (for example `CLAUDE.md merged`). Do not just delete the
+  line. If a sync has already replaced your text, restore it from git first.
+
 ### Added
 
 - **Go tool config:** `standards/agents/go/.golangci.yml`, a golangci-lint v2

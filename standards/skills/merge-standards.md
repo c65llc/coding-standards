@@ -15,7 +15,7 @@ Run this after `sync-standards` reports that agent configs have been customized 
 
 When invoked immediately after `setup.sh`, `.standards-pending/MERGE_PLAN.md` exists and lists the files to reconcile. Read it first; it names each pending file, detected vs requested agents, and any `<!-- TODO(standards): -->` markers that need filling.
 
-For **empty targets** (the project had no existing config and `.standards-pending/` still contains the assembled version because `--agents detect` found it), the merge is a rename: move the pending file into place, update `.standards-checksums`, and delete the pending copy.
+For **empty targets** (the project had no existing config and `.standards-pending/` still contains the assembled version because `--agents detect` found it), the merge is a rename: record the pending file's hash in `.standards-checksums` (see *After Merging Each File*), then move it into place.
 
 For **`<!-- TODO(standards): -->` markers** in CLAUDE.md and friends: ask the user for a one-paragraph project overview and a list of key commands (or infer them from `package.json` scripts / Makefile targets). **Write them to `.standards.yml`, not only into the file:**
 
@@ -48,7 +48,7 @@ When `MERGE_PLAN.md` has a **Migration** section, the pending files are the proj
 
 - `AGENTS.md` converted from `.codexrc` (or `.standards-pending/AGENTS.md.from-codexrc` when an `AGENTS.md` already existed): keep any project notes, adopt the assembled `AGENTS.md`, delete `.codexrc` if it is still there.
 - *Still cites a removed standard*: for each `file:line`, delete the sentence or point it at the replacement named in the Notes column of `.standards/docs/reference/renamed-files.md`.
-- The recorded checksum of a staged file is the **staged assembled version**, so adopting it as-is needs no checksum update; a merged file needs the recomputed hash as usual.
+- The recorded checksum of a staged file is the **staged assembled version**, so neither adopting it as-is nor merging into it needs a checksum update.
 
 ## Workflow
 
@@ -59,7 +59,7 @@ When `MERGE_PLAN.md` has a **Migration** section, the pending files are the proj
    b. Read the **pending assembled version** in `.standards-pending/` (for an assembled config, skip the first 3 lines — the instruction comment header; a staged skill file has no header and is the complete new version)
    c. Produce a merged version using the merge strategy below
    d. Show the user a diff of current vs. proposed merged version
-   e. On approval: write the merged file, update the checksum, delete the pending file
+   e. On approval: write the merged file, update the checksum (*After Merging Each File*), then delete the pending file
    f. On rejection: leave both files as-is, move to next file
 
 3. For a **staged skill file**, the project's file was kept because the standards never installed it, or it was edited since they did. Show the diff between the project's file and the staged version. On approval, replace the file with the staged version and record its hash under its project-relative path; on rejection, delete the staged copy — the next sync stages it again only while the two still differ, and says so.
@@ -94,15 +94,15 @@ Standards sections are identified by `##` headers injected by the assembler: `##
 
 ## After Merging Each File
 
-1. Update `.standards-checksums` with the new hash:
+1. Update `.standards-checksums` with the hash of the **staged standards version**, never of your merged file. Run this before deleting the pending copy:
 
    ```bash
-   SENTINEL="<!-- BEGIN PROJECT-SPECIFIC"
-   content=$(sed "/$SENTINEL/,\$d" "$file" | awk 'NF{found=1} found' | awk '{lines[NR]=$0} END{for(i=NR;i>=1;i--){if(lines[i]~/[^ \t]/){last=i;break}} for(i=1;i<=last;i++) print lines[i]}')
-   hash=$(printf '%s' "$content" | shasum -a 256 | awk '{print $1}')
+   hash=$(bash -c '. .standards/scripts/lib/checksums.sh && compute_hash "$1"' _ ".standards-pending/$(basename "$file")")
    ```
 
-   Replace the line matching this file in `.standards-checksums` with: `<filename> <hash>` — the key is the basename for an assembled config (`CLAUDE.md`) and the project-relative path for a skill file (`.claude/skills/<name>/SKILL.md`). A skill file is hashed whole (`shasum -a 256 <file>`), not with the snippet above: that stops at the first sentinel mention, and some runbooks mention the sentinel in their text.
+   Replace the line matching this file in `.standards-checksums` with `<basename> <hash>` (for example `CLAUDE.md <hash>`), or add it. The line records what the standards offered, so a merged file never matches it: later syncs and setup runs keep your file and stage new updates to `.standards-pending/`, and `doctor` reports it as modified. If you adopted the staged version unchanged, the two match and sync keeps updating it. Recording the merged file's own hash would mark it as unmodified, and the next sync would replace your text above the `<!-- BEGIN PROJECT-SPECIFIC` sentinel. For `.aiderrc`, which is hashed whole, use `shasum -a 256 .standards-pending/.aiderrc`.
+
+   A staged skill file follows step 3 of the workflow instead: it is adopted verbatim and recorded under its project-relative path, hashed whole (`shasum -a 256 <file>`).
 
 1. Delete the consumed file from `.standards-pending/`.
 

@@ -88,13 +88,16 @@ write_merge_plan() {
         echo "   existing, merge section-by-section, or declare it hand-curated with"
         echo "   \`managed: { <file>: false }\` in \`.standards.yml\` (sync then leaves it alone)."
         if [ -n "$containerized_notes" ]; then
-            echo "3. After merging an agent config or skill, delete the pending file and update"
-            echo "   \`.standards-checksums\`. A kit file (see the Containerized agent-dev kit section"
+            echo "3. After merging an agent config or skill, update \`.standards-checksums\` as the"
+            echo "   merge-standards skill says (the hash of the staged version, never of your merged"
+            echo "   file) and delete the pending file. A kit file (see the Containerized agent-dev kit section"
             echo "   above) is different: diff, merge, keep the execute bit, delete the pending copy,"
             echo "   and do NOT add it to \`.standards-checksums\` — kit files are never checksum-tracked,"
             echo "   so \`doctor\` does not report your adaptations as drift."
         else
-            echo "3. After merging, delete the pending file and update \`.standards-checksums\`."
+            echo "3. After merging a file, record the hash of the staged standards version (never of"
+            echo "   your merged file) in \`.standards-checksums\` as the merge-standards skill says,"
+            echo "   then delete the pending file."
         fi
         echo ""
     } > "$plan"

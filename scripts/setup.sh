@@ -487,7 +487,13 @@ setup_ai_agents() {
     fi
 
     ASSEMBLED_AGENTS_LIST=""
+    # Start from the recorded entries, as sync does. A file this run keeps or
+    # skips must not lose its line: a config with the assembly header and no
+    # entry is re-assembled, which would drop hand-merged text.
     local NEW_CHECKSUMS=""
+    if [ -f "$PROJECT_ROOT/.standards-checksums" ]; then
+        NEW_CHECKSUMS=$(cat "$PROJECT_ROOT/.standards-checksums")
+    fi
     PENDING_LIST=""
 
     for agent in $AGENTS_LIST; do
@@ -912,23 +918,10 @@ setup_ai_agents() {
         done
     fi
 
-    # Skill files (#194) are recorded in .standards-checksums by
-    # assemble-skills.sh, which runs after this write. Carry their entries
-    # over so an unmodified skill stays recognised as standards-owned and an
-    # upstream change replaces it instead of staging it.
-    if [ -f "$PROJECT_ROOT/$CHECKSUMS_FILE" ] && declare -f skills_checksum_entries >/dev/null 2>&1; then
-        local carried_skill_entries
-        carried_skill_entries=$(skills_checksum_entries "$PROJECT_ROOT/$CHECKSUMS_FILE")
-        if [ -n "$carried_skill_entries" ]; then
-            NEW_CHECKSUMS="${NEW_CHECKSUMS:+$NEW_CHECKSUMS
-}$carried_skill_entries"
-        fi
-    fi
-
-    # Write initial checksums
+    # Write checksums
     if [ "$DRY_RUN" = false ] && type compute_hash &>/dev/null && [ -n "$NEW_CHECKSUMS" ]; then
         echo "$NEW_CHECKSUMS" > "$PROJECT_ROOT/$CHECKSUMS_FILE"
-        echo "✅ .standards-checksums created"
+        echo "✅ .standards-checksums written"
     elif [ "$DRY_RUN" = true ] && [ -n "$NEW_CHECKSUMS" ]; then
         echo "  [dry-run] Would write: $PROJECT_ROOT/$CHECKSUMS_FILE"
     fi
