@@ -85,6 +85,8 @@ This document explains the reorganized file hierarchy for easier navigation and 
 │       │       └── cpp.txt
 │       ├── python/
 │       │   └── ruff.toml          # Python linter/formatter config
+│       ├── go/
+│       │   └── .golangci.yml      # golangci-lint v2 linter/formatter config
 │       ├── rust/
 │       │   ├── rustfmt.toml       # Rust formatter config
 │       │   └── clippy.toml        # Rust linter config

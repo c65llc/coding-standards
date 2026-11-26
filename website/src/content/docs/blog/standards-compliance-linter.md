@@ -41,7 +41,7 @@ The linter is organized into two tiers: common checks that run on every project,
 
 | Check | What it verifies |
 |-------|-----------------|
-| `go/golangci-config` | `.golangci.yml`, `.golangci.yaml`, or `.golangci.toml` present |
+| `go/golangci-config` | A v2 `golangci-lint` config (`version: "2"`) in `.golangci.yml`, `.yaml`, `.toml`, or `.json` |
 | `go/error-handling` | No bare `_ =` or `, _ :=` patterns that discard return values (likely errors) |
 
 ### Elixir checks

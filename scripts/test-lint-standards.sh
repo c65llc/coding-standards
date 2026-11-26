@@ -3487,6 +3487,64 @@ echo -n "Test 317: real code after a closing block comment retains its line numb
 out=$("$WEB_TELLS" "$proj" 2>/dev/null)
 if echo "$out" | grep -q '1 hit(s): docs/app.css:6'; then pass; else fail "$out"; fi
 
+# --- go/golangci-config -------------------------------------------------------
+
+GOCI="$CHECKS/go/golangci-config.sh"
+
+# goci_case <project-name> <config-file> <content>; sets $out and $rc
+goci_case() {
+    local dir
+    dir=$(make_project "$1")
+    [ -z "$2" ] || printf '%b' "$3" > "$dir/$2"
+    rc=0; out=$(bash "$GOCI" "$dir" 2>/dev/null) || rc=$?
+}
+
+echo -n "Test 318: go/golangci-config PASSes the shipped standards/agents/go/.golangci.yml... "
+goci_case goci-shipped "" ""
+cp "$REPO_ROOT/standards/agents/go/.golangci.yml" "$TMP_BASE/goci-shipped/"
+rc=0; out=$(bash "$GOCI" "$TMP_BASE/goci-shipped" 2>/dev/null) || rc=$?
+if [ "$rc" -eq 0 ] && echo "$out" | grep -q '^PASS go/golangci-config'; then pass; else fail "rc=$rc out=$out"; fi
+
+echo -n "Test 319: go/golangci-config PASSes v2 TOML, JSON, single-quoted and CRLF configs... "
+errs=""
+goci_case goci-toml .golangci.toml 'version = "2"\n\n[linters]\ndefault = "none"\n'
+[ "$rc" -eq 0 ] || errs="$errs toml:$out"
+goci_case goci-json .golangci.json '{\n  "version": "2"\n}\n'
+[ "$rc" -eq 0 ] || errs="$errs json:$out"
+goci_case goci-squote .golangci.yaml "version: '2' # v2\n"
+[ "$rc" -eq 0 ] || errs="$errs squote:$out"
+goci_case goci-crlf .golangci.yml 'version: "2"\r\nlinters:\r\n  default: none\r\n'
+[ "$rc" -eq 0 ] || errs="$errs crlf:$out"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 320: go/golangci-config WARNs on a v1 config (no version) and on other versions... "
+errs=""
+goci_case goci-v1 .golangci.yml 'linters:\n  enable:\n    - gosimple\n'
+{ [ "$rc" -eq 2 ] && echo "$out" | grep -q '^WARN go/golangci-config .golangci.yml is not'; } || errs="$errs v1:$rc:$out"
+goci_case goci-ver1 .golangci.yml 'version: "1"\n'
+[ "$rc" -eq 2 ] || errs="$errs ver1:$out"
+goci_case goci-unquoted .golangci.yml 'version: 2\n'
+[ "$rc" -eq 2 ] || errs="$errs unquoted:$out"
+goci_case goci-nested .golangci.yml 'run:\n  version: "2"\n'
+[ "$rc" -eq 2 ] || errs="$errs nested:$out"
+goci_case goci-toml-nested .golangci.toml '[run]\nversion = "2"\n'
+[ "$rc" -eq 2 ] || errs="$errs toml-nested:$out"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 321: go/golangci-config judges the file golangci-lint would pick (.json before .yml)... "
+goci_case goci-precedence .golangci.yml 'version: "2"\n'
+printf '{"linters":{}}\n' > "$TMP_BASE/goci-precedence/.golangci.json"
+rc=0; out=$(bash "$GOCI" "$TMP_BASE/goci-precedence" 2>/dev/null) || rc=$?
+if [ "$rc" -eq 2 ] && echo "$out" | grep -q '.golangci.json is not'; then pass; else fail "rc=$rc out=$out"; fi
+
+echo -n "Test 322: go/golangci-config FAILs with no config, and names the unread .golangci-lint.yml... "
+errs=""
+goci_case goci-none "" ""
+{ [ "$rc" -eq 1 ] && echo "$out" | grep -q '^FAIL go/golangci-config No golangci-lint'; } || errs="$errs none:$rc:$out"
+goci_case goci-misnamed .golangci-lint.yml 'version: "2"\n'
+{ [ "$rc" -eq 1 ] && echo "$out" | grep -q 'does not read .golangci-lint.yml'; } || errs="$errs misnamed:$rc:$out"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
 if [ "$FAIL" -eq 0 ]; then
     echo -e "${GREEN}All $PASS tests passed!${NC}"
     exit 0

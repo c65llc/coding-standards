@@ -708,6 +708,13 @@ setup_ai_agents() {
                     for config_file in "$LANG_CONFIG_DIR"/*; do
                         [ -f "$config_file" ] || continue
                         config_name="$(basename "$config_file")"
+                        if [ "$config_name" = ".golangci.yml" ]; then
+                            alternate="$(golangci_alternate_config "$PROJECT_ROOT")"
+                            if [ -n "$alternate" ]; then
+                                echo "   ℹ️  Keeping $alternate — $config_name not installed ($lang)"
+                                continue
+                            fi
+                        fi
                         if [ ! -f "$PROJECT_ROOT/$config_name" ]; then
                             if [ "$DRY_RUN" = true ]; then
                                 echo "  [dry-run] Would copy: $config_file → $PROJECT_ROOT/$config_name"

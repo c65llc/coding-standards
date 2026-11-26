@@ -8,24 +8,49 @@
 
 ## 2. Code Style
 
-* **Formatter:** `gofmt` is mandatory. Run automatically via `goimports` (which also manages import groups).
-* **Linter:** `golangci-lint`. Run via `golangci-lint run` in CI. Treat all warnings as errors.
+* **Formatter:** `gofmt` and `goimports` (which also manages import groups) are mandatory. Apply them with `golangci-lint fmt`.
+* **Linter:** `golangci-lint` **v2**. Run `golangci-lint run` in CI. Treat all warnings as errors: any finding fails the build, and `golangci-lint run` also reports unformatted files.
 * **Vet:** `go vet ./...` is required in CI.
+* **Version:** Pin the exact `golangci-lint` version in CI (verified with `v2.15.0`); follow the dependency age gate when raising it. Install a [release binary](https://golangci-lint.run/docs/welcome/install/) or use `golangci/golangci-lint-action`, not `go install`.
 
-### .golangci-lint.yml (minimum)
+### .golangci.yml (minimum)
+
+The file is named `.golangci.yml` and sits at the project root. Copy it from [`standards/agents/go/.golangci.yml`](../agents/go/.golangci.yml); `setup.sh` installs it into Go projects that have no golangci-lint config.
 
 ```yaml
+version: "2"
+
 linters:
+  default: none
   enable:
     - errcheck
-    - gosimple
     - govet
+    - gosec
     - ineffassign
+    - revive
     - staticcheck
     - unused
+
+formatters:
+  enable:
+    - gofmt
     - goimports
-    - revive
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
 ```
+
+Check an edited config with `golangci-lint config verify`.
+
+### Moving from a v1 config
+
+golangci-lint v2 refuses to load a config without `version: "2"`.
+
+* `gosimple` and `stylecheck` are part of `staticcheck`; remove them from `enable`.
+* `gofmt` and `goimports` are formatters: list them under `formatters.enable`, not `linters.enable`.
+* `.golangci-lint.yml`, the name this standard used to give, is never read. Rename it to `.golangci.yml`.
+* Prefer replacing the file with the shipped one and re-applying your settings. If you use `golangci-lint migrate` instead, review its output: it drops comments and can add `linters.exclusions.presets` (including `comments`, which hides the missing-godoc findings §9 requires).
 
 ## 3. Naming Conventions
 
@@ -196,7 +221,7 @@ func FindByEmail(ctx context.Context, email string) (*User, error) {
 
 * **Input validation:** Validate and sanitize all external input. Use `html/template` (not `text/template`) for HTML output to prevent XSS.
 * **SQL injection:** Use parameterized queries exclusively. Never interpolate user input into SQL strings.
-* **SAST:** Run `golangci-lint` with `gosec` enabled in CI (`github.com/securego/gosec`).
+* **SAST:** Run `golangci-lint` with `gosec` enabled in CI (`github.com/securego/gosec`); the §2 minimum config enables it.
 * **Dependency scanning:** Run `govulncheck ./...` in CI (`golang.org/x/vuln/cmd/govulncheck`).
 * **`unsafe` package:** Do not use `unsafe` unless absolutely necessary. Document every usage with the invariant that makes it safe.
 * **Cryptography:** Use `crypto/rand` for random values. Never use `math/rand` for security purposes.

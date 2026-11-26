@@ -1,0 +1,29 @@
+# golangci-lint configuration (v2 format) — lang-12 minimum set.
+# Needs golangci-lint v2.x (verified with v2.15.0):
+#   golangci-lint config verify   # validate this file
+#   golangci-lint run             # lint; any finding exits non-zero
+#   golangci-lint fmt             # apply the formatters
+# Docs: https://golangci-lint.run/docs/configuration/file/
+version: "2"
+
+linters:
+  # Explicit list: a golangci-lint upgrade never changes what is enforced.
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - gosec # lang-12 §12 (SAST)
+    - ineffassign
+    - revive
+    - staticcheck # includes the former gosimple and stylecheck
+    - unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  # Warnings are errors: report every finding, never truncate the list.
+  max-issues-per-linter: 0
+  max-same-issues: 0

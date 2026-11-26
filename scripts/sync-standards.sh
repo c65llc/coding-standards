@@ -386,6 +386,13 @@ sync_ai_agents() {
                     for config_file in "$LANG_CONFIG_DIR"/*; do
                         [ -f "$config_file" ] || continue
                         config_name="$(basename "$config_file")"
+                        if [ "$config_name" = ".golangci.yml" ]; then
+                            alternate="$(golangci_alternate_config "$PROJECT_ROOT")"
+                            if [ -n "$alternate" ]; then
+                                echo "   ℹ️  Keeping $alternate — $config_name not installed ($lang)"
+                                continue
+                            fi
+                        fi
                         if [ ! -f "$PROJECT_ROOT/$config_name" ]; then
                             if [ "$DRY_RUN" = true ]; then
                                 echo "  [dry-run] Would copy: $config_file → $PROJECT_ROOT/$config_name"
@@ -393,7 +400,11 @@ sync_ai_agents() {
                                 echo "   ✅ Added $config_name ($lang)"
                             fi
                         elif ! cmp -s "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
-                            if [ "$UPDATED" = true ]; then
+                            if [ "$config_name" = ".golangci.yml" ]; then
+                                # Projects tune this file (and may still hold a v1
+                                # config), so sync never overwrites it.
+                                echo "   ℹ️  Kept your $config_name; it differs from $config_file"
+                            elif [ "$UPDATED" = true ]; then
                                 if [ "$DRY_RUN" = true ]; then
                                     echo "  [dry-run] Would update: $PROJECT_ROOT/$config_name"
                                 elif cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then

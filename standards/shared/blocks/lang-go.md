@@ -1,5 +1,5 @@
 Use Go modules (`go mod`). Commit both `go.mod` and `go.sum`. Go 1.21+ stable.
-Format with `goimports` (superset of `gofmt`). Lint with `golangci-lint run` — treat warnings as errors.
+Format with `golangci-lint fmt` (`gofmt` + `goimports`). Lint with `golangci-lint run` (v2) — treat warnings as errors. Config is `.golangci.yml` with `version: "2"` (template: `standards/agents/go/.golangci.yml`).
 Run `go vet ./...` and `go test -race ./...` in CI.
 Error handling is explicit: always check returned errors; wrap with `fmt.Errorf("context: %w", err)`. No panics for expected errors.
 Interfaces are satisfied implicitly. Define interfaces at the consumer. Accept interfaces, return concrete types. Keep interfaces small (one or two methods).
