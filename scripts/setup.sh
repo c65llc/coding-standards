@@ -305,6 +305,10 @@ if [ "$DRY_RUN" = true ]; then
     echo ""
 fi
 
+# Language tool configs (installed without clobbering customized ones)
+# shellcheck source=lib/tool-configs.sh disable=SC1091
+source "$SCRIPT_DIR/lib/tool-configs.sh"
+
 # Source checksum helpers
 if [ -f "$SCRIPT_DIR/lib/checksums.sh" ]; then
     # shellcheck disable=SC1091
@@ -703,35 +707,10 @@ setup_ai_agents() {
         echo "ℹ️  .claude/settings.json already exists, skipping"
     fi
 
-    # Copy language-specific tool configs (dotglob for .prettierrc, .rubocop.yml, etc.)
-    if [ -n "$DETECTED_LANGS" ]; then
-        for lang in $DETECTED_LANGS; do
-            local LANG_CONFIG_DIR="$AGENTS_DIR/$lang"
-            if [ -d "$LANG_CONFIG_DIR" ]; then
-                (
-                    shopt -s dotglob nullglob
-                    for config_file in "$LANG_CONFIG_DIR"/*; do
-                        [ -f "$config_file" ] || continue
-                        config_name="$(basename "$config_file")"
-                        if [ "$config_name" = ".golangci.yml" ]; then
-                            alternate="$(golangci_alternate_config "$PROJECT_ROOT")"
-                            if [ -n "$alternate" ]; then
-                                echo "   ℹ️  Keeping $alternate — $config_name not installed ($lang)"
-                                continue
-                            fi
-                        fi
-                        if [ ! -f "$PROJECT_ROOT/$config_name" ]; then
-                            if [ "$DRY_RUN" = true ]; then
-                                echo "  [dry-run] Would copy: $config_file → $PROJECT_ROOT/$config_name"
-                            elif cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
-                                echo "   ✅ Installed $config_name ($lang)"
-                            fi
-                        fi
-                    done
-                )
-            fi
-        done
-    fi
+    # Language tool configs (ruff.toml, .prettierrc, ...): an existing one is
+    # never overwritten; a differing standards version is staged
+    # (lib/tool-configs.sh).
+    install_tool_configs "$PROJECT_ROOT" "$AGENTS_DIR" "$DETECTED_LANGS" "$DRY_RUN"
 
     # Gemini settings.json (separate from GEMINI.md which is now assembled).
     # Only when gemini is requested — otherwise .gemini/ must not appear.
@@ -1412,6 +1391,14 @@ EOF
         echo "   Copilot:     /merge-standards (prompt file)"
         echo "   Codex, Gemini, Aider: the merge-standards runbook in the config's Skills section"
         echo "   CLI:         make merge-standards"
+    fi
+
+    # Tool configs are listed after write_merge_plan, which rewrites the plan.
+    if [ -n "${TOOL_STAGED:-}" ] && [ "$DRY_RUN" = false ]; then
+        # shellcheck source=lib/merge-plan.sh disable=SC1091
+        source "$SCRIPT_DIR/lib/merge-plan.sh"
+        append_tool_config_plan "$PROJECT_ROOT" "$TOOL_STAGED"
+        echo "📋 Staged tool configs are listed in .standards-pending/MERGE_PLAN.md"
     fi
 fi
 

@@ -12,6 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Sync no longer overwrites tuned tool configs:** a pulling
+  `sync-standards.sh` replaced a differing `ruff.toml`, `rustfmt.toml`,
+  `clippy.toml`, `.rubocop.yml`, `.prettierrc`, `.prettierignore` or `.npmrc`
+  with the standards copy. `setup.sh` and `sync-standards.sh` now update only a
+  file still identical to a standards version they recorded
+  (`tool:<name>` in `.standards-checksums`). Otherwise yours is kept, and the
+  standards version is staged to `.standards-pending/` with a `MERGE_PLAN.md`
+  entry, once per new standards version. `.golangci.yml` follows the same rule,
+  replacing its never-overwrite special case, so an untouched copy now updates.
+  A project with no recorded line yet
+  gets differing files staged, not updated. `doctor` ignores these lines.
+  **Upgrading:** the sync that pulls this fix still runs the old code. Update
+  the checkout first (`git -C .standards pull origin main`), then run
+  `sync-standards.sh`.
+
 - **Configs with no usable `.standards-checksums` line are no longer
   overwritten.** A customized `.aiderrc` that setup kept was replaced by the
   next sync. An assembled config was re-assembled when its line or the whole
@@ -44,7 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   config (verified with v2.15.0) holding the lang-12 minimum set plus the
   `gosec` linter lang-12 §12 already required. `setup.sh` and
   `sync-standards.sh` add it to Go projects; they add nothing when a
-  `.golangci.yaml`, `.toml` or `.json` exists, and never overwrite an existing
+  `.golangci.yaml`, `.toml` or `.json` exists, and never overwrite a customized
   `.golangci.yml`.
 - **Throwaway build output (proc-04):** builds, tests and captures that write
   outside the repository put per-run output in a `mktemp -d` directory removed

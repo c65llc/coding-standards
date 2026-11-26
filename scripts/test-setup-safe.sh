@@ -2018,6 +2018,122 @@ rc2=0; out2=$(cd "$proj" && bash "$SYNC" --dry-run 2>&1) || rc2=$?
 grep -q '^# mine' "$proj/.golangci.yml" || errs="$errs clobbered"
 if [ -z "$errs" ]; then pass; else fail "$errs; output: $out2"; fi
 
+# --- Language tool configs are never clobbered --------------------------------
+
+# clone_standards <name> — a project whose .standards/ is a real git checkout of
+# the working tree's scripts and standards, one commit behind its origin, so
+# sync-standards.sh sees an update (UPDATED=true) and pulls.
+clone_standards() {
+    local dir upstream="$TMPDIR_BASE/$1-upstream"
+    dir=$(make_project "$1")
+    mkdir -p "$upstream"
+    cp -R "$REPO_ROOT/scripts" "$REPO_ROOT/standards" "$upstream/"
+    (cd "$upstream" && git init -q -b main && git add -A \
+        && git -c user.email="test@test.local" -c user.name="Test" commit -q -m v1)
+    git clone -q "$upstream" "$dir/.standards"
+    printf 'version: 1\nlanguages:\n  - python\n  - rust\n  - ruby\n  - javascript\n  - go\nagents:\n  - codex\nrole: service\n' > "$dir/.standards.yml"
+    echo "$dir"
+}
+
+# bump_standards <name> — commit a new version of every tool config upstream.
+bump_standards() {
+    local upstream="$TMPDIR_BASE/$1-upstream" f
+    for f in $TOOL_CONFIGS; do
+        printf '\n# upstream-v2\n' >> "$upstream/standards/agents/$f"
+    done
+    (cd "$upstream" && git -c user.email="test@test.local" -c user.name="Test" commit -q -am v2)
+}
+
+TOOL_CONFIGS="python/ruff.toml rust/rustfmt.toml rust/clippy.toml ruby/.rubocop.yml javascript/.prettierrc javascript/.npmrc javascript/.prettierignore go/.golangci.yml"
+clone_sync() { (cd "$1" && bash .standards/scripts/sync-standards.sh 2>&1); }
+clone_setup() { (cd "$1" && bash .standards/scripts/setup.sh --agents codex --languages python,rust,ruby,javascript,go 2>&1); }
+
+echo -n "Test 128: sync keeps customized tool configs when the standards updated, and stages the new version... "
+proj=$(clone_standards "tool-custom")
+for f in $TOOL_CONFIGS; do printf '# mine\n' > "$proj/${f#*/}"; done
+bump_standards "tool-custom"
+rc=0; out=$(clone_sync "$proj") || rc=$?
+errs=""
+[ "$rc" -eq 0 ] || errs="rc=$rc"
+for f in $TOOL_CONFIGS; do
+    n="${f#*/}"
+    [ "$(cat "$proj/$n")" = "# mine" ] || errs="$errs $n:clobbered"
+    grep -q 'upstream-v2' "$proj/.standards-pending/$n" 2>/dev/null || errs="$errs $n:not-staged"
+    grep -qF ".standards-pending/$n" "$proj/.standards-pending/MERGE_PLAN.md" 2>/dev/null || errs="$errs $n:not-in-plan"
+done
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
+echo -n "Test 129: sync updates tool configs the project never changed... "
+proj=$(clone_standards "tool-unmodified")
+clone_setup "$proj" >/dev/null || true
+bump_standards "tool-unmodified"
+rc=0; out=$(clone_sync "$proj") || rc=$?
+errs=""
+[ "$rc" -eq 0 ] || errs="rc=$rc"
+for f in $TOOL_CONFIGS; do
+    n="${f#*/}"
+    grep -q 'upstream-v2' "$proj/$n" 2>/dev/null || errs="$errs $n:not-updated"
+    [ ! -e "$proj/.standards-pending/$n" ]       || errs="$errs $n:staged"
+done
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
+echo -n "Test 130: a tuned config stays quiet until the standards change, and a merged one is never overwritten... "
+proj=$(clone_standards "tool-tuned")
+clone_setup "$proj" >/dev/null || true
+printf '# mine\n' >> "$proj/ruff.toml"
+cp "$proj/ruff.toml" "$TMPDIR_BASE/tool-tuned.ruff"
+errs=""
+out=$(clone_sync "$proj") || errs="$errs rc1"
+[ ! -e "$proj/.standards-pending/ruff.toml" ] || errs="$errs staged-without-upstream-change"
+bump_standards "tool-tuned"
+out=$(clone_sync "$proj") || errs="$errs rc2"
+cmp -s "$proj/ruff.toml" "$TMPDIR_BASE/tool-tuned.ruff" || errs="$errs clobbered"
+[ -f "$proj/.standards-pending/ruff.toml" ] || errs="$errs not-staged"
+# The user merges by hand and deletes the staged copy.
+printf '# upstream-v2 merged\n' >> "$proj/ruff.toml"
+cp "$proj/ruff.toml" "$TMPDIR_BASE/tool-tuned.ruff"
+rm -rf "$proj/.standards-pending"
+out=$(clone_sync "$proj") || errs="$errs rc3"
+cmp -s "$proj/ruff.toml" "$TMPDIR_BASE/tool-tuned.ruff" || errs="$errs clobbered-merge"
+[ ! -e "$proj/.standards-pending/ruff.toml" ] || errs="$errs restaged"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
+echo -n "Test 131: setup.sh keeps an existing tool config, stages the standards version, and a re-run keeps baselines... "
+proj=$(clone_standards "tool-setup")
+printf '# mine\n' > "$proj/clippy.toml"
+errs=""
+out=$(clone_setup "$proj") || errs="$errs rc1"
+[ "$(cat "$proj/clippy.toml")" = "# mine" ] || errs="$errs clobbered"
+cmp -s "$proj/.standards/standards/agents/rust/clippy.toml" "$proj/.standards-pending/clippy.toml" || errs="$errs not-staged"
+grep -qF '.standards-pending/clippy.toml' "$proj/.standards-pending/MERGE_PLAN.md" 2>/dev/null || errs="$errs not-in-plan"
+out=$(clone_setup "$proj") || errs="$errs rc2"
+bump_standards "tool-setup"
+out=$(clone_sync "$proj") || errs="$errs rc3"
+[ "$(cat "$proj/clippy.toml")" = "# mine" ] || errs="$errs clobbered-by-sync"
+grep -q 'upstream-v2' "$proj/rustfmt.toml" || errs="$errs baseline-lost"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
+echo -n "Test 132: --dry-run announces tool config staging and writes nothing... "
+proj=$(clone_standards "tool-dry")
+printf '# mine\n' > "$proj/ruff.toml"
+errs=""
+for s in "setup.sh --agents codex --languages python,rust,ruby,javascript,go" "sync-standards.sh"; do
+    # shellcheck disable=SC2086
+    out=$(cd "$proj" && bash .standards/scripts/$s --dry-run 2>&1) || errs="$errs rc:$s"
+    echo "$out" | grep -q 'Would stage: .*ruff\.toml' || errs="$errs no-announce:$s"
+done
+[ "$(cat "$proj/ruff.toml")" = "# mine" ] || errs="$errs clobbered"
+[ ! -e "$proj/.standards-pending" ] || errs="$errs wrote-pending"
+[ ! -e "$proj/.standards-checksums" ] || errs="$errs wrote-checksums"
+if [ -z "$errs" ]; then pass; else fail "$errs; output: $out"; fi
+
+echo -n "Test 133: doctor does not report a tuned tool config as drift... "
+proj=$(clone_standards "tool-doctor")
+clone_setup "$proj" >/dev/null || true
+printf '# mine\n' >> "$proj/ruff.toml"
+doc_out=$(cd "$proj" && bash .standards/scripts/doctor.sh 2>&1) || true
+if echo "$doc_out" | grep 'Checksums' | grep -q 'PASS'; then pass; else fail "$(echo "$doc_out" | grep -A1 Checksums)"; fi
+
 # --- Hand-merged agent configs (merge-standards skill) ------------------------
 
 MERGE_SKILL="$REPO_ROOT/standards/skills/merge-standards.md"
