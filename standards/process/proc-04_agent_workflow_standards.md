@@ -163,6 +163,39 @@ Caches that cannot be relocated (a tool that insists on `./node_modules`) are
 re-created per worktree from the lockfile (see "Install from the lockfile" above);
 their size is part of what `worktree-gc` reclaims.
 
+#### Throwaway build output deletes itself
+
+Shared caches are kept on purpose; per-run output is not. A build, test or capture
+that writes outside the repository — an `-derivedDataPath` for one e2e run, an
+archive or export staging directory, extracted APKs, screenshot captures, an
+emulator AVD, a copied checkout — must remove that output when it finishes. A
+survey of one developer Mac found `/private/tmp` refilling between cleanups with
+folders like these (658 MB, 1.7 GB each), none referenced again after their run.
+
+* **Create it with `mktemp -d`, never at a fixed `/tmp/<name>` path.** Use
+  `mktemp -d "${TMPDIR:-/tmp}/<repo>-<purpose>.XXXXXX"`. A fixed path collides
+  between parallel runs and outlives every one of them.
+* **Register an `EXIT` trap on the line after creating it**, so it is removed on
+  success, failure and Ctrl-C alike. If the script already has an `EXIT` trap,
+  remove the directory from that handler — a second `trap … EXIT` replaces the
+  first. In Python use `tempfile.TemporaryDirectory()`; in Node, `fs.mkdtemp`
+  with a `finally` that calls `fs.rm(dir, { recursive: true, force: true })`.
+* **Copy out what a person needs before the trap runs.** The shipped artifact, a
+  log, or the `.xcresult` of a failed run goes to a named, documented place (a
+  gitignored directory in the repo, or a path the script prints); everything else
+  goes. `KEEP_TMP=1` may skip the deletion for debugging — print the kept path
+  when it does.
+* **Agents follow the same rule for ad-hoc commands.** A one-off
+  `xcodebuild -derivedDataPath`, `cargo build --target-dir`, download or
+  extraction goes in the session's scratch directory or a `mktemp -d` that the
+  same subshell removes with an `EXIT` trap, preserving the command's exit
+  status (`(dir=$(mktemp -d …) || exit; trap 'rm -rf "$dir"' EXIT; …)`). Before
+  reporting a task finished, delete every temporary directory the task created
+  that is not a shared cache, and say where anything deliberately kept lives.
+* **Caches are the exception, not a loophole.** A directory reused across runs
+  (the table above) belongs under `~/.cache/<repo>/`, not `/tmp`, and is never
+  per-run. Something under `/tmp` is per-run by definition.
+
 #### Runners: disk-free preflight and post-job cleanup
 
 Self-hosted runners accumulate the same sprawl without anyone looking. Every job on

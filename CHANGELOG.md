@@ -46,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sync-standards.sh` add it to Go projects; they add nothing when a
   `.golangci.yaml`, `.toml` or `.json` exists, and never overwrite an existing
   `.golangci.yml`.
+- **Throwaway build output (proc-04):** builds, tests and captures that write
+  outside the repository put per-run output in a `mktemp -d` directory removed
+  by an `EXIT` trap, copy out what a person needs first, and never use a fixed
+  `/tmp/<name>` path; agents delete the temporary directories their ad-hoc
+  commands created before reporting a task done. Summarized in the
+  `git-workflow` block every agent config assembles.
 - **Usage section:** the README and the site's home page name the C65 apps built
   with these standards and link to each one.
 - **Profiles (#227):** optional `profiles:` list in `.standards.yml`, a third
