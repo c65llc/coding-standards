@@ -1,0 +1,12 @@
+---
+import Default from '@astrojs/starlight/components/Footer.astro';
+import SiteFooter from '../SiteFooter.astro';
+---
+
+<Default><slot /></Default>
+<div class="footer-panel"><SiteFooter /></div>
+
+<style>
+  /* A panel in the content column: the fixed sidebar rules out a full-bleed band. */
+  .footer-panel { margin-top: 2.5rem; border-radius: 6px; overflow: hidden; }
+</style>
