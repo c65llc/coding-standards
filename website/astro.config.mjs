@@ -58,7 +58,18 @@ export default defineConfig({
           items: [{ autogenerate: { directory: 'reference' } }],
         },
       ],
-      customCss: [],
+      // starlight-blog owns ThemeSelect and MarkdownContent; leave those alone.
+      components: {
+        SiteTitle: './src/components/starlight/SiteTitle.astro',
+        Footer: './src/components/starlight/Footer.astro',
+        ThemeProvider: './src/components/starlight/ThemeProvider.astro',
+      },
+      customCss: [
+        '@fontsource-variable/figtree',
+        '@fontsource-variable/jetbrains-mono',
+        './src/styles/tokens.css',
+        './src/styles/starlight.css',
+      ],
       head: [
         {
           tag: 'meta',

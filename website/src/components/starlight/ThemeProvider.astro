@@ -1,0 +1,15 @@
+---
+import Default from '@astrojs/starlight/components/ThemeProvider.astro';
+---
+
+{/* Make warm dark the default. Only a visitor with no stored choice is seeded;
+    Starlight stores '' for an explicit Auto, which is left alone. Inline so it
+    runs before Starlight reads the theme. */}
+<script is:inline>
+  (() => {
+    try {
+      if (localStorage.getItem('starlight-theme') === null) localStorage.setItem('starlight-theme', 'dark');
+    } catch {}
+  })();
+</script>
+<Default />

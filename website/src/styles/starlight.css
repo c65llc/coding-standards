@@ -1,0 +1,79 @@
+/* Maps the shared tokens onto Starlight. Unlayered, so it wins over Starlight's layers. */
+:root,
+::backdrop {
+  --sl-font: var(--cs-sans);
+  --sl-font-mono: var(--cs-mono);
+
+  /* Starlight's "white" is the strongest text colour and "black" the page. */
+  --sl-color-white: var(--cs-heading);
+  --sl-color-black: var(--cs-bg);
+  --sl-color-gray-1: #eadfd2;
+  --sl-color-gray-2: var(--cs-text);
+  --sl-color-gray-3: #9c8d80;
+  --sl-color-gray-4: #6b5d52;
+  --sl-color-gray-5: var(--cs-rule);
+  --sl-color-gray-6: var(--cs-panel);
+  --sl-color-gray-7: #241f1c;
+
+  --sl-color-accent-low: #43291c;
+  --sl-color-accent: var(--cs-accent);
+  --sl-color-accent-high: #f6c3a2;
+
+  --sl-color-bg: var(--cs-bg);
+  --sl-color-bg-nav: var(--cs-bg);
+  --sl-color-bg-sidebar: var(--cs-bg);
+  --sl-color-bg-inline-code: var(--cs-panel);
+  --sl-color-text: var(--cs-text);
+  --sl-color-text-accent: var(--cs-accent);
+  --sl-color-text-invert: var(--cs-bg);
+  --sl-color-hairline-light: var(--cs-rule);
+  --sl-color-hairline: var(--cs-rule);
+  --sl-color-hairline-shade: var(--cs-rule);
+}
+
+:root[data-theme='light'],
+[data-theme='light'] ::backdrop {
+  --sl-color-white: var(--cs-heading);
+  --sl-color-black: var(--cs-bg);
+  --sl-color-gray-1: #3a322d;
+  --sl-color-gray-2: var(--cs-text);
+  --sl-color-gray-3: #6f6055;
+  --sl-color-gray-4: #a08c7b;
+  --sl-color-gray-5: var(--cs-rule);
+  --sl-color-gray-6: #ede3d7;
+  --sl-color-gray-7: #f1e9de;
+
+  --sl-color-accent-low: #f0d6c5;
+  --sl-color-accent: var(--cs-accent);
+  --sl-color-accent-high: #6f2f16;
+
+  --sl-color-bg: var(--cs-bg);
+  --sl-color-bg-nav: var(--cs-bg);
+  --sl-color-bg-sidebar: var(--cs-bg);
+  --sl-color-bg-inline-code: var(--cs-panel);
+  --sl-color-text-accent: var(--cs-accent);
+  --sl-color-text-invert: var(--cs-panel);
+  --sl-color-hairline-light: var(--cs-rule);
+  --sl-color-hairline: var(--cs-rule);
+  --sl-color-hairline-shade: var(--cs-rule);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.site-title,
+.sidebar-content .group-label,
+starlight-toc h2 {
+  font-family: var(--cs-mono);
+  letter-spacing: -0.03em;
+}
+
+site-search button,
+.card,
+.expressive-code .frame pre,
+.sidebar-content a {
+  border-radius: 4px;
+}

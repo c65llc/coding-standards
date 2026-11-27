@@ -1,4 +1,4 @@
-.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor worktree-gc merge-standards lint-standards generate-standards-lists check-agent-configs website-dev website-build website-preview test test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-profiles test-worktree-gc test-website-csp test-containerized-dev
+.PHONY: help ls setup sync-standards diff-standards check-standards update-standards setup-agents add-copilot-instructions doctor worktree-gc merge-standards lint-standards generate-standards-lists check-agent-configs website-dev website-build website-preview test-website test test-scripts test-bootstrap test-gh-task test-setup-safe test-lint-standards test-generate-standards-lists test-profiles test-worktree-gc test-website-csp test-containerized-dev
 
 help: ## Show this help message
 	@echo "Standards Repository Management"
@@ -145,6 +145,9 @@ website-dev: ## Start the website dev server
 
 website-build: ## Build the website for production
 	@cd website && npm run build
+
+test-website: ## Build the website and run its tests (needs node and website/node_modules)
+	@cd website && npm run build && npm test
 
 website-preview: ## Preview the production build locally
 	@cd website && npm run preview

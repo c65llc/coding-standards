@@ -85,4 +85,11 @@ if [ -d "$REPO_ROOT/standards/shared" ]; then
     done
 fi
 
+# Starlight renders each page's frontmatter title, so drop the copied files' own
+# leading "# " heading. Sources are never modified.
+for dir in getting-started guides reference standards; do
+    find "$CONTENT_DIR/$dir" -name '*.md' -exec bash "$SCRIPT_DIR/strip-title.sh" {} \;
+done
+bash "$SCRIPT_DIR/strip-title.sh" "$CONTENT_DIR/changelog.md"
+
 echo "Content sync complete."

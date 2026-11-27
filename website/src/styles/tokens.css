@@ -1,0 +1,28 @@
+/* Colour and font tokens shared by the homepage and the Starlight docs/blog. */
+:root {
+  --cs-bg: #1f1b19;
+  --cs-panel: #2a2522;
+  --cs-footer: #171412;
+  --cs-heading: #f6efe6;
+  --cs-text: #c4b5a6;
+  --cs-accent: #e8935f;
+  --cs-rule: #453c36;
+
+  /* The footer is dark in both themes, so these do not change. */
+  --cs-footer-text: #d9cbbd;
+  --cs-footer-heading: #f6efe6;
+  --cs-ember: #dd8554;
+
+  --cs-mono: 'JetBrains Mono Variable', ui-monospace, Menlo, monospace;
+  --cs-sans: 'Figtree Variable', system-ui, sans-serif;
+}
+
+:root[data-theme='light'] {
+  --cs-bg: #f6efe6;
+  --cs-panel: #fffaf3;
+  --cs-footer: #2d2926;
+  --cs-heading: #2d2926;
+  --cs-text: #54483f;
+  --cs-accent: #8d4021;
+  --cs-rule: #cdb9a6;
+}
