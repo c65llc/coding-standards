@@ -79,11 +79,20 @@ In order:
    copied into generated configs, from
    `standards/shared/blocks/architecture-core.md` (the error-handling lines).
    Right: the file tree of agent files.
-4. **Three points:** `// sync` one source of truth; `// architecture` the same
-   principles across languages; `// updates` your customized agent configs are
-   never overwritten. *(Author's call: sync does overwrite some other files, such
-   as language tool configs and `.gemini/settings.json`, so the claim is limited
-   to agent configs. Changing sync is out of scope.)*
+4. **Why coding standards?** (`#why`):
+   - one lead sentence on the problem (agents have their own habits);
+   - a diff panel, three `-` lines (separately configured, contradicting tools;
+     a wiki page nobody reads, drifting; review spent on style) and three `+`
+     lines (one source of truth; same architecture and naming everywhere;
+     review time on what the code does). The `-`/`+` marks carry the meaning,
+     not colour alone;
+   - four points: `// sync` multi-agent sync; `// architecture` clean
+     architecture across 14 languages; `// setup` one command; `// updates` git
+     hooks re-sync, and customized agent configs are never overwritten.
+     *(Author's call: sync does overwrite some other files, such as language
+     tool configs and `.gemini/settings.json`, so the claim is limited to agent
+     configs. Changing sync is out of scope.)*
+   - a link to `/why/`.
 5. **How it works:** the three existing steps (install, sync, consistent code),
    as ruled rows.
 6. **Languages:** all 14 (Python, Java, Kotlin, Swift, Dart, TypeScript,
@@ -97,9 +106,8 @@ The agent tree lists six agents: `CLAUDE.md` (Claude Code), `AGENTS.md` (Codex),
 `.cursorrules` (Cursor), `.github/copilot-instructions.md` (Copilot),
 `.gemini/GEMINI.md` (Gemini CLI), `.aider-instructions.md` (Aider).
 
-The "Problem / Solution" boxes and the four icon feature cards are removed; their
-substance is covered by items 2–4. *(Builder's-eye call by the author; the
-approved mockup did not include them.)*
+The separate "Problem / Solution" boxes and icon feature cards are replaced by
+item 4.
 
 ## Footer
 
@@ -127,7 +135,8 @@ edit link or last-updated line.
   file's `# Heading` while Starlight also renders the frontmatter title. The sync
   step drops that first heading from the copied files only; sources are
   untouched. `why.md` is written directly in the site, so remove its repeated
-  `# Why Coding Standards?` line there.
+  `# Why Coding Standards?` line there, and correct its language count from 13 to
+  14.
 - `src/content/docs/index.mdx` shares the `/` route with the custom homepage and
   is not served. Leave it alone and say so in the PR. *(Author's call.)*
 
