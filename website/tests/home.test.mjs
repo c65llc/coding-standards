@@ -58,6 +58,13 @@ test('why section', () => {
   has(why, ['href="/why/"']);
 });
 
+test('the update claim matches what the git hook does', () => {
+  // setup.sh's post-merge hook only reports that updates exist; it syncs nothing.
+  const why = textOf(section('why'));
+  has(why, ['A post-merge hook flags updates.']);
+  assert.doesNotMatch(why, /hooks re-sync/i);
+});
+
 test('all 14 languages', () => {
   const items = [...section('languages').matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((m) => textOf(m[1]));
   assert.deepEqual(items, ['Python', 'Java', 'Kotlin', 'Swift', 'Dart', 'TypeScript', 'JavaScript', 'Rust', 'Zig', 'Ruby',

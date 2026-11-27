@@ -87,8 +87,9 @@ In order:
      review time on what the code does). The `-`/`+` marks carry the meaning,
      not colour alone;
    - four points: `// sync` multi-agent sync; `// architecture` clean
-     architecture across 14 languages; `// setup` one command; `// updates` git
-     hooks re-sync, and customized agent configs are never overwritten.
+     architecture across 14 languages; `// setup` one command; `// updates` a
+     post-merge hook flags updates (it does not sync by itself), and customized
+     agent configs are never overwritten.
      *(Author's call: sync does overwrite some other files, such as language
      tool configs and `.gemini/settings.json`, so the claim is limited to agent
      configs. Changing sync is out of scope.)*
