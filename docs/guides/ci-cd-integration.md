@@ -83,7 +83,7 @@ jobs:
 
 ## Git Hooks
 
-The `scripts/setup.sh` script installs a `post-merge` hook that runs after every `git pull` or `git merge`. The hook fetches from the standards remote and prints a warning if newer commits exist.
+The `scripts/setup.sh` script installs a `post-merge` hook that runs after every `git pull` or `git merge`. The hook fetches from the standards remote and prints a notice if newer commits exist. It does not pull or sync; you run the sync.
 
 ```bash
 # Installed at .git/hooks/post-merge
@@ -94,7 +94,7 @@ if [ -d ".standards" ]; then
     LOCAL=$(git rev-parse HEAD)
     REMOTE=$(git rev-parse origin/main 2>/dev/null || git rev-parse origin/master 2>/dev/null)
     if [ "$LOCAL" != "$REMOTE" ] && [ -n "$REMOTE" ]; then
-        echo "Standards repository has updates. Run: make sync-standards"
+        echo "📋 Standards repository has updates. Run: ./.standards/scripts/sync-standards.sh"
     fi
 fi
 ```

@@ -21,7 +21,7 @@ The installer sets up the following in your project:
 - All AI agent configuration files (see table below)
 - A `make sync-standards` Makefile target for on-demand updates
 - A `make doctor` target for auditing your standards setup health
-- Git hooks that keep standards in sync automatically
+- A `post-merge` git hook that reports when standards have updates (you run the sync)
 
 ## Supported AI Agents
 
@@ -43,7 +43,7 @@ Python, Java, Kotlin, Swift, Dart, TypeScript, JavaScript, Rust, Zig, Ruby, Ruby
 - **Profiles** -- Opt in to cross-cutting standards by product shape with `profiles:` in `.standards.yml`: `shared-core` (one logic core under native shells -- tenets, a platform-shape decision tree, a native-shell audit) and `ui-surface` (what makes a UI feel native -- ownership per surface class, a tagged audit, a WARN-only `web-tells` lint check). Each adds a block to every agent config and a skill; a project that declares none is unchanged. See [Profiles](docs/guides/customization.md#profiles).
 - **Clean Architecture** -- Enforces domain-driven design across all languages.
 - **One-Command Setup** -- Install everything with a single command.
-- **Auto-Updating** -- Git hooks keep standards in sync whenever you pull.
+- **Update Notices** -- After a pull or merge, a `post-merge` hook reports that standards have updates; run `make sync-standards` to apply them.
 - **Preview Before You Commit** -- `--dry-run` flag for `setup.sh` and `sync-standards.sh` shows every write operation without modifying files. `make diff-standards` shows line-level diffs for all agent configs, and `diff-standards.sh --exit-code` turns that into a CI gate.
 - **Install Only What You Use** -- `setup.sh --agents codex` (or any explicit list) installs just that agent's artifacts; git hooks, aliases, Cursor commands, `.claude/settings.json` and `.gemini/` are skipped unless requested. `setup.sh --help` lists every flag, and unknown flags exit 2 without writing anything.
 - **Upgrade Path for Old Installs** -- `setup.sh --migrate` brings a pre-1.2 consumer forward: dead standards references are rewritten in place from `docs/reference/renamed-files.md`, `.codexrc` becomes `AGENTS.md`, `.standards.yml` and checksums are bootstrapped, and anything ambiguous is staged with a merge plan. `make doctor` recognises the shape and prints that one command instead of a page of warnings.

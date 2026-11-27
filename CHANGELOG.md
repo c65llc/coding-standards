@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Git hooks are no longer described as syncing (#251):** the `post-merge`
+  hook only reports that standards have updates, and the docs now say so. The
+  command it prints is now `./.standards/scripts/sync-standards.sh`, which
+  pulls and re-assembles agent configs; `cd .standards && git pull` did not
+  re-assemble them and fails in a detached-HEAD submodule. Hook behaviour is
+  unchanged. Re-run `setup.sh` to get the new message; lefthook users copy it
+  from `templates/lefthook.yml.example`.
 - **Sync no longer overwrites tuned tool configs:** a pulling
   `sync-standards.sh` replaced a differing `ruff.toml`, `rustfmt.toml`,
   `clippy.toml`, `.rubocop.yml`, `.prettierrc`, `.prettierignore` or `.npmrc`

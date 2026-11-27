@@ -77,7 +77,7 @@ Standards Health Check
   Fixes needed:
     -> Run: make setup-agents  (to install missing Copilot config)
     -> Add: 'go' to .standards.yml languages list
-    -> Run: make setup  (to install git hooks for automatic standards sync)
+    -> Run: make setup  (to install the hook that reports standards updates)
 ```
 
 ### What it checks
@@ -108,4 +108,4 @@ curl -fsSL https://raw.githubusercontent.com/c65llc/coding-standards/main/instal
 make doctor
 ```
 
-A perfect score means your project is fully configured, checksums are clean, and automatic sync is in place via git hooks.
+A perfect score means your project is fully configured, checksums are clean, and a git hook is in place to report standards updates (you run the sync).
