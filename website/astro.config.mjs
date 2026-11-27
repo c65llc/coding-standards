@@ -58,7 +58,12 @@ export default defineConfig({
           items: [{ autogenerate: { directory: 'reference' } }],
         },
       ],
-      customCss: [],
+      customCss: [
+        '@fontsource-variable/figtree',
+        '@fontsource-variable/jetbrains-mono',
+        './src/styles/tokens.css',
+        './src/styles/starlight.css',
+      ],
       head: [
         {
           tag: 'meta',
