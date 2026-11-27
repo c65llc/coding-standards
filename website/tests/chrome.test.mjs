@@ -7,11 +7,10 @@ import vm from 'node:vm';
 import { allPages, DIST, page, textOf } from './helpers.mjs';
 
 const footers = (html) => html.match(/<footer\b[^>]*class="[^"]*\bsite-footer\b[\s\S]*?<\/footer>/g) ?? [];
-// The homepage gets the footer with its redesign.
-const footerPages = () => allPages().filter(({ file }) => file !== 'index.html');
 
 test('every page has one C65 footer', () => {
-  const pages = footerPages();
+  const pages = allPages();
+  assert.ok(pages.some(({ file }) => file === 'index.html'));
   assert.ok(pages.some(({ file }) => file === '404.html'));
   for (const { file, html } of pages) {
     const found = footers(html);
