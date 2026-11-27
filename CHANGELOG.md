@@ -26,6 +26,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **Upgrading:** the sync that pulls this fix still runs the old code. Update
   the checkout first (`git -C .standards pull origin main`), then run
   `sync-standards.sh`.
+- **Container-to-host boundary (#221):** the kit now mounts the whole host
+  checkout read-only, with commented source-overlay examples, instead of
+  maintaining an incomplete protected-path list. Standards allow-list fallbacks,
+  MCP/IDE configs, submodule gitfiles and future host inputs are protected.
+  Antigravity no longer imports workspace MCP commands into host settings.
+  A mount guard and adversarial regression cases enforce the default boundary.
+  **Upgrade:** stop the old container, reconcile staged kit files on the host,
+  and recreate the service; setup never overwrites an existing compose file.
+  For branch/commit work, use a fresh remote clone in the container-owned cache
+  volume, as described in the kit README.
 
 - **Configs with no usable `.standards-checksums` line are no longer
   overwritten.** A customized `.aiderrc` that setup kept was replaced by the

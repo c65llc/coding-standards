@@ -19,6 +19,11 @@ first did this (2026-10-19, #158), including the kit defects it found and fixed.
 Keep your own record in the same shape — every item names the command, the
 verdict, and what was *not* verified.
 
+The #221 revision replaces the historical protected-path mounts with a
+read-only checkout root. The 2026-10-19 record below does **not** verify this new
+mount model. Re-run the procedure after recreating the service; static regression
+tests are not a substitute for observed Docker write denial.
+
 ## Procedure
 
 ### 0. Host prerequisites
@@ -102,8 +107,10 @@ $X sudo -n curl -sS --max-time 10 -o /dev/null -w '%{http_code}\n' https://regis
 $X node -e 'fetch("https://api.github.com").then(r => console.log("node fetch:", r.status))'
 docker compose -f docker-compose.dev.yml logs --no-log-prefix egress | grep -E 'refused|Established'
 
-# Container writes, host executes — every line "Read-only file system" (".git/config": "Device or resource busy")
-$X sh -c 'for p in scripts/x proxy/x .devcontainer/x .git/hooks/x .env .env.secret docker-compose.dev.yml Dockerfile.dev; do touch $p 2>&1; sudo -n touch $p 2>&1; done; git config core.hooksPath /tmp 2>&1'
+# Container writes, host executes — EVERY write must fail, including missing paths.
+$X sh -c 'for p in scripts/x proxy/x .devcontainer/x .git/hooks/x .env .env.secret .standards/x coding_standards/.git .antigravity/mcp.json Makefile Dockerfile.prod; do touch "$p" 2>&1; sudo -n touch "$p" 2>&1; done; mkdir /workspace/new-host-input 2>&1; git config core.hooksPath /tmp 2>&1'
+# Make a fresh remote clone in /home/developer/.cache/project for editable work.
+# Verify source edits and a checkpoint commit succeed there, never in the host .git.
 
 # No host Docker socket, no capabilities, egress unprivileged and unpublished
 DEV=$(docker compose -f docker-compose.dev.yml ps -q dev); EG=$(docker compose -f docker-compose.dev.yml ps -q egress)

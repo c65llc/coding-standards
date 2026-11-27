@@ -16,8 +16,10 @@ the project root `.cursorrules`.
   `.devcontainer/devcontainer.json`, `/.dockerenv` exists, or the workspace is
   mounted at `/workspace` — run commands directly. Do not nest `docker compose
   exec` there: the container has no Docker socket, so it cannot reach a daemon.
-- Prefer `/workspace` as the absolute path root for all file operations inside
-  the container.
+- `/workspace` is the read-only host reference checkout (arch-09 §3). Edit only
+  declared source overlays, or make a fresh remote clone in the container-owned
+  cache volume and use that clone for branch/commit work. Never make the host
+  checkout or its `.git` writable, and never run host tooling against the clone.
 - Before running a batch of unattended, destructive-capable commands, create a
   git checkpoint (a commit or `git stash`) so the run is instantly recoverable
   (arch-09 §6).
