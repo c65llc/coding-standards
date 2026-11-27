@@ -66,7 +66,9 @@ When `MERGE_PLAN.md` has a **Migration** section, the pending files are the proj
 
 4. For a **staged containerized kit file** (`MERGE_PLAN.md` has a *Containerized agent-dev kit* section; paths such as `Dockerfile.dev`, `scripts/init-workspace.sh`, `proxy/tinyproxy.conf`), the section-based strategy below does not apply: these are shell scripts, Dockerfiles and proxy configs, not assembled Markdown. Show a plain diff of the project's file against the staged copy. On approval write the merged result (normally the project's adaptations carried onto the kit's changes), keep the execute bit on anything with a shebang (`chmod +x`), and do **not** add it to `.standards-checksums` — kit files are templates to adapt and are never checksum-tracked. Delete the staged copy either way; re-running `setup.sh --containerized` stages it again only while the two still differ.
 
-5. After all files are processed, delete `.standards-pending/` if empty.
+5. For a **staged language tool config** (listed under *Language tool configs* in `MERGE_PLAN.md`: `ruff.toml`, `rustfmt.toml`, `clippy.toml`, `.rubocop.yml`, `.prettierrc`, `.prettierignore`, `.npmrc`, `.golangci.yml`), the staged file has no header. Show a plain diff of the project's file against it, and on approval copy only the wanted settings into the project's file. **Do not edit `.standards-checksums`:** its `tool:<name>` line records the standards version, and a line matching the merged file would let the next sync overwrite it. Delete the staged copy either way; sync stages the config again only when the standards version changes.
+
+6. After all files are processed, delete `.standards-pending/` if empty.
 
 ## Merge Strategy
 
@@ -93,6 +95,8 @@ Standards sections are identified by `##` headers injected by the assembler: `##
 - Include both and add: `<!-- REVIEW: standards updated this rule, but you had a customization. Verify which is correct. -->`
 
 ## After Merging Each File
+
+Language tool configs (workflow step 5) skip the checksum update.
 
 1. Update `.standards-checksums` with the hash of the **staged standards version**, never of your merged file. Run this before deleting the pending copy:
 

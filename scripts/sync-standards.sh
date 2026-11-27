@@ -91,6 +91,12 @@ source "$SCRIPT_DIR/lib/languages.sh"
 # shellcheck source=lib/members.sh disable=SC1091
 source "$SCRIPT_DIR/lib/members.sh"
 
+# Language tool configs and their MERGE_PLAN entries
+# shellcheck source=lib/tool-configs.sh disable=SC1091
+source "$SCRIPT_DIR/lib/tool-configs.sh"
+# shellcheck source=lib/merge-plan.sh disable=SC1091
+source "$SCRIPT_DIR/lib/merge-plan.sh"
+
 # Filled-in Project Overview / Key Commands capture (#183)
 if [ -f "$SCRIPT_DIR/lib/project-sections.sh" ]; then
     # shellcheck source=lib/project-sections.sh disable=SC1091
@@ -292,6 +298,13 @@ sync_ai_agents() {
         fi
     done
 
+    # Language tool configs (ruff.toml, .prettierrc, ...): a customized one is
+    # never overwritten (lib/tool-configs.sh). Before the checksums write.
+    install_tool_configs "$PROJECT_ROOT" "$AGENTS_DIR" "$DETECTED_LANGS" "$DRY_RUN"
+    if [ -n "$TOOL_STAGED" ]; then
+        append_tool_config_plan "$PROJECT_ROOT" "$TOOL_STAGED"
+    fi
+
     # Write accumulated checksums atomically
     if [ "$DRY_RUN" = false ] && [ -n "$CHECKSUMS_LIB" ] && [ -n "$NEW_CHECKSUMS" ]; then
         echo "$NEW_CHECKSUMS" > "$CHECKSUMS_PATH"
@@ -383,48 +396,6 @@ sync_ai_agents() {
                 fi
             fi
         fi
-    fi
-
-    # Sync language-specific tool configs (only if language detected and file differs)
-    if [ -n "$DETECTED_LANGS" ]; then
-        for lang in $DETECTED_LANGS; do
-            local LANG_CONFIG_DIR="$AGENTS_DIR/$lang"
-            if [ -d "$LANG_CONFIG_DIR" ]; then
-                (
-                    shopt -s dotglob nullglob
-                    for config_file in "$LANG_CONFIG_DIR"/*; do
-                        [ -f "$config_file" ] || continue
-                        config_name="$(basename "$config_file")"
-                        if [ "$config_name" = ".golangci.yml" ]; then
-                            alternate="$(golangci_alternate_config "$PROJECT_ROOT")"
-                            if [ -n "$alternate" ]; then
-                                echo "   ℹ️  Keeping $alternate — $config_name not installed ($lang)"
-                                continue
-                            fi
-                        fi
-                        if [ ! -f "$PROJECT_ROOT/$config_name" ]; then
-                            if [ "$DRY_RUN" = true ]; then
-                                echo "  [dry-run] Would copy: $config_file → $PROJECT_ROOT/$config_name"
-                            elif cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
-                                echo "   ✅ Added $config_name ($lang)"
-                            fi
-                        elif ! cmp -s "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
-                            if [ "$config_name" = ".golangci.yml" ]; then
-                                # Projects tune this file (and may still hold a v1
-                                # config), so sync never overwrites it.
-                                echo "   ℹ️  Kept your $config_name; it differs from $config_file"
-                            elif [ "$UPDATED" = true ]; then
-                                if [ "$DRY_RUN" = true ]; then
-                                    echo "  [dry-run] Would update: $PROJECT_ROOT/$config_name"
-                                elif cp "$config_file" "$PROJECT_ROOT/$config_name" 2>/dev/null; then
-                                    echo "   ✅ Updated $config_name ($lang)"
-                                fi
-                            fi
-                        fi
-                    done
-                )
-            fi
-        done
     fi
 
     # Sync Gemini settings.json (gemini only; separate from the assembled GEMINI.md)

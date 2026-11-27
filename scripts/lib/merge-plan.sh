@@ -102,3 +102,32 @@ write_merge_plan() {
         echo ""
     } > "$plan"
 }
+
+# append_tool_config_plan <project_root> <staged_names>
+#
+# Lists staged language tool configs (lib/tool-configs.sh) in MERGE_PLAN.md,
+# creating the plan when there is none. Appends only what is not listed yet,
+# so call it after write_merge_plan, which rewrites the file.
+append_tool_config_plan() {
+    local root="$1" names="$2" name line
+    local plan="$root/.standards-pending/MERGE_PLAN.md"
+    local heading="## Language tool configs"
+
+    [ -n "$names" ] || return 0
+    mkdir -p "$root/.standards-pending"
+    [ -f "$plan" ] || printf '# Standards — Merge Plan\n' > "$plan"
+    if ! grep -qxF "$heading" "$plan"; then
+        {
+            printf '\n%s\n\n' "$heading"
+            echo "These differ from the standards versions and were NOT overwritten. Copy what"
+            echo "you want from the staged file into yours, then delete the staged copy. Do not"
+            echo "edit their \`tool:\` lines in \`.standards-checksums\`: those record the"
+            echo "standards version, and a line matching your file lets sync overwrite it."
+            echo ""
+        } >> "$plan"
+    fi
+    for name in $names; do
+        line="- \`.standards-pending/$name\` → merge into \`$name\`"
+        grep -qxF -- "$line" "$plan" || printf '%s\n' "$line" >> "$plan"
+    done
+}
