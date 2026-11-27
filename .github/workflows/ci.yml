@@ -209,6 +209,10 @@ jobs:
         if: steps.check-website.outputs.exists == 'true'
         run: cd website && npm run build
 
+      - name: Test website
+        if: steps.check-website.outputs.exists == 'true'
+        run: cd website && npm test
+
   lint-standards-selfhost:
     name: Lint Standards (dogfood)
     # Always runs: the common checks (secrets, commit history, CI hygiene)

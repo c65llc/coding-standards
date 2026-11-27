@@ -6,6 +6,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
+    "test": "node --test tests/*.test.mjs",
     "astro": "astro",
     "prebuild": "bash scripts/sync-content.sh",
     "postbuild": "node scripts/csp-postbuild.mjs",
