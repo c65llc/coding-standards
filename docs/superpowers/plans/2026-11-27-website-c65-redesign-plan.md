@@ -29,14 +29,14 @@
 1. Returning visitor whose stored theme is `''` (Starlight writes it for everyone who has visited): keeps Auto, is not forced to dark. Pinned in Task 3.
 2. Storage blocked (private window): the theme seed script must not throw. Task 3.
 3. No JavaScript or no clipboard API: no dead copy button; the command stays selectable. Task 4.
-4. A source document whose first content is not a `# ` heading, or has `# ` lines in a code block: nothing but a leading title heading is removed. Task 1.
+4. A source document whose first content is not a `#` heading, or has `#` lines in a code block: nothing but a leading title heading is removed. Task 1.
 5. 375px width with the long install command and `.github/copilot-instructions.md`: wraps, no sideways scroll. Browser check in Task 6.
 
 ## File Structure
 
 | File (under `website/`) | Responsibility |
 |---|---|
-| `scripts/strip-title.sh` (new) | Remove a leading `# ` heading from a copied Markdown file |
+| `scripts/strip-title.sh` (new) | Remove a leading `#` heading from a copied Markdown file |
 | `src/styles/tokens.css` (new) | `--cs-*` colour and font tokens, both themes |
 | `src/styles/starlight.css` (new) | Map tokens onto Starlight |
 | `src/components/Wordmark.astro` (new) | `{ } coding-standards` link |
@@ -50,10 +50,12 @@
 ### Task 1: Issue, test harness, and duplicate titles
 
 **Files:**
+
 - Create: `website/scripts/strip-title.sh`, `website/tests/titles.test.mjs`, `website/tests/helpers.mjs`
 - Modify: `website/scripts/sync-content.sh`, `website/src/content/docs/why.md`, `website/package.json`, `Makefile`, `.github/workflows/ci.yml` (`build-website` job)
 
 **Interfaces:**
+
 - Produces: `helpers.mjs` exports `page(route: string): string` (HTML of `dist/<route>/index.html`, `''` = homepage), `allPages(): {file: string, html: string}[]`, `textOf(html: string): string` (tags stripped, entities decoded, whitespace collapsed). `npm test` runs `node --test tests/*.test.mjs`. `make test-website` builds then tests.
 
 - [ ] **Step 1:** Open the GitHub issue with `gh issue create` (title "Redesign the website in the C65 family"; body links the spec). Use its number in commits and the PR.
@@ -83,7 +85,7 @@ test('why page states 14 languages', () => {
 ```
 
 - [ ] **Step 3:** Add the `test` script and `make test-website` (`cd website && npm run build && npm test`, listed in `.PHONY` and `help`; not part of `make test`). Run `cd website && npm ci && npm run build && npm test`. Expected: the three tests FAIL.
-- [ ] **Step 4:** Implement `strip-title.sh <file>` (portable awk, macOS and Linux): after the closing frontmatter `---`, if the first non-blank line starts with `# `, delete that line. Call it from `sync-content.sh` on every copied `.md` file, after all copies. Sources are never modified.
+- [ ] **Step 4:** Implement `strip-title.sh <file>` (portable awk, macOS and Linux): after the closing frontmatter `---`, if the first non-blank line starts with `#`, delete that line. Call it from `sync-content.sh` on every copied `.md` file, after all copies. Sources are never modified.
 - [ ] **Step 5:** In `why.md` delete the `# Why Coding Standards?` line and change `13 languages` to `14 languages`.
 - [ ] **Step 6:** Add a `Test website` step (`cd website && npm test`, same `if:` as the build step) after `Build website` in `ci.yml`.
 - [ ] **Step 7:** Run `make test-website && make test-scripts`. Expected: PASS.
@@ -92,10 +94,12 @@ test('why page states 14 languages', () => {
 ### Task 2: Tokens, fonts, and the docs/blog theme
 
 **Files:**
+
 - Create: `website/src/styles/tokens.css`, `website/src/styles/starlight.css`, `website/tests/theme.test.mjs`
 - Modify: `website/astro.config.mjs` (`customCss`), `website/package.json`, `website/package-lock.json`
 
 **Interfaces:**
+
 - Produces: custom properties `--cs-bg`, `--cs-panel`, `--cs-footer`, `--cs-heading`, `--cs-text`, `--cs-accent`, `--cs-rule`, `--cs-footer-text` (`#d9cbbd`), `--cs-ember` (`#dd8554`), `--cs-mono` (`'JetBrains Mono Variable', ui-monospace, monospace`), `--cs-sans` (`'Figtree Variable', system-ui, sans-serif`). Dark values on `:root`, light on `:root[data-theme='light']`.
 
 - [ ] **Step 1: Write the failing tests.** Parse the two blocks of `tokens.css` and assert:
@@ -118,10 +122,12 @@ test('why page states 14 languages', () => {
 ### Task 3: Wordmark, footer, and dark by default
 
 **Files:**
+
 - Create: `website/src/components/Wordmark.astro`, `website/src/components/SiteFooter.astro`, `website/src/components/starlight/{SiteTitle,Footer,ThemeProvider}.astro`, `website/tests/chrome.test.mjs`
 - Modify: `website/astro.config.mjs` (`components`)
 
 **Interfaces:**
+
 - Consumes: `--cs-*` tokens.
 - Produces: `<Wordmark />` and `<SiteFooter />`, no props, styled only with tokens. `SiteFooter` root is `<footer class="site-footer">`.
 
@@ -145,7 +151,7 @@ test('why page states 14 languages', () => {
 - [ ] **Step 2:** Run `make test-website`. Expected: FAIL.
 - [ ] **Step 3:** Write `SiteFooter.astro`. SVG: `viewBox="89.8 156 280.4 148.4"`, 76×40, "C" fill `#f6efe6`, "65" fill `var(--cs-ember)`. Path data, verbatim:
 
-```
+```text
 C:  M216 156H164A74.2 74.2 0 0 0 164 304.4H192.5A64.4 64.4 0 0 1 172 278.8H164A48.6 48.6 0 0 1 164 181.6H199.5Z
 65: M231.6 157.2H262.5L208.5 238.3A25.8 25.8 0 1 0 233 226.9L247.7 203.7A51.6 51.6 0 1 1 187.2 224ZM278.4 158.4H369.2V183.7H261.2ZM283.2 215.3A51.5 51.5 0 1 1 283.2 289.5A64.8 64.8 0 0 0 293.9 266A28.4 28.4 0 1 0 293.9 239A64.8 64.8 0 0 0 283.2 215.3Z
 ```
@@ -158,10 +164,12 @@ C:  M216 156H164A74.2 74.2 0 0 0 164 304.4H192.5A64.4 64.4 0 0 1 172 278.8H164A4
 ### Task 4: Homepage
 
 **Files:**
+
 - Rewrite: `website/src/pages/index.astro` (split into `src/components/home/*.astro` if it passes ~300 lines)
 - Create: `website/tests/home.test.mjs`
 
 **Interfaces:**
+
 - Consumes: `tokens.css`, the two font packages, `<Wordmark />`, `<SiteFooter />`.
 
 - [ ] **Step 1: Write the failing tests** over `page('')`:
@@ -204,6 +212,7 @@ Also remove the homepage exclusion from the footer test in `chrome.test.mjs`.
 ### Task 5: Favicon and social image
 
 **Files:**
+
 - Modify: `website/public/favicon.svg`, `website/public/og-image.png`
 - Create: `website/scripts/og-image.html` (source the PNG is captured from), `website/tests/assets.test.mjs`
 

@@ -117,7 +117,7 @@ One component, used on every page including 404:
 - C65 logo, two-tone as on c65llc.com (cream "C", ember `#dd8554` "65"), inline
   SVG, linking to <https://www.c65llc.com/>, with an accessible name.
 - "a C65 project", links to docs, blog, GitHub, RSS and c65llc.com, and
-  "© <year> C65 LLC".
+  "© `<year>` C65 LLC".
 - The footer is dark in both themes.
 
 The logo path data is taken from the footer of c65llc.com.
