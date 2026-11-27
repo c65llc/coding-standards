@@ -1430,10 +1430,10 @@ elif [ "$DRY_RUN" = true ]; then
 else
     echo "🪝 Setting up git hooks..."
     warn_unrecognised_hooks
-    # Post-merge hook to sync standards
+    # Post-merge hook that reports standards updates (it does not sync)
     cat > "$GIT_HOOKS_DIR/post-merge" << 'HOOK'
 #!/bin/bash
-# Auto-sync standards after merge/pull
+# Report standards updates after merge/pull; does not apply them
 
 if [ -d ".standards" ]; then
     cd .standards
@@ -1442,7 +1442,7 @@ if [ -d ".standards" ]; then
     REMOTE=$(git rev-parse origin/main 2>/dev/null || git rev-parse origin/master 2>/dev/null)
 
     if [ "$LOCAL" != "$REMOTE" ] && [ -n "$REMOTE" ]; then
-        echo "📋 Standards repository has updates. Run: cd .standards && git pull"
+        echo "📋 Standards repository has updates. Run: ./.standards/scripts/sync-standards.sh"
     fi
 fi
 HOOK

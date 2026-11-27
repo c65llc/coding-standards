@@ -27,7 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/c65llc/coding-standards/main/instal
 - **5 AI agent configs**: Cursor, Copilot, Claude Code/Aider, Codex, Gemini CLI
 - **Architecture standards**: Clean Architecture, SOLID principles, and more
 - **Process standards**: Git workflow, documentation, code review
-- **Automation**: One-command setup, auto-syncing git hooks, Make targets
+- **Automation**: One-command setup, git hooks that report standards updates, Make targets
 
 ## Get Started
 

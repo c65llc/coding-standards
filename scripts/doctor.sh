@@ -757,7 +757,7 @@ check_git_hooks() {
 
     if [ ! -f "$hook_file" ]; then
         check_fail "Git Hooks" "post-merge hook not installed" \
-            "Run: make setup  (to install git hooks for automatic standards sync)"
+            "Run: make setup  (to install the hook that reports standards updates)"
     elif grep -qiE "standards|sync-standards|\.standards" "$hook_file" 2>/dev/null; then
         check_pass "Git Hooks" "post-merge hook contains standards sync"
     else

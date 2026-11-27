@@ -42,7 +42,7 @@ One repository of standards → automatically synced to every AI agent.
 | Language coverage | Varies | Varies | 13 languages |
 | Architecture enforcement | No | Limited | Clean Architecture built-in |
 | Setup time | Hours | Hours per tool | 1 command, 5 minutes |
-| Staying updated | Manual | Manual per tool | Auto via git hooks |
+| Staying updated | Manual | Manual per tool | Hook reports updates; you run the sync |
 | Declarative config | No | No | `.standards.yml` |
 | Health check | No | No | `make doctor` |
 | Customizable | N/A | Per tool | Fork once, customize all |
