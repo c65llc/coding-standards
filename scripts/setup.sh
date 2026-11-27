@@ -487,7 +487,13 @@ setup_ai_agents() {
     fi
 
     ASSEMBLED_AGENTS_LIST=""
+    # Start from the recorded entries, as sync does. A file this run keeps or
+    # skips must not lose its line: a config with the assembly header and no
+    # entry is re-assembled, which would drop hand-merged text.
     local NEW_CHECKSUMS=""
+    if [ -f "$PROJECT_ROOT/.standards-checksums" ]; then
+        NEW_CHECKSUMS=$(cat "$PROJECT_ROOT/.standards-checksums")
+    fi
     PENDING_LIST=""
 
     for agent in $AGENTS_LIST; do
@@ -568,13 +574,12 @@ setup_ai_agents() {
             4)
                 echo "ℹ️  $agent config is curated (managed: false in .standards.yml) — left as is."
                 echo "   Review upstream template changes with diff-standards.sh."
-                # Record the curated file's hash so .standards-checksums has a
-                # baseline for it: doctor then inspects the file (labelling a
-                # later edit curated, not drifted) instead of never seeing it.
+                # Give the curated file a line so doctor inspects it (labelled
+                # curated, not drifted). The line is a marker, not the file's
+                # hash: its own hash would let a later sync, with managed:
+                # false removed, take it as unmodified and replace it.
                 if [ "$DRY_RUN" = false ] && [ -f "$OUTPUT_PATH" ] && type compute_hash &>/dev/null; then
-                    local curated_hash
-                    curated_hash=$(compute_hash "$OUTPUT_PATH")
-                    NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$curated_hash" "$NEW_CHECKSUMS")
+                    NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$CURATED_MARK" "$NEW_CHECKSUMS")
                 fi
                 ;;
         esac
@@ -912,23 +917,10 @@ setup_ai_agents() {
         done
     fi
 
-    # Skill files (#194) are recorded in .standards-checksums by
-    # assemble-skills.sh, which runs after this write. Carry their entries
-    # over so an unmodified skill stays recognised as standards-owned and an
-    # upstream change replaces it instead of staging it.
-    if [ -f "$PROJECT_ROOT/$CHECKSUMS_FILE" ] && declare -f skills_checksum_entries >/dev/null 2>&1; then
-        local carried_skill_entries
-        carried_skill_entries=$(skills_checksum_entries "$PROJECT_ROOT/$CHECKSUMS_FILE")
-        if [ -n "$carried_skill_entries" ]; then
-            NEW_CHECKSUMS="${NEW_CHECKSUMS:+$NEW_CHECKSUMS
-}$carried_skill_entries"
-        fi
-    fi
-
-    # Write initial checksums
+    # Write checksums
     if [ "$DRY_RUN" = false ] && type compute_hash &>/dev/null && [ -n "$NEW_CHECKSUMS" ]; then
         echo "$NEW_CHECKSUMS" > "$PROJECT_ROOT/$CHECKSUMS_FILE"
-        echo "✅ .standards-checksums created"
+        echo "✅ .standards-checksums written"
     elif [ "$DRY_RUN" = true ] && [ -n "$NEW_CHECKSUMS" ]; then
         echo "  [dry-run] Would write: $PROJECT_ROOT/$CHECKSUMS_FILE"
     fi

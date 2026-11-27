@@ -2018,6 +2018,164 @@ rc2=0; out2=$(cd "$proj" && bash "$SYNC" --dry-run 2>&1) || rc2=$?
 grep -q '^# mine' "$proj/.golangci.yml" || errs="$errs clobbered"
 if [ -z "$errs" ]; then pass; else fail "$errs; output: $out2"; fi
 
+# --- Hand-merged agent configs (merge-standards skill) ------------------------
+
+MERGE_SKILL="$REPO_ROOT/standards/skills/merge-standards.md"
+MERGED_LINE='Hand-merged line that must survive.'
+
+# merged_project <name> — a codex + gemini project whose customized AGENTS.md was merged
+# with a staged update exactly as the skill says: the hash comes from running
+# the bash block under "## After Merging Each File".
+merged_project() {
+    local dir snippet hash
+    dir=$(make_project "$1")
+    fake_standards "$dir"
+    write_standards_yml "$dir" codex gemini
+    (
+        cd "$dir"
+        bash "$SYNC" >/dev/null 2>&1
+        { sed -n '1,3p' AGENTS.md; echo "$MERGED_LINE"; sed '1,3d' AGENTS.md; } > t && mv t AGENTS.md
+        sed 's/^role: service/role: library/' .standards.yml > t && mv t .standards.yml
+        bash "$SYNC" >/dev/null 2>&1
+        { sed -n '1,3p' .standards-pending/AGENTS.md; echo "$MERGED_LINE"; sed '1,3d' .standards-pending/AGENTS.md; } > AGENTS.md
+        snippet=$(awk '/^## After Merging Each File/{s=1} s && /^ *```bash/{c=1;next} c && /^ *```/{exit} c{sub(/^   /,""); print}' "$MERGE_SKILL")
+        hash=$(file=AGENTS.md bash -c "$snippet"$'\n''printf %s "$hash"')
+        { grep -v '^AGENTS.md ' .standards-checksums || true; echo "AGENTS.md $hash"; } > t && mv t .standards-checksums
+        rm -rf .standards-pending
+    )
+    echo "$dir"
+}
+
+echo -n "Test 134: a config merged per the merge-standards skill survives later syncs, which stage the next update instead... "
+proj=$(merged_project "merged-sync")
+errs=""
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs setup-of-test-failed"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync1-rc"
+sed 's/^role: library/role: service/' "$proj/.standards.yml" > "$proj/t" && mv "$proj/t" "$proj/.standards.yml"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync2-rc"
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs clobbered"
+[ -f "$proj/.standards-pending/AGENTS.md" ] || errs="$errs not-staged"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 135: re-running setup.sh keeps a merged config's checksum entry, so the next sync does not overwrite it... "
+proj=$(merged_project "merged-setup")
+errs=""
+(cd "$proj" && bash "$SETUP" --agents codex,gemini >/dev/null 2>&1) || errs="$errs setup-rc"
+grep -q '^AGENTS.md ' "$proj/.standards-checksums" 2>/dev/null || errs="$errs entry-dropped"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync-rc"
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs clobbered"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+# --- Configs with no usable .standards-checksums line -------------------------
+
+# set_role <project> <from> <to> — changes what the next assembly produces.
+set_role() {
+    sed "s/^role: $2/role: $3/" "$1/.standards.yml" > "$1/t" && mv "$1/t" "$1/.standards.yml"
+}
+
+# edit_above_sentinel <file> — add the hand-written line near the top.
+edit_above_sentinel() {
+    { sed -n '1,3p' "$1"; echo "$MERGED_LINE"; sed '1,3d' "$1"; } > "$1.new" && mv "$1.new" "$1"
+}
+
+echo -n "Test 136: a customized .aiderrc that setup.sh kept (no checksum line) survives the next sync... "
+proj=$(make_project "aiderrc-unrecorded")
+fake_standards "$proj"
+printf '# %s\nauto-commits = false\n' "$MERGED_LINE" > "$proj/.aiderrc"
+cp "$proj/.aiderrc" "$proj/aiderrc.orig"
+errs=""
+(cd "$proj" && bash "$SETUP" --agents aider >/dev/null 2>&1) || errs="$errs setup-rc"
+rc=0; out=$(cd "$proj" && bash "$SYNC" --dry-run 2>&1) || rc=$?
+echo "$out" | grep -q 'Would sync: .*\.aiderrc' && errs="$errs dry-run-claims-overwrite"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync-rc"
+cmp -s "$proj/aiderrc.orig" "$proj/.aiderrc" || errs="$errs clobbered"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 137: sync records a verbatim .aiderrc (with a model = line) when .standards-checksums is missing... "
+proj=$(make_project "aiderrc-verbatim-unrecorded")
+fake_standards "$proj"
+write_standards_yml "$proj" aider
+errs=""
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync1-rc"
+tmpl="$REPO_ROOT/standards/agents/aider/aiderrc.template"
+bash -c "source '$REPO_ROOT/scripts/lib/migrate.sh'; echo 'model = claude-sonnet-4-6' > '$proj/.aiderrc'; install_aiderrc '$tmpl' '$proj/.aiderrc'"
+rm -f "$proj/.standards-checksums"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync2-rc"
+grep -q '^model = claude-sonnet-4-6$' "$proj/.aiderrc" || errs="$errs model-lost"
+h=$(shasum -a 256 "$proj/.aiderrc" | awk '{print $1}')
+grep -q "^\.aiderrc $h\$" "$proj/.standards-checksums" || errs="$errs not-recorded"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 138: a hand-edited assembled config survives sync and setup when .standards-checksums is missing... "
+proj=$(make_project "no-checksums-edited")
+fake_standards "$proj"
+write_standards_yml "$proj" codex gemini
+errs=""
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync1-rc"
+edit_above_sentinel "$proj/AGENTS.md"
+rm -f "$proj/.standards-checksums"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync2-rc"
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs clobbered-by-sync"
+[ -f "$proj/.standards-pending/AGENTS.md" ] || errs="$errs not-staged"
+(cd "$proj" && bash "$SETUP" --agents codex,gemini >/dev/null 2>&1) || errs="$errs setup-rc"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync3-rc"
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs clobbered-by-setup"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 139: with .standards-checksums missing, sync records an up-to-date config and keeps upgrading it... "
+proj=$(make_project "no-checksums-verbatim")
+fake_standards "$proj"
+write_standards_yml "$proj" codex gemini
+errs=""
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync1-rc"
+cp "$proj/AGENTS.md" "$proj/agents.v1"
+rm -f "$proj/.standards-checksums"
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync2-rc"
+grep -q '^AGENTS.md ' "$proj/.standards-checksums" || errs="$errs not-recorded"
+[ ! -f "$proj/.standards-pending/AGENTS.md" ] || errs="$errs staged-needlessly"
+set_role "$proj" service library
+(cd "$proj" && bash "$SYNC" >/dev/null 2>&1) || errs="$errs sync3-rc"
+cmp -s "$proj/agents.v1" "$proj/AGENTS.md" && errs="$errs not-upgraded"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+# curated_then_managed <name> <sync|setup> — edit AGENTS.md, declare it curated,
+# let that script see it, then remove the declaration and sync.
+curated_then_managed() {
+    local dir
+    dir=$(make_project "$1")
+    fake_standards "$dir"
+    write_standards_yml "$dir" codex gemini
+    (
+        cd "$dir"
+        bash "$SYNC" >/dev/null 2>&1
+        edit_above_sentinel AGENTS.md
+        cp .standards.yml yml.orig
+        printf 'managed:\n  AGENTS.md: false\n' >> .standards.yml
+        if [ "$2" = setup ]; then
+            bash "$SETUP" --agents codex,gemini >/dev/null 2>&1
+        else
+            bash "$SYNC" >/dev/null 2>&1
+        fi
+        cp yml.orig .standards.yml
+        bash "$SYNC" >/dev/null 2>&1
+    )
+    echo "$dir"
+}
+
+echo -n "Test 140: removing managed: false after a sync does not let the next sync replace the curated file... "
+proj=$(curated_then_managed "uncurate-sync" sync)
+errs=""
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs clobbered"
+[ -f "$proj/.standards-pending/AGENTS.md" ] || errs="$errs not-staged"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
+echo -n "Test 141: removing managed: false after a setup run does not let the next sync replace the curated file... "
+proj=$(curated_then_managed "uncurate-setup" setup)
+errs=""
+grep -qF "$MERGED_LINE" "$proj/AGENTS.md" || errs="$errs clobbered"
+[ -f "$proj/.standards-pending/AGENTS.md" ] || errs="$errs not-staged"
+if [ -z "$errs" ]; then pass; else fail "$errs"; fi
+
 echo ""
 if [ "$FAIL" -gt 0 ]; then
     echo -e "${RED}$FAIL failures${NC}"

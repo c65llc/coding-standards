@@ -237,41 +237,50 @@ sync_ai_agents() {
             4)
                 echo "ℹ️  $agent config is curated (managed: false in .standards.yml) — not regenerated."
                 echo "   Review upstream template changes with diff-standards.sh."
-                # Keep a checksum baseline for the curated file (see setup.sh).
+                # Mark the file as curated in the checksums (see setup.sh).
                 if [ "$DRY_RUN" = false ] && [ -f "$OUTPUT_PATH" ]; then
-                    local curated_hash
-                    curated_hash=$(compute_hash "$OUTPUT_PATH")
-                    NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$curated_hash" "$NEW_CHECKSUMS")
+                    NEW_CHECKSUMS=$(update_checksum_entry "$(basename "$OUTPUT_PATH")" "$CURATED_MARK" "$NEW_CHECKSUMS")
                 fi
                 ;;
         esac
 
         # Aider special handling: also sync aiderrc.template to .aiderrc
         if [ "$agent" = "aider" ] && [ -f "$AGENTS_DIR/aider/aiderrc.template" ]; then
-            if [ "$DRY_RUN" = true ]; then
-                echo "  [dry-run] Would sync: $AGENTS_DIR/aider/aiderrc.template → $PROJECT_ROOT/.aiderrc"
-            elif [ -n "$CHECKSUMS_LIB" ]; then
-                # Checksum-protected: compare full-file hash
-                local stored_rc_hash
+            if [ -n "$CHECKSUMS_LIB" ]; then
+                # Checksum-protected: compare full-file hash. Refresh only a
+                # missing file, one that matches its recorded hash, or one a
+                # refresh would not change. No recorded hash proves nothing.
+                local rc_template="$AGENTS_DIR/aider/aiderrc.template"
+                local rc_target="$PROJECT_ROOT/.aiderrc"
+                local stored_rc_hash current_rc_hash="" rc_refresh=true
                 stored_rc_hash=$(read_stored_hash ".aiderrc" "$CHECKSUMS_PATH")
-                local current_rc_hash=""
-                if [ -f "$PROJECT_ROOT/.aiderrc" ]; then
-                    current_rc_hash=$(shasum -a 256 "$PROJECT_ROOT/.aiderrc" | awk '{print $1}')
+                if [ -f "$rc_target" ]; then
+                    current_rc_hash=$(shasum -a 256 "$rc_target" | awk '{print $1}')
+                    if [ "$current_rc_hash" != "$stored_rc_hash" ]; then
+                        local rc_preview
+                        rc_preview=$(mktemp)
+                        cp "$rc_target" "$rc_preview"
+                        _sync_install_aiderrc "$rc_template" "$rc_preview" 2>/dev/null || true
+                        cmp -s "$rc_preview" "$rc_target" || rc_refresh=false
+                        rm -f "$rc_preview"
+                    fi
                 fi
 
-                if [ ! -f "$PROJECT_ROOT/.aiderrc" ] || [ -z "$stored_rc_hash" ] || [ "$current_rc_hash" = "$stored_rc_hash" ]; then
-                    # The project's own `model =` line is carried forward
-                    # (install_aiderrc, lib/migrate.sh): the template no
-                    # longer pins a model and a sync never changes it (#184).
-                    if _sync_install_aiderrc "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then
-                        echo "   ✅ Aider .aiderrc synced"
-                        local new_rc_hash
-                        new_rc_hash=$(shasum -a 256 "$PROJECT_ROOT/.aiderrc" | awk '{print $1}')
-                        NEW_CHECKSUMS=$(update_checksum_entry ".aiderrc" "$new_rc_hash" "$NEW_CHECKSUMS")
-                    fi
-                else
+                if [ "$rc_refresh" = false ]; then
                     echo "   ⚠️  Aider .aiderrc customized — skipping"
+                elif [ "$DRY_RUN" = true ]; then
+                    echo "  [dry-run] Would sync: $rc_template → $rc_target"
+                # The project's own `model =` line is carried forward
+                # (install_aiderrc, lib/migrate.sh): the template no longer
+                # pins a model and a sync never changes it (#184).
+                elif _sync_install_aiderrc "$rc_template" "$rc_target" 2>/dev/null; then
+                    echo "   ✅ Aider .aiderrc synced"
+                    local new_rc_hash
+                    new_rc_hash=$(shasum -a 256 "$rc_target" | awk '{print $1}')
+                    NEW_CHECKSUMS=$(update_checksum_entry ".aiderrc" "$new_rc_hash" "$NEW_CHECKSUMS")
                 fi
+            elif [ "$DRY_RUN" = true ]; then
+                echo "  [dry-run] Would sync: $AGENTS_DIR/aider/aiderrc.template → $PROJECT_ROOT/.aiderrc"
             else
                 # Fallback: no checksum library
                 if ! cmp -s "$AGENTS_DIR/aider/aiderrc.template" "$PROJECT_ROOT/.aiderrc" 2>/dev/null; then

@@ -55,23 +55,16 @@ For content below `<!-- BEGIN PROJECT-SPECIFIC`:
 
 ### 3. Update the Checksum
 
-After merging, update `.standards-checksums` so the next sync knows this file is current:
+Record the hash of the **staged standards version**, never of your merged file. Run this before deleting the pending copy:
 
 ```bash
-SENTINEL="<!-- BEGIN PROJECT-SPECIFIC"
 file="CLAUDE.md"  # replace with the actual filename
-
-if grep -qF "$SENTINEL" "$file"; then
-    content=$(sed "/$SENTINEL/,\$d" "$file")
-else
-    content=$(cat "$file")
-fi
-# Strip trailing blank lines and compute hash
-hash=$(printf '%s' "$content" | shasum -a 256 | awk '{print $1}')
-
-echo "$hash  $(basename "$file")"
+hash=$(bash -c '. .standards/scripts/lib/checksums.sh && compute_hash "$1"' _ ".standards-pending/$(basename "$file")")
+echo "$(basename "$file") $hash"
 # Replace the matching line in .standards-checksums with this output
 ```
+
+A merged file then never matches its line, so sync and setup keep it and stage new updates instead. Recording the merged file's own hash would let the next sync replace it. A file adopted unchanged matches and keeps updating. For `.aiderrc` use `shasum -a 256 .standards-pending/.aiderrc`.
 
 ### 4. Clean Up
 

@@ -66,6 +66,8 @@ Generated configs are tracked in `.standards-checksums`. The guard (`sync-standa
 - Compares against the stored hash
 - If hashes match → safe to overwrite (no customization)
 - If hashes differ → file was customized → write to `.standards-pending/` instead
+- If there is no stored hash → keep the file unless a fresh assembly reproduces it
+- A `managed: false` file is recorded as `<filename> curated`, which never matches
 
 ## After Assembly
 
