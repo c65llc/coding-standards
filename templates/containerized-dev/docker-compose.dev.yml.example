@@ -22,12 +22,11 @@
 #     run on the Docker host network, outside devnet. Only running containers
 #     are contained. Keep build steps to pinned, reviewed sources (§3).
 #   * It does NOT mount the host Docker socket. See the opt-in block below.
-#   * Files the host executes, builds from or interpolates (scripts/, proxy/,
-#     .devcontainer/, the Dockerfiles, this file, .env, .env.secret, .git/config,
-#     .git/hooks, .git/modules, .gitmodules) are mounted READ-ONLY into dev, so
-#     an agent inside cannot plant host code, redirect a bind mount or widen the
-#     proxy for the next start. Whitelists, git config and submodules are
-#     therefore edited on the host, by a human. See the dev volumes block.
+#   * The entire host checkout is READ-ONLY in dev. Only named volumes are
+#     writable by default; never replace this with a writable root plus a list
+#     of protected files. New host consumers must be protected automatically.
+#     For editable sources, declare narrow overlays after the root bind below
+#     and audit every host consumer before enabling them (README threat model).
 
 services:
   # --- Egress proxy sidecar — the enforcing layer (arch-09 §4) ---------------
@@ -106,45 +105,19 @@ services:
       # SSH agent forwarding for git push (arch-09 §5).
       SSH_AUTH_SOCK: /ssh-agent
     volumes:
-      # The codebase — the single source of truth both humans and agents edit.
-      - .:/workspace:cached
-      # CONTAINER WRITES, HOST EXECUTES. Everything the host executes, builds
-      # from, or interpolates is read-only inside the sandbox; if the agent could
-      # edit any of it, it would gain host code execution (or an open proxy) on
-      # the next start — defeating the kit. Complete list of host-consumed paths:
-      #   scripts/              run on the host by devcontainer.json initializeCommand
-      #   .devcontainer/        read by VS Code on the host
-      #   docker-compose.dev.yml, Dockerfile.dev, Dockerfile.egress
-      #                         read by `compose up --build` on the host
-      #   .env                  interpolated by compose: SSH_AGENT_SOURCE becomes a
-      #                         bind-mount SOURCE below (pointing it at the Docker
-      #                         socket would mount it), HOST_UID/GID are build args
-      #   .env.secret           env_file — written by init-workspace.sh on the host
-      #   proxy/                enforced by the egress sidecar
-      #   .git/config, .git/hooks, .git/modules, .gitmodules
-      #                         read by EVERY git command you run on the host:
-      #                         core.hooksPath/fsmonitor/sshCommand, aliases,
-      #                         includes, filters, submodule URLs. No kit script
-      #                         runs git on the host, but you do.
-      # Nested read-only binds override the writable workspace mount for just
-      # these paths; a container without CAP_SYS_ADMIN cannot remount them, sudo
-      # or not. Edit infrastructure, git config and submodules on the host. The
-      # agent can still commit, branch, fetch and push with the existing config.
-      # Long syntax + create_host_path: false so a missing path fails `up`
-      # instead of silently becoming an empty directory.
-      - ./scripts:/workspace/scripts:ro
-      - ./proxy:/workspace/proxy:ro
-      - ./.devcontainer:/workspace/.devcontainer:ro
-      - ./docker-compose.dev.yml:/workspace/docker-compose.dev.yml:ro
-      - ./Dockerfile.dev:/workspace/Dockerfile.dev:ro
-      - ./Dockerfile.egress:/workspace/Dockerfile.egress:ro
-      - { type: bind, source: ./.env, target: /workspace/.env, read_only: true, bind: { create_host_path: false } }
-      - { type: bind, source: ./.env.secret, target: /workspace/.env.secret, read_only: true, bind: { create_host_path: false } }
-      - { type: bind, source: ./.git/config, target: /workspace/.git/config, read_only: true, bind: { create_host_path: false } }
-      - { type: bind, source: ./.git/hooks, target: /workspace/.git/hooks, read_only: true, bind: { create_host_path: false } }
-      # Remove the next two lines if the standards are not vendored as a submodule.
-      - { type: bind, source: ./.git/modules, target: /workspace/.git/modules, read_only: true, bind: { create_host_path: false } }
-      - { type: bind, source: ./.gitmodules, target: /workspace/.gitmodules, read_only: true, bind: { create_host_path: false } }
+      # Inverted trust boundary (#221): everything from the host checkout is
+      # read-only, including absent paths, submodules and .git gitfiles. This
+      # protects host setup/IDE/build inputs without an incomplete deny-list.
+      - { type: bind, source: ., target: /workspace, read_only: true, bind: { create_host_path: false } }
+      # OPTIONAL: declare ONLY source directories your agents must edit.
+      # Each source must exist, contain no host-executed/configuration inputs,
+      # and be reviewed before host tooling or an image build consumes it.
+      # Never overlay scripts/, proxy/, .git/, standards or IDE config trees.
+      # - { type: bind, source: ./src, target: /workspace/src, bind: { create_host_path: false } }
+      # - { type: bind, source: ./tests, target: /workspace/tests, bind: { create_host_path: false } }
+      # Git metadata stays read-only. For commits or changes outside declared
+      # source directories, use a fresh remote clone in the container-owned
+      # dev-cache volume (see README); never make the host .git writable.
       # Git identity, read-only (arch-09 §5).
       - ${HOME}/.gitconfig:/home/developer/.gitconfig:ro
       # SSH agent forwarding for git push (arch-09 §5). The source path comes
@@ -157,9 +130,8 @@ services:
       # Short syntax on purpose: a path that does not exist inside the Docker VM
       # becomes an empty directory and `ssh-add -l` reports "Permission denied"
       # — git push over SSH then needs a token or HTTPS, but `up` still works.
-      - ${SSH_AGENT_SOURCE:-/dev/null}:/ssh-agent
+      - ${SSH_AGENT_SOURCE:-/dev/null}:/ssh-agent:ro
       # Named caches survive image rebuilds (arch-09 §3).
-      - node-modules-cache:/workspace/node_modules
       - dev-cache:/home/developer/.cache
       #
       # OPT-IN — host Docker socket. OFF by default and NOT recommended.
@@ -203,5 +175,4 @@ networks:
     driver: bridge
 
 volumes:
-  node-modules-cache:
   dev-cache:

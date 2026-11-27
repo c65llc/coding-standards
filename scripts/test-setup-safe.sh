@@ -1790,12 +1790,9 @@ echo "$out" | grep -q 'Using standards from script location' || errs="$errs not-
 cmp -s "$REPO_ROOT/templates/containerized-dev/network/global-whitelist.txt" "$proj/proxy/global-whitelist.txt" || errs="$errs snapshot-differs"
 [ -d "$proj/network" ] && errs="$errs network-dir-copied"
 echo "$out" | grep -q 'snapshotted to proxy/global-whitelist.txt' || errs="$errs snapshot-not-reported"
-# No submodule here either: the compose file is installed without the two submodule mounts, everything else kept.
-echo "$out" | grep -q 'installed without the ./.git/modules and ./.gitmodules' || errs="$errs compose:trim-not-reported"
-grep -q 'source: ./.gitmodules,' "$proj/docker-compose.dev.yml" && errs="$errs compose:gitmodules-mount-kept"
-grep -q 'source: ./.git/modules,' "$proj/docker-compose.dev.yml" && errs="$errs compose:git-modules-mount-kept"
-grep -q 'source: ./.git/config,' "$proj/docker-compose.dev.yml" || errs="$errs compose:git-config-mount-lost"
-grep -q 'source: ./.env.secret,' "$proj/docker-compose.dev.yml" || errs="$errs compose:env-secret-mount-lost"
+# The read-only root protects gitfiles and absent paths too; no per-project trim.
+cmp -s "$REPO_ROOT/templates/containerized-dev/docker-compose.dev.yml.example" "$proj/docker-compose.dev.yml" || errs="$errs compose:template-differs"
+grep -q 'source: ., target: /workspace, read_only: true' "$proj/docker-compose.dev.yml" || errs="$errs compose:readonly-root-lost"
 rerun=$(cd "$proj" && "$SETUP" --agents codex --languages typescript --containerized 2>&1) || true
 echo "$rerun" | grep -q 'docker-compose.dev.yml already installed' || errs="$errs compose:rerun-not-idempotent"
 pout=$(cd "$proj" && ./scripts/setup-proxy.sh 2>&1) || errs="$errs setup-proxy-failed"

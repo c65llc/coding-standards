@@ -12,10 +12,10 @@
 #   2. Detects provider API keys on the host and writes a git-ignored .env.secret.
 #
 # THIS SCRIPT RUNS ON THE HOST (devcontainer.json initializeCommand, or by hand)
-# against a workspace the agent container can write to. It therefore never runs
-# `git` — or any other tool that reads container-writable configuration — because
-# .git/config (core.hooksPath, core.fsmonitor, aliases, includes) and .gitmodules
-# would let an agent run code on the host at the next invocation. Submodules are
+# against a host checkout mounted read-only in the agent container. It never runs
+# `git` or any tool that reads agent-writable configuration. Older kit versions
+# exposed .git/config and .gitmodules, which could execute code on the host.
+# Keep git out of automatic setup even after adopting the read-only root. Submodules are
 # synced by you, on the host, after reviewing the diff:
 #   git submodule update --init --recursive
 set -euo pipefail

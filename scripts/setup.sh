@@ -1043,20 +1043,9 @@ abort_if_tracked_secrets() {
 # and describes it in CONTAINERIZED_NOTES.
 install_containerized_kit() {
     local kit="$1"
-    local rel src src_label target dest pending_target compose_tmp=""
+    local rel src src_label target dest pending_target
     echo ""
     echo "🐳 Installing the containerized agent-dev kit (arch-09)..."
-    # docker-compose.dev.yml bind-mounts ./.git/modules and ./.gitmodules with
-    # create_host_path: false (a missing source fails `compose up` instead of
-    # mounting an empty directory). A project without a submodule gets the file
-    # without those two mounts; the comparison below uses the same trimmed
-    # content, so a re-run still reports it as installed.
-    CONTAINERIZED_OMIT_SUBMODULE_MOUNTS=false
-    if [ ! -f "$PROJECT_ROOT/.gitmodules" ] || [ ! -d "$PROJECT_ROOT/.git/modules" ]; then
-        CONTAINERIZED_OMIT_SUBMODULE_MOUNTS=true
-        echo "   ℹ️  No git submodule in this project: docker-compose.dev.yml is installed without the ./.git/modules and ./.gitmodules"
-        echo "      bind mounts (create_host_path: false would fail \`compose up\`). Vendor the standards as a submodule and re-run to restore them."
-    fi
     CONTAINERIZED_SNAPSHOT_GLOBAL=false
     if [ ! -f "$PROJECT_ROOT/.standards/templates/containerized-dev/network/global-whitelist.txt" ] \
        && [ ! -f "$PROJECT_ROOT/coding_standards/templates/containerized-dev/network/global-whitelist.txt" ]; then
@@ -1069,14 +1058,6 @@ install_containerized_kit() {
         [ -n "$rel" ] || continue
         src="$kit/$rel"
         src_label="$src"
-        if [ "$rel" = "docker-compose.dev.yml.example" ] && [ "$CONTAINERIZED_OMIT_SUBMODULE_MOUNTS" = true ]; then
-            compose_tmp=$(mktemp "${TMPDIR:-/tmp}/compose-dev.XXXXXX")
-            grep -v -e 'source: \./\.git/modules,' -e 'source: \./\.gitmodules,' \
-                    -e 'Remove the next two lines if the standards are not vendored as a submodule' \
-                    "$src" > "$compose_tmp"
-            src="$compose_tmp"
-            src_label="$kit/$rel (without the submodule mounts)"
-        fi
         target=$(containerized_kit_target "$rel")
         [ -n "$target" ] || continue
         case "$target" in
@@ -1134,9 +1115,6 @@ install_containerized_kit() {
     done <<EOF
 $(cd "$kit" && find . -type f | sed 's|^\./||' | sort)
 EOF
-    if [ -n "$compose_tmp" ]; then
-        rm -f "$compose_tmp"
-    fi
     if [ -n "$CONTAINERIZED_NOTES" ]; then
         CONTAINERIZED_NOTES="- Kit files are templates to adapt (toolchain, pinned versions, whitelists): setup never overwrites one and does not record them in \`.standards-checksums\`, so \`sync-standards\` leaves them alone and re-running \`--containerized\` stages a differing kit version again until you adopt it or delete the staged copy.
 $CONTAINERIZED_NOTES"

@@ -4,7 +4,8 @@
 # proxy/egress-entrypoint.sh, and the contract the compose/proxy templates must
 # keep (internal network, egress sidecar, deny-by-default filter).
 #
-# Docker is NOT required: each test copies the templates into a temp "consumer
+# Docker is optional: the mount-denial smoke test runs when a daemon is available
+# (using the kit's pinned Alpine image); all other tests copy templates into a temp "consumer
 # project", runs the scripts with a stub tinyproxy on PATH, and asserts outcomes.
 # The live deny-path check (an actual blocked request) is the kit README's
 # Definition of Done and is run against a real compose stack, not here.
@@ -416,24 +417,74 @@ else
     fail "egress allow-list mount is not a long-syntax read-only bind with create_host_path: false"
 fi
 
-# Test 17c: everything the host executes, builds from or interpolates is read-only inside dev
-echo -n "Test 17c: compose — host-consumed paths (scripts, proxy, infra files, .env*, git config) are :ro in dev... "
-missing=""
-for m in './scripts:/workspace/scripts:ro' './proxy:/workspace/proxy:ro' './.devcontainer:/workspace/.devcontainer:ro' \
-         './docker-compose.dev.yml:/workspace/docker-compose.dev.yml:ro' './Dockerfile.dev:/workspace/Dockerfile.dev:ro' \
-         './Dockerfile.egress:/workspace/Dockerfile.egress:ro'; do
-    grep -qF -- "- $m" "$COMPOSE" || missing="$missing $m"
+# Test 17c: root read-only protects EVERY host input, including future paths.
+# Mutations reproduce each formerly uncovered path without requiring Docker.
+echo -n "Test 17c: compose — inverted mount boundary rejects writable host inputs... "
+GUARD="$REPO_ROOT/scripts/check-container-host-boundary.sh"
+errs=""
+bash "$GUARD" "$COMPOSE" >/dev/null 2>&1 || errs="$errs shipped-template"
+for path in .standards coding_standards coding_standards/.git .antigravity .claude .vscode Makefile package.json Dockerfile.prod .gitignore proxy .git; do
+    mutated="$TMP_BASE/boundary-mutated.yml"
+    awk -v p="$path" '{print} /source: \., target: \/workspace,/ {print "      - ./" p ":/workspace/" p}' "$COMPOSE" > "$mutated"
+    bash "$GUARD" "$mutated" >/dev/null 2>&1 && errs="$errs writable:$path"
 done
-# Paths that may legitimately be absent use the long syntax so a missing source
-# fails `compose up` rather than mounting an empty directory.
-for p in '.env' '.env.secret' '.git/config' '.git/hooks' '.git/modules' '.gitmodules'; do
-    grep -qF -- "{ type: bind, source: ./$p, target: /workspace/$p, read_only: true, bind: { create_host_path: false } }" "$COMPOSE" \
-        || missing="$missing $p"
-done
-if [ -z "$missing" ] && grep -q '^      - .:/workspace:cached$' "$COMPOSE"; then
-    pass
+sed 's/source: \., target: \/workspace, read_only: true/source: ., target: \/workspace, read_only: false/' "$COMPOSE" > "$mutated"
+bash "$GUARD" "$mutated" >/dev/null 2>&1 && errs="$errs writable-root"
+# A newly added host consumer does not need a new protected-path entry: its
+# input is already covered by the read-only root, and no overlay can expose it.
+awk '{print} /source: \., target: \/workspace,/ {print "      - ./future-host-config:/workspace/future-host-config"}' "$COMPOSE" > "$mutated"
+bash "$GUARD" "$mutated" >/dev/null 2>&1 && errs="$errs future-host-input"
+# Privileged containers can remount a read-only bind; a named volume can also
+# hide a host bind behind driver_opts. Both invalidate the structural proof.
+awk '{print} /^  dev:$/ {print "    privileged: true"}' "$COMPOSE" > "$mutated"
+bash "$GUARD" "$mutated" >/dev/null 2>&1 && errs="$errs privileged"
+awk '{print} /^  dev-cache:$/ {print "    driver_opts: {type: none, o: bind, device: .}"}' "$COMPOSE" > "$mutated"
+bash "$GUARD" "$mutated" >/dev/null 2>&1 && errs="$errs named-host-bind"
+if [ -z "$errs" ]; then pass; else fail "boundary guard:$errs"; fi
+
+# Host MCP commands must never be silently copied from a project configuration.
+echo -n "Test 17d: Antigravity — project MCP config is never imported into host settings... "
+d="$TMP_BASE/mcp-host"; mkdir -p "$d/project/.antigravity" "$d/host"
+printf '{"mcpServers":{"untrusted":{"command":"touch","args":["/tmp/host-executed"]}}}\n' > "$d/project/.antigravity/mcp.json"
+printf '{"mcpServers":{"existing":{"command":"reviewed-command"}}}\n' > "$d/host/mcp-dev.json"
+cp "$d/host/mcp-dev.json" "$d/expected.json"
+(cd "$d/project" && ANTIGRAVITY_HOME="$d/host" bash "$KIT/scripts/bootstrap-antigravity.sh.example" >/dev/null 2>&1)
+if cmp -s "$d/host/mcp-dev.json" "$d/expected.json" && [ -f "$d/host/environments/dev.json" ]; then
+    rm "$d/host/mcp-dev.json"
+    (cd "$d/project" && ANTIGRAVITY_HOME="$d/host" bash "$KIT/scripts/bootstrap-antigravity.sh.example" >/dev/null 2>&1)
+    if [ ! -e "$d/host/mcp-dev.json" ]; then pass; else fail "created host MCP config"; fi
 else
-    fail "dev service is missing read-only mounts:$missing"
+    fail "changed host MCP config or failed container registration"
+fi
+
+# Optional runtime proof: CI has Docker even when a local workstation does not.
+# Use the kit's already pinned Alpine image; no provider keys or host config is
+# mounted. Root in the container is stricter than the normal developer user.
+echo -n "Test 17e: Docker — even root cannot modify current or future host inputs... "
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    d="$TMP_BASE/mount-denial"
+    mkdir -p "$d/.standards" "$d/coding_standards" "$d/.antigravity" "$d/.git/hooks"
+    printf 'gitdir: ../.git/modules/coding_standards\n' > "$d/coding_standards/.git"
+    printf '{"mcpServers":{}}\n' > "$d/.antigravity/mcp.json"
+    image=$(awk '/^FROM alpine:/ {print $2; exit}' "$KIT/Dockerfile.egress.example")
+    rc=0
+    out=$(docker run --rm --network none --user 0 --mount "type=bind,source=$d,target=/workspace,readonly" "$image" sh -ec '
+        for p in .standards/global-whitelist.txt coding_standards/.git .antigravity/mcp.json .git/hooks/x Makefile package.json Dockerfile.prod .gitignore; do
+            if touch "/workspace/$p" 2>/dev/null; then
+                echo "FAIL: root wrote $p"; exit 1
+            fi
+        done
+        if mkdir /workspace/future-host-input 2>/dev/null; then
+            echo "FAIL: root created a future host input"; exit 1
+        fi
+        if rm /workspace/coding_standards/.git 2>/dev/null; then
+            echo "FAIL: root replaced a submodule gitfile"; exit 1
+        fi
+        echo "Read-only host boundary verified"
+    ' 2>&1) || rc=$?
+    if [ "$rc" -eq 0 ] && echo "$out" | grep -q 'Read-only host boundary verified'; then pass; else fail "rc=$rc; $out"; fi
+else
+    echo "skipped (Docker daemon unavailable; runtime proof runs in CI)"
 fi
 
 # ---------- init-workspace.sh (runs on the host — must not trust the workspace) ----------
@@ -559,7 +610,7 @@ if grep -q '^      HTTP_PROXY: ' "$COMPOSE" && grep -q '^      HTTPS_PROXY: ' "$
     && grep -q '^      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1}$' "$COMPOSE" \
     && grep -q '^      no_proxy: ${NO_PROXY:-localhost,127.0.0.1,::1}$' "$COMPOSE" \
     && grep -q "nc -X connect -x \${EGRESS_PROXY_HOST:-egress}:\${EGRESS_PROXY_PORT:-3128} %h %p" "$COMPOSE" \
-    && grep -q '^      - ${SSH_AGENT_SOURCE:-/dev/null}:/ssh-agent$' "$COMPOSE" \
+    && grep -q '^      - ${SSH_AGENT_SOURCE:-/dev/null}:/ssh-agent:ro$' "$COMPOSE" \
     && ! grep -qE '\$\{SSH_AUTH_SOCK[^}]*\}:/ssh-agent' "$COMPOSE"; then
     pass
 else

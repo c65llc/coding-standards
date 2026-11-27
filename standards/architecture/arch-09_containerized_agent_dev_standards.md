@@ -70,12 +70,19 @@ outside their reach.
 ## 3. The Workspace Is a Volume, the Image Is Disposable
 
 * Mount the codebase into the container at a **canonical absolute path** —
-  `/workspace` — via a bind volume. All agent file operations reference this path.
+  `/workspace` — via a bind volume. This is the host reference checkout; editable
+  work uses declared source overlays or a fresh clone in a container-owned volume
+  at a documented path.
+  The host checkout is **read-only by default**, with only explicitly declared
+  source directories writable as narrow overlays. Never start with a writable
+  checkout and enumerate protected files: new host consumers would be exposed.
+  Container-owned volumes may hold editable clones and build output; they must
+  never be mounted back into a host-side execution or configuration path.
   Nothing the agent needs to keep lives inside the image layer.
 * Treat the image as **rebuildable at any time**. A developer must be able to
   `docker compose build --no-cache` and lose nothing but caches. Persist only what
-  is intentionally external: the mounted workspace, and named volumes for language
-  caches (`~/.cache`, `node_modules` if not bind-mounted, Go module cache) to keep
+  is intentionally external: the mounted workspace, container-owned editable
+  clones, and named volumes for language caches (`~/.cache`, `node_modules` if not bind-mounted, Go module cache) to keep
   rebuilds fast.
 * Pin the base OS and every tool version. "Ubuntu 24.04 + Node LTS" is reproducible
   only if LTS resolves to a pinned major and the lockfiles are committed. A floating
@@ -131,17 +138,20 @@ egress and allow only what the project needs.
     `*`, any other glob, `*.com`, a URL) stops it from starting. The dev container
     waits for it to be healthy, so a broken allow-list halts the environment
     rather than opening it;
-  * **container writes, host executes:** everything the host executes, builds
-    from or interpolates — setup scripts the IDE runs on the host, the compose
-    file and Dockerfiles, `.env` (a value there can become a bind-mount source),
-    the proxy directory, and the git configuration every host-side `git` command
-    reads (`.git/config`, `.git/hooks`, `.git/modules`, `.gitmodules`) — is
-    mounted **read-only** into the dev container, and no host-side setup script
-    runs `git` or any other tool that reads container-writable configuration. An
-    agent that could edit those would gain host code execution or a wider proxy
-    on the next start; whitelists, git config and submodules are therefore
-    changed on the host, by a human, while the agent keeps committing, fetching
-    and pushing with the config it was given;
+  * **container writes, host executes:** use the **inverted mount model**:
+    the whole host checkout at `/workspace` is read-only, including missing
+    paths, vendored standards, submodule working trees and their `.git` gitfiles.
+    Only explicitly declared source directories may be writable overlays; no
+    host-side step may read, execute or import configuration from those overlays.
+    Host-consumed files include setup scripts, compose and all Dockerfiles,
+    `.env*`, `.gitignore`, `.git*`, both global allow-list fallback trees
+    (`.standards/`, `coding_standards/`), `proxy/`, agent/IDE/MCP configs,
+    `Makefile` and package manifests. A deny-list of read-only mounts is not a
+    substitute for a read-only root. `initializeCommand` may run only scripts
+    protected by that root, whose inputs are also protected. Never import
+    workspace MCP commands into host settings: install host servers separately
+    from reviewed, host-owned sources. A guard must reject a writable root or
+    an unreviewed overlay, so adding a host consumer cannot silently expose it;
   * the engine must not forward external DNS from the internal network (Moby
     CVE-2024-29018 did, with a loopback host resolver): a forwarded lookup leaks
     data in the name without any connection. Require a patched engine and prove
@@ -225,7 +235,9 @@ manual setup docs, and make each opt-in.
   loopback-bound published port — both opt-in; the script MUST check for them and
   refuse to write a `Host` entry that cannot connect.
 * **Google Antigravity:** a bootstrap script that registers the container shell in
-  the Agent Manager and pre-loads project MCP configs.
+  the Agent Manager. Project MCP servers run inside the container; host MCP
+  servers are installed separately from a reviewed source, never copied or
+  merged from the workspace.
 * Keep IDE bootstrap scripts **non-destructive** — append an SSH `Host` block or
   MCP entry, detect and skip if already present, and never rewrite a user's
   `~/.ssh/config` or global editor settings wholesale.
@@ -241,5 +253,9 @@ A change to the dev-container setup is done only when:
   failing request, per §4.
 * At least one IDE path (Dev Containers or Cursor) connects and sees the same
   `/workspace` the CLI agents see.
+* The host-checkout root is read-only even for container `sudo`; attempts to
+  create or replace host setup, global allow-list, MCP and submodule `.git` inputs
+  fail. Every writable source overlay has an explicit host-consumer audit, and
+  the boundary guard rejects unreviewed writable mounts.
 * No secret, private key, or API key appears in any committed file or image layer,
   and `.env.secret` is git-ignored.

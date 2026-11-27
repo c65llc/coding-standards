@@ -24,7 +24,7 @@ Be precise about the security posture before trusting it:
 | **Deny-by-default egress (§4)** | **Enforced** for running containers. `devnet` is an `internal: true` network with no route to the internet; the only way out is the `egress` sidecar (tinyproxy), which refuses every destination not in `proxy/allowlist.generated.txt` and refuses to *start* without a valid allow-list. See [How egress enforcement works](#how-egress-enforcement-works) for what is and is not covered |
 | No secrets baked into layers; `.env.secret` must be git-ignored (§5) | Enforced — `init-workspace.sh` refuses to write an un-ignored secret file |
 | YOLO permissions live only in the image (§6) | Enforced by `Dockerfile.dev` |
-| Container writes, host executes | **Enforced** by the compose file: `scripts/`, `proxy/`, `.devcontainer/`, the Dockerfiles, the compose file, `.env`, `.env.secret`, `.git/config`, `.git/hooks`, `.git/modules` and `.gitmodules` are mounted read-only into `dev`, and no kit script runs `git` on the host — so an agent cannot plant code the host runs (`initializeCommand`, your own `git` commands, `compose up --build`), redirect a bind mount via `.env`, or widen the proxy for the next start. See [Threat model](#threat-model-what-the-agent-can-and-cannot-change) |
+| Container writes, host executes | **Inverted mount model:** the entire host checkout is read-only in `dev`, including future paths, standards fallbacks, submodule gitfiles and agent/MCP configs. Only Docker-owned caches are writable by default. Explicit source overlays require an audit; host MCP configs are never imported from the workspace. See [Threat model](#threat-model-what-the-agent-can-and-cannot-change) |
 | Host Docker socket | **Not mounted.** Opt-in, commented out in the compose file with the trade-off spelled out; enabling it hands the container root-equivalent control of the host **and a path around the egress proxy** |
 | Zed over SSH (§7) | Opt-in: `bootstrap-zed.sh` preflights for sshd and a published port and refuses to configure anything until both opt-in blocks are enabled |
 
@@ -35,16 +35,16 @@ Be precise about the security posture before trusting it:
 | `Dockerfile.dev.example` | Full-toolchain dev image (base pinned by digest, Node 24 LTS, AI CLIs pinned by version), non-root sudo user (proxy variables survive `sudo`), `claude`/`gemini` YOLO shims on `PATH` | §1, §2, §3, §6 |
 | `Dockerfile.prod.example` | Multi-stage → distroless, no shell, non-root | §1 |
 | `Dockerfile.egress.example` | Egress-proxy sidecar image: Alpine + tinyproxy, unprivileged, config baked in, fail-closed entrypoint | §4 |
-| `docker-compose.dev.yml.example` | Wires the internal network, the egress sidecar, workspace volume (host-executed files read-only), identity, secrets, proxy pointer (both env-var cases, plus `GIT_SSH_COMMAND`); Docker socket and SSH port are commented opt-ins | §3, §4, §5 |
+| `docker-compose.dev.yml.example` | Wires the internal network, the egress sidecar, read-only host workspace with optional source overlays, identity, secrets, proxy pointer (both env-var cases, plus `GIT_SSH_COMMAND`); Docker socket and SSH port are commented opt-ins | §3, §4, §5 |
 | `scripts/init-workspace.sh.example` | Entry point: identity forwarding, secret capture; rewrites only its own keys in `.env`; runs no `git` (it executes on the host) | §5 |
 | `scripts/setup-proxy.sh.example` | Validates (lowercase hostnames of two or more labels, optional `*.`) and combines the dual-layer whitelist into `proxy/allowlist.generated.txt`, the file the sidecar enforces; writes `EGRESS_PROXY*` and `NO_PROXY` to `.env` | §4 |
 | `scripts/bootstrap-zed.sh.example` | Headless Zed remote over SSH (requires the sshd + port opt-ins; preflights both) | §7 |
-| `scripts/bootstrap-antigravity.sh.example` | Register container with Antigravity Agent Manager; merges, never overwrites, an existing MCP config | §7 |
+| `scripts/bootstrap-antigravity.sh.example` | Register container with Antigravity Agent Manager; never imports workspace MCP commands into host settings | §7 |
 | `network/global-whitelist.txt` | Baseline egress allow-list (ships with standards) | §4 |
 | `proxy/project-whitelist.txt` | Project-specific egress allow-list | §4 |
 | `proxy/tinyproxy.conf` | Sidecar config, baked into the image: deny by default, whole-host glob matching, CONNECT to 443/22 only, logs to stdout | §4 |
 | `proxy/egress-entrypoint.sh` | Sidecar entrypoint + health check: asserts the deny-by-default config and refuses to start on a missing, empty or malformed allow-list (any glob other than a leading `*.`, single-label wildcards, URLs, upper case) | §4 |
-| `.devcontainer/devcontainer.json` | VS Code Dev Containers integration (runs both setup scripts on the host first; they are read-only in the sandbox) | §7 |
+| `.devcontainer/devcontainer.json` | VS Code Dev Containers integration (runs both setup scripts on the host first; the whole checkout and all their inputs are read-only in the sandbox) | §7 |
 | `cursorrules.example` | Cursor "run in container" rules; installed as `.cursor/rules/containerized-dev.mdc` when Cursor is a configured agent | §7 |
 | `env.secret.example` | Shape of the git-ignored runtime secret file | §5 |
 
@@ -204,52 +204,75 @@ What it does **not** cover — know these before calling the environment contain
 
 ## Threat model: what the agent can and cannot change
 
-The agent runs with broad permissions and `sudo` inside `dev`, and the whole
-project is bind-mounted at `/workspace`. Several files in that project are
-executed or consumed **by the host**, which would hand an agent host code
-execution on the next start if it could edit them:
+**Chosen design (#221): invert the mount model.** The entire host checkout is
+mounted read-only at `/workspace`. There is no list of protected files to keep
+extending: an absent `.standards/`, `.antigravity/mcp.json`, or nested `.git`
+created later by the host is covered automatically. The container has no
+`CAP_SYS_ADMIN`, so container `sudo` cannot remount that bind writable.
 
-| Host-side consumer | Files | Protection |
-|--------------------|-------|------------|
-| `devcontainer.json` `initializeCommand` (runs on the host) | `scripts/init-workspace.sh`, `scripts/setup-proxy.sh`, `.devcontainer/` | mounted read-only into `dev`; neither script runs `git` or reads any other container-writable configuration |
-| `docker compose up --build` (host daemon) | `docker-compose.dev.yml`, `Dockerfile.dev`, `Dockerfile.egress` | mounted read-only into `dev` |
-| `docker compose` variable interpolation | `.env` (`SSH_AGENT_SOURCE` is a bind-mount *source*; `HOST_UID`/`HOST_GID` are build args), `.env.secret` (`env_file`) | mounted read-only into `dev`; both are written by `init-workspace.sh` on the host |
-| **every `git` command you run on the host** | `.git/config` (`core.hooksPath`, `core.fsmonitor`, `core.sshCommand`, aliases, `include`, filters), `.git/hooks`, `.git/modules/*/config`, `.gitmodules` (submodule URLs) | mounted read-only into `dev`; no kit script runs `git` on the host (`init-workspace.sh` reads `.gitignore` directly and leaves submodules to you) |
-| egress sidecar enforcement | `proxy/` (whitelists, generated allow-list, `tinyproxy.conf`, entrypoint) | mounted read-only into `dev`; config baked into the image and asserted; every entry validated at start |
+| Host-side consumer | Inputs | Protection |
+|--------------------|--------|------------|
+| Container writes, host executes | Every current and future checkout path | Read-only root bind; writable named caches have no host-checkout backing path |
+| `initializeCommand` | `scripts/`, `.devcontainer/`, `.gitignore`, `.env*` | Read-only root; setup scripts never invoke host git |
+| `setup-proxy.sh` | Global lists in `.standards/`, `coding_standards/` or `proxy/`; project list in `proxy/` | All fallbacks and their parent directories are read-only; the agent cannot create an earlier-priority fallback |
+| Antigravity bootstrap | Container registration only | Never copies or merges workspace MCP definitions into host settings; install host servers separately from a reviewed source |
+| Host git and submodule auto-detection | Entire `.git`, submodule working trees and `.git` gitfiles, `.gitmodules` | All read-only, including file replacement and nested `.git` creation; no kit host script runs git |
+| IDEs, task runners, image builds | `.claude/`, `.antigravity/`, `.vscode/`, `Makefile`, `package.json`, all Dockerfiles and compose inputs | Read-only root; any additional host consumer is protected without another mount entry |
 
-Nested read-only bind mounts take precedence over the writable workspace mount
-for exactly those paths, and a container without `CAP_SYS_ADMIN` (the default)
-cannot remount them — `sudo` inside the container does not help. The mounts use
-`create_host_path: false`, so a missing path (for example a worktree checkout,
-where `.git` is a file) fails `compose up` loudly rather than mounting an empty
-directory; the kit assumes a standard clone with the standards as a submodule
-(`setup.sh --containerized` installs the compose file without the `.git/modules`
-and `.gitmodules` lines when the project has no submodule; drop them by hand
-otherwise). Consequences:
+### Editable sources and commits
 
-* **Infrastructure is edited on the host, by a human.** Including the whitelists:
-  widening egress is a reviewed, host-side change followed by `setup-proxy.sh`
-  and an `egress` restart, never something the agent can do from inside.
-* **The agent commits, branches, fetches and pushes with the config it was
-  given.** `git config`, `git remote add`, installing hooks and `git submodule
-  update` fail inside the container with "Read-only file system" (or "Device or
-  resource busy" for `.git/config`, a single-file mount git tries to replace
-  atomically); do those on
-  the host. `git checkout`/`git pull` inside the container fails the same way if
-  the incoming change touches a protected path — pull such changes on the host.
-* The global whitelist lives in the standards submodule (`.standards/`, or
-  `coding_standards/` when vendored by hand), which is *writable* in the
-  container; the entrypoint's validation means an
-  agent editing it can add hostnames but never a catch-all, and the change only
-  takes effect after a human re-runs `setup-proxy.sh` on the host and restarts
-  the sidecar — review `git diff coding_standards/` before doing so, or mount
-  that directory read-only too if the agent never needs to sync standards.
+The shipped default is a read-only reference checkout. Builds write to named
+caches or a container-owned directory, not to the host checkout. For ordinary
+branch/commit work, make a **fresh clone of the reviewed remote URL** inside the
+container-owned `dev-cache` volume, for example
+`git clone <reviewed-remote-url> /home/developer/.cache/project`, then open that
+folder in the attached IDE. If the cache volume is initially root-owned, first
+run `sudo chown "$(id -u):$(id -g)" /home/developer/.cache` inside the container.
+Work, checkpoint, commit and push from that clone.
+Do not copy host `.git` metadata or make the host `.git` writable. The clone
+survives container rebuilds; `docker compose down -v` deletes it, so push work
+before removing volumes. Host tooling must never execute this clone or consume
+its configs, hooks, MCP commands or allow-lists. Builds in that clone run inside
+the sandbox. The host checkout receives changes only through reviewed Git work.
+
+For projects that need host-visible source edits, the compose template has
+**commented examples** for `src/` and `tests/` overlays. Declare only the source
+directories required by the task, with `create_host_path: false`; keep all their
+ancestors read-only. Never overlay infrastructure, standards, `.git`, proxy or
+IDE/agent configuration directories. An overlay grants write access to **every**
+descendant, including newly created scripts and `.git` files. Consequently no
+host-side script, git auto-detection, IDE task, MCP server or image build may
+consume an overlay before human review. Run source builds/tests in the sandbox.
+Root manifests and git metadata remain read-only; use the container-owned clone
+when a task needs to change them.
+
+`scripts/check-container-host-boundary.sh` guards the shipped mount contract in
+`make test-containerized-dev`: it rejects a writable root, unknown mount syntax
+and every undeclared writable bind. The regression tests inject writable mounts
+for each former gap plus an unknown future host input and require rejection.
+When Docker is available, the suite also checks that container root cannot
+write those inputs, create a new host path, or replace a submodule gitfile through
+a read-only bind. Without a daemon this check is explicitly skipped.
+A project enabling an overlay must update its guard policy only after auditing
+all host consumers of that directory; it cannot claim the shipped guarantee
+merely because the template once passed.
+
+### Upgrading an existing installation
+
+Stop the old dev container first. Run `setup.sh --containerized` from a reviewed
+standards checkout **on the host**, then reconcile the staged compose, bootstrap
+and Dev Containers files with this model. Setup keeps your existing kit files;
+staging an update does not secure a still-running writable sandbox. Remove the
+old writable root mount, recreate the dev service, and verify its effective
+mounts and write-denial checks below. Do not copy an old workspace MCP config
+into host settings. Review any host config, allow-list or submodule metadata
+that an earlier container could have changed before reusing it.
 
 Still outside the model: the Docker socket opt-in (root-equivalent host control),
-and anything the host operator runs by hand from the workspace *other than git*
-— `make`, `npm`, a task runner — all of which read container-writable files
-(`Makefile`, `package.json`, …). Review the diff before running project tooling
-on the host, or run it in the container.
+host commands deliberately run against unreviewed source overlays, and image
+builds from agent-modified sources (they run outside the egress network). A
+read-only mount protects against container writes, not a human accepting an
+untrusted change on the host.
 
 Using a different enforcing proxy (a corporate egress gateway, Squid with its own
 ACLs)? Point `EGRESS_PROXY` at it when running `setup-proxy.sh`, remove the
@@ -285,9 +308,9 @@ docker compose -f docker-compose.dev.yml exec dev curl -sS --fail --max-time 10 
 docker compose -f docker-compose.dev.yml exec dev getent hosts dns-leak-check.example.com && \
   echo "FAIL: external DNS resolves from devnet — upgrade Docker Engine" || echo "OK: external DNS blocked"
 
-# 2d. ...and the sandbox cannot rewrite what the host runs (every line: "Read-only file system";
-#     the single-file .git/config mount answers "Device or resource busy" — still refused)
-docker compose -f docker-compose.dev.yml exec dev sh -c 'for p in scripts/x proxy/x .git/hooks/x .env; do touch $p 2>&1; sudo touch $p 2>&1; done; git config core.hooksPath /tmp 2>&1'
+# 2d. Every write MUST fail, including sudo and paths missing on the host.
+docker compose -f docker-compose.dev.yml exec dev sh -c 'for p in scripts/x proxy/x .git/hooks/x .env .standards/x coding_standards/.git .antigravity/mcp.json Makefile; do touch "$p" 2>&1; sudo touch "$p" 2>&1; done; mkdir /workspace/new-host-input 2>&1; git config core.hooksPath /tmp 2>&1'
+# In the container-owned clone, normal source edits and git commits MUST work.
 
 # 3. An allowed host works (expect 200), also through sudo (env_keep) and from Node
 #    (NODE_USE_ENV_PROXY=1 in the compose file; without it fetch() fails with EAI_AGAIN)
