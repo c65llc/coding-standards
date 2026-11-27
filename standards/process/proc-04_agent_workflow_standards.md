@@ -188,7 +188,8 @@ folders like these (658 MB, 1.7 GB each), none referenced again after their run.
 * **Agents follow the same rule for ad-hoc commands.** A one-off
   `xcodebuild -derivedDataPath`, `cargo build --target-dir`, download or
   extraction goes in the session's scratch directory or a `mktemp -d` that the
-  same command chain removes (`dir=$(mktemp -d …) && … ; rm -rf "$dir"`). Before
+  same subshell removes with an `EXIT` trap, preserving the command's exit
+  status (`(dir=$(mktemp -d …) || exit; trap 'rm -rf "$dir"' EXIT; …)`). Before
   reporting a task finished, delete every temporary directory the task created
   that is not a shared cache, and say where anything deliberately kept lives.
 * **Caches are the exception, not a loophole.** A directory reused across runs
