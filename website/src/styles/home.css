@@ -40,6 +40,8 @@ ul, ol { list-style: none; }
 .compile { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); gap: 1.25rem; padding-bottom: 3rem; }
 .window { min-width: 0; background: var(--cs-panel); border: 1px solid var(--cs-rule); border-radius: 6px; overflow: hidden; font: 0.82rem/1.75 var(--cs-mono); color: var(--cs-heading); }
 .window figcaption { display: flex; justify-content: space-between; gap: 1rem; padding: 0.5rem 0.9rem; border-bottom: 1px solid var(--cs-rule); color: var(--cs-text); font-size: 0.75rem; overflow-wrap: anywhere; }
+.window figcaption span { min-width: 0; }
+.window figcaption span:last-child { flex: none; }
 .source, .tree { padding: 0.9rem 1rem; }
 .source li { display: grid; grid-template-columns: 2.25rem minmax(0, 1fr); }
 .number { color: var(--cs-accent); user-select: none; }
