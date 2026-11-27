@@ -1,6 +1,6 @@
 # Website Redesign: Warm Dark, in the C65 Family — Design Spec
 
-- **Status:** Draft
+- **Status:** Agreed
 - **Date:** 2026-11-27
 - **Scope:** `website/` (homepage, docs, blog)
 
